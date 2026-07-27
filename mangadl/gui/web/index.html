@@ -67,6 +67,16 @@
   <button class="rail-btn" data-view="library" title="Library">
     <span class="material-symbols-rounded">shelves</span><span class="rail-label">Library</span>
   </button>
+  <button class="rail-btn" data-view="updates" title="Updates">
+    <span class="material-symbols-rounded">notifications</span><span class="rail-label">Updates</span>
+    <span class="rail-badge hidden" id="railUpdates">0</span>
+  </button>
+  <button class="rail-btn" data-view="insights" title="Insights">
+    <span class="material-symbols-rounded">insights</span><span class="rail-label">Stats</span>
+  </button>
+  <button class="rail-btn" data-view="tools" title="Tools">
+    <span class="material-symbols-rounded">build</span><span class="rail-label">Tools</span>
+  </button>
   <div class="rail-spacer"></div>
   <button class="rail-btn" data-view="settings" title="Settings">
     <span class="material-symbols-rounded">settings</span><span class="rail-label">Settings</span>
@@ -209,6 +219,9 @@
         <div class="manga-meta">
           <div class="title-row">
             <h2 id="mangaTitle"></h2>
+            <button class="icon-btn bookmark-btn" id="watchBtn" title="Watch for new chapters">
+              <span class="material-symbols-rounded" id="watchIcon">notifications_none</span>
+            </button>
             <button class="icon-btn bookmark-btn" id="bookmarkBtn" title="Bookmark">
               <span class="material-symbols-rounded" id="bookmarkIcon">bookmark_add</span>
             </button>
@@ -372,6 +385,121 @@
   </section>
 
   <!-- ================================================ SETTINGS VIEW -->
+  <!-- ================================================= UPDATES VIEW -->
+  <section class="view" id="view-updates">
+    <h1 class="view-heading">
+      <span class="material-symbols-rounded heading-icon">notifications</span>Updates
+      <button class="btn btn-filled head-action" id="checkUpdatesBtn">
+        <span class="material-symbols-rounded">refresh</span>Check now
+      </button>
+    </h1>
+    <p class="view-sub">Series you are watching. MangaDL checks every source in
+      parallel and tells you what gained new chapters.</p>
+    <div class="results-state" id="updatesState"></div>
+    <div class="update-list" id="updatesList"></div>
+
+    <h2 class="sub-heading">Watchlist</h2>
+    <div class="watch-list" id="watchList"></div>
+  </section>
+
+  <!-- ================================================ INSIGHTS VIEW -->
+  <section class="view" id="view-insights">
+    <h1 class="view-heading">
+      <span class="material-symbols-rounded heading-icon">insights</span>Insights
+    </h1>
+    <p class="view-sub">What you have downloaded, and how much of it.</p>
+
+    <div class="stat-grid" id="insightTiles"></div>
+
+    <div class="panel-row">
+      <div class="card panel">
+        <div class="card-title"><span class="material-symbols-rounded">lan</span> By source</div>
+        <div class="bar-chart" id="sourceChart"></div>
+      </div>
+      <div class="card panel">
+        <div class="card-title"><span class="material-symbols-rounded">calendar_month</span> Recent activity</div>
+        <div class="spark" id="activityChart"></div>
+      </div>
+    </div>
+
+    <div class="panel-row">
+      <div class="card panel">
+        <div class="card-title"><span class="material-symbols-rounded">local_library</span> Biggest series</div>
+        <div class="rank-list" id="largestList"></div>
+      </div>
+      <div class="card panel">
+        <div class="card-title"><span class="material-symbols-rounded">history</span> Recently downloaded</div>
+        <div class="rank-list" id="recentList"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =================================================== TOOLS VIEW -->
+  <section class="view" id="view-tools">
+    <h1 class="view-heading">
+      <span class="material-symbols-rounded heading-icon">build</span>Tools
+    </h1>
+    <p class="view-sub">Disk maintenance, saved searches and source health.</p>
+
+    <div class="tool-tabs" id="toolTabs">
+      <button class="tool-tab active" data-tool="disk">Disk usage</button>
+      <button class="tool-tab" data-tool="dupes">Duplicates</button>
+      <button class="tool-tab" data-tool="orphans">Orphans</button>
+      <button class="tool-tab" data-tool="health">Source health</button>
+      <button class="tool-tab" data-tool="history">History</button>
+    </div>
+
+    <div class="tool-panel active" id="tool-disk">
+      <div class="tool-bar">
+        <button class="btn" id="scanDiskBtn">
+          <span class="material-symbols-rounded">hard_drive</span>Scan downloads
+        </button>
+        <span class="tool-note" id="diskNote"></span>
+      </div>
+      <div class="rank-list" id="diskList"></div>
+    </div>
+
+    <div class="tool-panel" id="tool-dupes">
+      <div class="tool-bar">
+        <button class="btn" id="scanDupesBtn">
+          <span class="material-symbols-rounded">content_copy</span>Find duplicates
+        </button>
+        <span class="tool-note" id="dupeNote"></span>
+      </div>
+      <div class="dupe-list" id="dupeList"></div>
+    </div>
+
+    <div class="tool-panel" id="tool-orphans">
+      <div class="tool-bar">
+        <button class="btn" id="scanOrphansBtn">
+          <span class="material-symbols-rounded">link_off</span>Find orphans
+        </button>
+        <span class="tool-note" id="orphanNote"></span>
+      </div>
+      <div class="rank-list" id="orphanList"></div>
+    </div>
+
+    <div class="tool-panel" id="tool-health">
+      <div class="tool-bar">
+        <button class="btn" id="refreshHealthBtn">
+          <span class="material-symbols-rounded">monitor_heart</span>Refresh
+        </button>
+        <span class="tool-note">Sources that fail repeatedly are skipped until they recover.</span>
+      </div>
+      <div class="rank-list" id="healthList"></div>
+    </div>
+
+    <div class="tool-panel" id="tool-history">
+      <div class="tool-bar">
+        <button class="btn danger" id="clearHistoryBtn">
+          <span class="material-symbols-rounded">delete</span>Clear history
+        </button>
+        <span class="tool-note">Recent searches, newest first.</span>
+      </div>
+      <div class="rank-list" id="historyList"></div>
+    </div>
+  </section>
+
   <section class="view" id="view-settings">
     <h1 class="view-heading"><span class="material-symbols-rounded heading-icon">settings</span>Settings</h1>
 

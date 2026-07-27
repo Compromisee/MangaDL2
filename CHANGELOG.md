@@ -7,6 +7,49 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.2.0 — New GUI tabs and a GitHub-style landing page
+
+### Added — three new GUI tabs
+
+Nine backend features had no interface at all. They now do:
+
+- **Updates** — the watchlist, with per-series new-chapter counts, a rail
+  badge, and a "Check now" button that queries every source in parallel. A
+  Watch button on the manga page feeds it.
+- **Insights** — six headline metrics, a per-source bar chart, a fourteen-day
+  activity sparkline, and biggest/most-recent series lists.
+- **Tools** — five sub-panels: disk usage per series, SHA-256 duplicate
+  scanning with a wasted-space total, orphan detection, live circuit-breaker
+  health, and a clickable search history.
+
+Every new view goes through a `callApi` wrapper, so a missing endpoint or a
+Python-side exception logs a warning instead of blanking the tab.
+
+### Added — GitHub-style landing page
+
+`docs/index.html` is rebuilt on Primer design tokens as a repository page:
+file listing, README pane, sidebar with topics, releases and a language
+breakdown. Five deep-linkable tabs (Code, Features, Screenshots, CLI,
+Sources) with working browser back/forward, real light and dark modes
+remembered in localStorage, a screenshot gallery, and copy-to-clipboard
+install commands.
+
+The numbers on the page are computed from the repository — 228 features, 4
+sources, the language split and the version badge. Star and fork counts were
+deliberately left out: a static page cannot know them, and inventing them
+would present made-up figures as fact.
+
+### Fixed
+
+- Bar chart fills rendered as empty tracks: `<span>` is `display: inline` by
+  default, so width and height were ignored.
+- Landing-page tabs did not respond to same-document hash changes, so
+  in-page links and browser back/forward did nothing.
+
+### Testing
+
+- 241 offline tests plus 14 live-site tests
+
 ## v1.1.0 — Cover, crash, search and performance fixes
 
 ### Fixed — MangaDex covers showed a placeholder

@@ -22,6 +22,24 @@ function api() {
   return window.pywebview && window.pywebview.api;
 }
 
+/* Every new view calls the bridge through this. A missing endpoint or a
+   Python-side exception returns null instead of rejecting, so one broken
+   call cannot blank out a whole tab -- the same failure mode that used to
+   kill the startup sequence. */
+async function callApi(name, ...args) {
+  const bridge = api();
+  if (!bridge || typeof bridge[name] !== "function") {
+    console.warn("api." + name + " is unavailable");
+    return null;
+  }
+  try {
+    return await bridge[name](...args);
+  } catch (err) {
+    console.warn("api." + name + " failed:", err);
+    return null;
+  }
+}
+
 function whenReady(fn) {
   if (api()) return fn();
   window.addEventListener("pywebviewready", fn, { once: true });
@@ -166,6 +184,14 @@ function showView(name) {
   $("view-" + name).classList.add("active");
   if (name === "bookmarks") loadBookmarks();
   if (name === "library") loadLibrary();
+  if (name === "updates") loadUpdates();
+  if (name === "insights") loadInsights();
+  if (name === "tools") {
+    const active = document.querySelector(".tool-tab.active");
+    const tool = active ? active.dataset.tool : "disk";
+    if (tool === "health") loadHealth();
+    if (tool === "history") loadHistoryList();
+  }
 }
 
 document.querySelectorAll(".rail-btn[data-view]").forEach((btn) => {
@@ -672,6 +698,7 @@ async function openManga(url, sourceId) {
   $("mangaDesc").textContent = res.info.description || "";
   $("mangaAuthors").textContent = (res.info.authors || []).join(", ");
   setBookmarkIcon(!!res.bookmarked);
+  setWatchIcon(!!res.watched);
 
   const chips = $("mangaTags");
   chips.innerHTML = "";
@@ -712,6 +739,30 @@ $("bookmarkBtn").addEventListener("click", async () => {
     setBookmarkIcon(res.bookmarked);
     toast(res.bookmarked ? "Bookmarked" : "Bookmark removed");
   }
+});
+
+function setWatchIcon(on) {
+  $("watchBtn").classList.toggle("on", on);
+  $("watchIcon").textContent = on ? "notifications_active" : "notifications_none";
+  $("watchBtn").title = on ? "Stop watching" : "Watch for new chapters";
+}
+
+$("watchBtn").addEventListener("click", async () => {
+  if (!state.manga) return;
+  const info = state.manga.info;
+  const watching = $("watchBtn").classList.contains("on");
+  if (watching) {
+    await callApi("unwatch", info.url);
+    setWatchIcon(false);
+    toast("Stopped watching");
+  } else {
+    await callApi("watch", info.url, info.title,
+                  (state.manga.chapters || []).length,
+                  state.source || info.source, info.cover);
+    setWatchIcon(true);
+    toast("Watching for new chapters");
+  }
+  loadUpdates();
 });
 
 function renderChapterList() {
@@ -1694,3 +1745,281 @@ $("resetStatsBtn").addEventListener("click", async () => {
   await loadStats();
   toast("Statistics reset");
 });
+
+/* ======================================================= updates view */
+
+function coverTag(url, cls) {
+  return url
+    ? `<img class="${cls}" loading="lazy" decoding="async" src="${url}" alt=""
+         onerror="this.style.visibility='hidden'">`
+    : `<div class="${cls}"></div>`;
+}
+
+async function loadUpdates() {
+  const res = await callApi("get_watchlist");
+  const items = (res && res.items) || [];
+  const list = $("watchList");
+
+  if (!items.length) {
+    list.innerHTML = `
+      <div class="state-box">
+        <span class="material-symbols-rounded">notifications_off</span>
+        <div class="state-title">Nothing on the watchlist</div>
+        <div class="state-hint">Open a series and press Watch to be told when
+          it gains new chapters.</div>
+      </div>`;
+    $("railUpdates").classList.add("hidden");
+    return;
+  }
+
+  let pending = 0;
+  list.innerHTML = "";
+  items.forEach((w) => {
+    const n = w.new_chapters || 0;
+    if (n) pending += 1;
+    const row = document.createElement("div");
+    row.className = "update-row";
+    row.innerHTML = `
+      ${coverTag(w.cover, "u-cover")}
+      <div class="u-main">
+        <div class="u-title">${escapeHtml(w.title || "Unknown")}</div>
+        <div class="u-meta">${escapeHtml(w.source || "")} ·
+          ${w.known_chapters || 0} chapters · checked ${escapeHtml(w.checked || "never")}</div>
+      </div>
+      ${n ? `<span class="pill-new">+${n}</span>` : ""}
+      <button class="icon-btn" title="Stop watching">
+        <span class="material-symbols-rounded">notifications_off</span>
+      </button>`;
+    row.querySelector(".u-main").addEventListener("click", () => openManga(w.url, w.source));
+    row.querySelector("button").addEventListener("click", async (e) => {
+      e.stopPropagation();
+      await callApi("unwatch", w.url);
+      loadUpdates();
+    });
+    list.appendChild(row);
+  });
+
+  const badge = $("railUpdates");
+  badge.textContent = pending;
+  badge.classList.toggle("hidden", pending === 0);
+}
+
+$("checkUpdatesBtn").addEventListener("click", async () => {
+  const btn = $("checkUpdatesBtn");
+  btn.disabled = true;
+  $("updatesState").innerHTML = '<div class="spinner" style="margin:16px auto"></div>';
+  const res = await callApi("check_updates");
+  btn.disabled = false;
+  $("updatesState").textContent = "";
+
+  const updates = (res && res.updates) || [];
+  const box = $("updatesList");
+  if (!updates.length) {
+    box.innerHTML = `
+      <div class="state-box">
+        <span class="material-symbols-rounded">check_circle</span>
+        <div class="state-title">Everything is up to date</div>
+      </div>`;
+  } else {
+    box.innerHTML = "";
+    updates.forEach((u) => {
+      const row = document.createElement("div");
+      row.className = "update-row";
+      row.innerHTML = `
+        ${coverTag(u.cover, "u-cover")}
+        <div class="u-main">
+          <div class="u-title">${escapeHtml(u.title)}</div>
+          <div class="u-meta">now ${u.total} chapters</div>
+        </div>
+        <span class="pill-new">+${u.new}</span>`;
+      row.addEventListener("click", () => openManga(u.url, u.source));
+      box.appendChild(row);
+    });
+    toast(`${updates.length} series updated`);
+  }
+  loadUpdates();
+});
+
+/* ====================================================== insights view */
+
+async function loadInsights() {
+  const [statsRes, insightRes] = await Promise.all([
+    callApi("get_stats"), callApi("get_insights"),
+  ]);
+  const totals = (statsRes && statsRes.stats && statsRes.stats.totals) || {};
+  const derived = (statsRes && statsRes.stats && statsRes.stats.derived) || {};
+  const perSource = (statsRes && statsRes.stats && statsRes.stats.sources) || {};
+  const days = (statsRes && statsRes.stats && statsRes.stats.days) || {};
+  const ins = (insightRes && insightRes.insights) || {};
+
+  const tiles = [
+    ["Series", ins.series || 0, "collections_bookmark"],
+    ["Chapters", totals.chapters || 0, "menu_book"],
+    ["Pages", totals.pages || 0, "image"],
+    ["On disk", ins.human_bytes || "0 B", "hard_drive"],
+    ["Time spent", derived.human_time || "0s", "schedule"],
+    ["Avg speed", `${derived.avg_pages_per_second || 0}/s`, "speed"],
+  ];
+  $("insightTiles").innerHTML = tiles.map(([k, v, icon]) => `
+    <div class="stat-tile">
+      <div class="v">${escapeHtml(String(v))}</div>
+      <div class="k">${escapeHtml(k)}</div>
+    </div>`).join("");
+
+  // per-source bar chart
+  const entries = Object.entries(perSource)
+    .sort((a, b) => (b[1].chapters || 0) - (a[1].chapters || 0));
+  const max = Math.max(1, ...entries.map(([, v]) => v.chapters || 0));
+  $("sourceChart").innerHTML = entries.length
+    ? entries.map(([name, v]) => `
+        <div class="bar-row">
+          <span class="b-label">${escapeHtml(name)}</span>
+          <span class="b-track"><span class="b-fill" style="width:${((v.chapters || 0) / max) * 100}%"></span></span>
+          <span class="b-value">${v.chapters || 0}</span>
+        </div>`).join("")
+    : '<div class="tool-note">No downloads recorded yet.</div>';
+
+  // last 14 days of activity
+  const dayKeys = Object.keys(days).sort().slice(-14);
+  const dayMax = Math.max(1, ...dayKeys.map((d) => days[d].chapters || 0));
+  $("activityChart").innerHTML = dayKeys.length
+    ? dayKeys.map((d) => {
+        const v = days[d].chapters || 0;
+        return `<div class="sp-bar" style="height:${Math.max(3, (v / dayMax) * 100)}%"
+                 title="${escapeHtml(d)}: ${v} chapters"></div>`;
+      }).join("")
+    : '<div class="tool-note">No activity yet.</div>';
+
+  const rankRows = (rows, valueKey, labelKey) => rows.length
+    ? rows.map((r) => `
+        <div class="rank-row">
+          <div class="r-main">
+            <div class="r-title">${escapeHtml(r[labelKey] || "Unknown")}</div>
+          </div>
+          <span class="r-value">${escapeHtml(String(r[valueKey] ?? ""))}</span>
+        </div>`).join("")
+    : '<div class="tool-note">Nothing yet.</div>';
+
+  $("largestList").innerHTML = rankRows(ins.largest || [], "chapters", "title");
+  $("recentList").innerHTML = rankRows(ins.recent || [], "date", "title");
+}
+
+/* ========================================================= tools view */
+
+document.querySelectorAll(".tool-tab").forEach((tab) =>
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tool-tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".tool-panel").forEach((p) => p.classList.remove("active"));
+    tab.classList.add("active");
+    const panel = $("tool-" + tab.dataset.tool);
+    if (panel) panel.classList.add("active");
+    if (tab.dataset.tool === "health") loadHealth();
+    if (tab.dataset.tool === "history") loadHistoryList();
+  }));
+
+$("scanDiskBtn").addEventListener("click", async () => {
+  $("diskNote").textContent = "Scanning…";
+  const res = await callApi("disk_usage");
+  const rows = (res && res.rows) || [];
+  $("diskNote").textContent = rows.length
+    ? `${rows.length} series in ${res.root || "downloads"}`
+    : "Nothing found.";
+  $("diskList").innerHTML = rows.slice(0, 40).map((r) => `
+    <div class="rank-row">
+      <div class="r-main">
+        <div class="r-title">${escapeHtml(r.name)}</div>
+        <div class="r-meta">${r.files} files</div>
+      </div>
+      <span class="r-value">${escapeHtml(humanSize(r.bytes))}</span>
+    </div>`).join("");
+});
+
+$("scanDupesBtn").addEventListener("click", async () => {
+  $("dupeNote").textContent = "Scanning (this hashes every file)…";
+  const res = await callApi("scan_duplicates");
+  const groups = (res && res.groups) || [];
+  $("dupeNote").textContent = groups.length
+    ? `${groups.length} duplicate groups · ${humanSize(res.wasted || 0)} wasted`
+    : "No duplicates found.";
+  $("dupeList").innerHTML = groups.slice(0, 30).map((g) => `
+    <div class="dupe-group">
+      <div class="dg-head">
+        <span class="material-symbols-rounded">content_copy</span>
+        ${g.files.length} copies · ${escapeHtml(humanSize(g.size))} each
+      </div>
+      ${g.files.map((f) => `
+        <div class="dg-file"><span class="material-symbols-rounded">description</span>
+          ${escapeHtml(f)}</div>`).join("")}
+    </div>`).join("");
+});
+
+$("scanOrphansBtn").addEventListener("click", async () => {
+  $("orphanNote").textContent = "Checking…";
+  const res = await callApi("find_orphans");
+  const rows = (res && res.orphans) || [];
+  $("orphanNote").textContent = rows.length
+    ? `${rows.length} entries point at missing files`
+    : "No orphaned entries.";
+  $("orphanList").innerHTML = rows.map((o) => `
+    <div class="rank-row">
+      <div class="r-main">
+        <div class="r-title">${escapeHtml(o.title || "Unknown")}</div>
+        <div class="r-meta">${o.directory_gone ? "folder missing" : ""}
+          ${o.missing && o.missing.length ? `${o.missing.length} missing file(s)` : ""}</div>
+      </div>
+    </div>`).join("");
+});
+
+async function loadHealth() {
+  const res = await callApi("get_health");
+  const breakers = (res && res.report && res.report.breakers) || {};
+  const names = Object.keys(breakers);
+  $("healthList").innerHTML = names.length
+    ? names.sort().map((n) => {
+        const b = breakers[n];
+        return `<div class="rank-row">
+          <span class="health-dot ${escapeHtml(b.state)}"></span>
+          <div class="r-main">
+            <div class="r-title">${escapeHtml(n)}</div>
+            <div class="r-meta">${escapeHtml(b.state)}${b.failures ? ` · ${b.failures} recent failures` : ""}${b.last_error ? ` · ${escapeHtml(b.last_error)}` : ""}</div>
+          </div>
+          ${b.retry_after ? `<span class="r-value">${b.retry_after}s</span>` : ""}
+        </div>`;
+      }).join("")
+    : '<div class="tool-note">No source calls recorded yet this session.</div>';
+}
+
+async function loadHistoryList() {
+  const res = await callApi("get_history", 40);
+  const items = (res && res.items) || [];
+  $("historyList").innerHTML = items.length
+    ? items.map((h) => `
+        <div class="rank-row" data-q="${escapeHtml(h.query)}">
+          <div class="r-main">
+            <div class="r-title">${escapeHtml(h.query)}</div>
+            <div class="r-meta">${escapeHtml(h.source || "all")} · ${h.results || 0} results · ${escapeHtml(h.date || "")}</div>
+          </div>
+          <span class="material-symbols-rounded" style="opacity:.5">north_east</span>
+        </div>`).join("")
+    : '<div class="tool-note">No searches yet.</div>';
+  $("historyList").querySelectorAll("[data-q]").forEach((row) =>
+    row.addEventListener("click", () => {
+      showView("search");
+      $("searchInput").value = row.dataset.q;
+      doSearch();
+    }));
+}
+
+$("clearHistoryBtn").addEventListener("click", async () => {
+  await callApi("clear_history");
+  loadHistoryList();
+  toast("History cleared");
+});
+
+function humanSize(n) {
+  n = Number(n) || 0;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+  return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + " " + units[i];
+}

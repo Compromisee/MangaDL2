@@ -284,6 +284,31 @@ A complete feature reference for MangaDL.
 227. Enhancement failures are caught so styling can never break the page
 228. Opt out per element with `data-no-custom="true"`
 
+## Interface: tabs and landing page
+
+229. Updates tab: watchlist with per-series new-chapter counts
+230. Rail badge showing how many watched series have updates
+231. One-click "Check now" runs every watched series in parallel
+232. Watch / unwatch button on the manga page
+233. Insights tab: six headline metrics at a glance
+234. Per-source bar chart of downloaded chapters
+235. Fourteen-day activity sparkline
+236. Biggest series and recently downloaded lists
+237. Tools tab with five sub-panels
+238. Disk usage per series, largest first
+239. Duplicate file scan with wasted-space total
+240. Orphan detection for library entries whose files vanished
+241. Source health panel showing live circuit-breaker state
+242. Searchable history panel; click an entry to re-run it
+243. `callApi` wrapper so a missing endpoint cannot blank a tab
+244. GitHub-style landing page built on Primer design tokens
+245. Real light and dark modes, remembered in localStorage
+246. Five deep-linkable page tabs with working back/forward
+247. Screenshot gallery with GUI and TUI sub-tabs
+248. Copy-to-clipboard install commands with success feedback
+249. Language breakdown bar computed from the real repository
+250. No fabricated star/fork counts — only verifiable numbers shown
+
 ## Core engine
 
 - Download any series from a supported site by URL

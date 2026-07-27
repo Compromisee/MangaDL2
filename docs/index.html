@@ -1,364 +1,1117 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-color-mode="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>MangaDL — multi-source manga downloader</title>
-<meta name="description" content="Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as CBZ, PDF or EPUB.">
+<meta name="referrer" content="no-referrer">
+<title>Compromisee/WeebDL: MangaDL — multi-source manga downloader</title>
+<meta name="description" content="Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as CBZ, PDF or EPUB. Desktop GUI, terminal UI and scriptable CLI.">
+<meta property="og:title" content="Compromisee/WeebDL">
+<meta property="og:description" content="MangaDL — download manga from four sources as CBZ, PDF or EPUB.">
+<link rel="icon" href="icon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0" rel="stylesheet">
 <style>
-  :root {
-    --bg: #16161e;
-    --surface: #1e1e28;
-    --surface-2: #262632;
-    --border: #2e2e3c;
-    --text: #e6e6f0;
-    --text-2: #9c9cb0;
-    --accent: #7aa2f7;
-    --accent-2: #2ac3de;
-    --ok: #a6e3a1;
-    --radius: 18px;
-  }
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
-  body {
-    font-family: 'Inter', system-ui, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    line-height: 1.6;
-    overflow-x: hidden;
-    -webkit-font-smoothing: antialiased;
-  }
-  .material-symbols-rounded { font-variation-settings: 'FILL' 0, 'wght' 400; vertical-align: middle; user-select: none; }
+/* ==========================================================================
+   GitHub-style repository page, built on Primer design tokens.
+   Both colour modes are real: the toggle flips data-color-mode and every
+   colour below is a variable, so nothing is hardcoded per theme.
+   ========================================================================== */
 
-  /* ambient */
-  .bg { position: fixed; inset: 0; z-index: -1; overflow: hidden; }
-  .orb { position: absolute; border-radius: 50%; filter: blur(100px); opacity: .28; }
-  .orb1 { width: 620px; height: 620px; top: -220px; right: -140px; background: radial-gradient(circle, var(--accent), transparent 70%); animation: drift1 28s ease-in-out infinite alternate; }
-  .orb2 { width: 520px; height: 520px; bottom: -220px; left: -120px; background: radial-gradient(circle, var(--accent-2), transparent 70%); animation: drift2 34s ease-in-out infinite alternate; }
-  .orb3 { width: 420px; height: 420px; top: 45%; left: 58%; background: radial-gradient(circle, #bb9af7, transparent 72%); opacity: .14; animation: drift3 42s ease-in-out infinite alternate; }
-  @keyframes drift1 { to { transform: translate(-80px, 70px) scale(1.12); } }
-  @keyframes drift2 { to { transform: translate(90px, -60px) scale(1.08); } }
-  @keyframes drift3 { to { transform: translate(-70px, -90px) scale(1.16); } }
-  #dots { position: absolute; inset: 0; width: 100%; height: 100%; }
+[data-color-mode="dark"] {
+  --canvas:        #0d1117;
+  --canvas-inset:  #010409;
+  --canvas-subtle: #161b22;
+  --canvas-overlay:#161b22;
+  --border:        #30363d;
+  --border-muted:  #21262d;
+  --fg:            #e6edf3;
+  --fg-muted:      #7d8590;
+  --fg-subtle:     #6e7681;
+  --accent:        #2f81f7;
+  --accent-emphasis:#1f6feb;
+  --accent-subtle: rgba(56,139,253,.15);
+  --success:       #3fb950;
+  --attention:     #d29922;
+  --danger:        #f85149;
+  --done:          #a371f7;
+  --btn-bg:        #21262d;
+  --btn-hover:     #30363d;
+  --btn-primary:   #238636;
+  --btn-primary-hover:#2ea043;
+  --shadow:        0 8px 24px rgba(1,4,9,.6);
+  --header-bg:     #161b22;
+}
 
-  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; }
+[data-color-mode="light"] {
+  --canvas:        #ffffff;
+  --canvas-inset:  #f6f8fa;
+  --canvas-subtle: #f6f8fa;
+  --canvas-overlay:#ffffff;
+  --border:        #d1d9e0;
+  --border-muted:  #d8dee4;
+  --fg:            #1f2328;
+  --fg-muted:      #59636e;
+  --fg-subtle:     #818b98;
+  --accent:        #0969da;
+  --accent-emphasis:#0969da;
+  --accent-subtle: #ddf4ff;
+  --success:       #1a7f37;
+  --attention:     #9a6700;
+  --danger:        #cf222e;
+  --done:          #8250df;
+  --btn-bg:        #f6f8fa;
+  --btn-hover:     #eff2f5;
+  --btn-primary:   #1f883d;
+  --btn-primary-hover:#1a7f37;
+  --shadow:        0 8px 24px rgba(31,35,40,.12);
+  --header-bg:     #24292f;
+}
 
-  /* nav */
-  nav {
-    position: sticky; top: 0; z-index: 10;
-    background: color-mix(in srgb, var(--bg) 78%, transparent);
-    backdrop-filter: blur(14px);
-    border-bottom: 1px solid var(--border);
-  }
-  .nav-inner { display: flex; align-items: center; gap: 26px; height: 62px; }
-  .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 16px; color: var(--text); text-decoration: none; }
-  .brand .material-symbols-rounded { color: var(--accent); font-variation-settings: 'FILL' 1; font-size: 26px; }
-  .nav-links { display: flex; gap: 20px; margin-left: auto; }
-  .nav-links a { color: var(--text-2); text-decoration: none; font-size: 14px; font-weight: 500; transition: color .15s; }
-  .nav-links a:hover { color: var(--text); }
-  .gh-btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: var(--surface-2); border: 1px solid var(--border);
-    color: var(--text); text-decoration: none;
-    padding: 8px 16px; border-radius: 999px; font-size: 13.5px; font-weight: 600;
-    transition: border-color .15s, transform .15s;
-  }
-  .gh-btn:hover { border-color: var(--accent); transform: translateY(-1px); }
+* { box-sizing: border-box; }
 
-  /* hero */
-  .hero { text-align: center; padding: 96px 0 60px; }
-  .hero h1 {
-    font-size: clamp(38px, 6vw, 64px);
-    font-weight: 900; letter-spacing: -1.5px; line-height: 1.08;
-    background: linear-gradient(100deg, var(--accent), var(--accent-2));
-    -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
-  }
-  .hero .tagline { font-size: clamp(16px, 2.2vw, 20px); color: var(--text-2); margin: 18px auto 0; max-width: 640px; }
-  .hero-ctas { display: flex; gap: 14px; justify-content: center; margin-top: 34px; flex-wrap: wrap; }
-  .btn {
-    display: inline-flex; align-items: center; gap: 9px;
-    padding: 13px 28px; border-radius: 999px;
-    font-weight: 700; font-size: 15px; text-decoration: none;
-    transition: filter .15s, transform .15s, box-shadow .15s;
-  }
-  .btn:active { transform: scale(.98); }
-  .btn-primary {
-    background: linear-gradient(120deg, var(--accent), var(--accent-2));
-    color: #101018;
-    box-shadow: 0 4px 24px color-mix(in srgb, var(--accent) 40%, transparent);
-  }
-  .btn-primary:hover { filter: brightness(1.1); box-shadow: 0 6px 32px color-mix(in srgb, var(--accent) 55%, transparent); }
-  .btn-ghost { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); }
-  .btn-ghost:hover { border-color: var(--accent); }
+body {
+  margin: 0;
+  background: var(--canvas);
+  color: var(--fg);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans",
+        Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
 
-  .hero-shot {
-    margin: 64px auto 0; max-width: 980px;
-    border-radius: var(--radius);
-    border: 1px solid var(--border);
-    box-shadow: 0 24px 80px rgba(0,0,0,.5);
-    overflow: hidden;
-    animation: rise .8s cubic-bezier(.2,.7,.3,1) both;
-  }
-  .hero-shot img { width: 100%; display: block; }
-  @keyframes rise { from { opacity: 0; transform: translateY(36px); } }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
 
-  /* install strip */
-  .install { padding: 70px 0 10px; text-align: center; }
-  .install-box {
-    display: inline-flex; align-items: center; gap: 16px;
-    background: var(--surface); border: 1px solid var(--border);
-    border-radius: 14px; padding: 14px 22px;
-    font-family: 'JetBrains Mono', monospace; font-size: 14.5px;
-  }
-  .install-box .dollar { color: var(--accent); font-weight: 600; }
-  .copy-btn { border: none; background: var(--surface-2); color: var(--text-2); border-radius: 9px; padding: 7px 10px; cursor: pointer; display: inline-flex; transition: color .15s, background .15s; }
-  .copy-btn:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--surface)); }
+code, kbd, pre, .mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas,
+               "Liberation Mono", monospace;
+}
 
-  /* sections */
-  section { padding: 84px 0; }
-  .sec-label {
-    display: inline-flex; align-items: center; gap: 8px;
-    color: var(--accent); font-weight: 700; font-size: 13px;
-    text-transform: uppercase; letter-spacing: 1.5px; margin-bottom: 12px;
-  }
-  h2 { font-size: clamp(26px, 3.6vw, 36px); font-weight: 800; letter-spacing: -.8px; line-height: 1.15; }
-  .sec-sub { color: var(--text-2); margin-top: 12px; max-width: 560px; font-size: 15.5px; }
+.material-symbols-rounded {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
 
-  .features-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; margin-top: 44px; }
-  .feature {
-    background: color-mix(in srgb, var(--surface) 90%, transparent);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 26px;
-    transition: transform .2s, border-color .2s;
-  }
-  .feature:hover { transform: translateY(-4px); border-color: var(--accent); }
-  .feature .ic {
-    width: 46px; height: 46px; border-radius: 13px;
-    background: color-mix(in srgb, var(--accent) 16%, var(--bg));
-    display: flex; align-items: center; justify-content: center;
-    color: var(--accent); margin-bottom: 16px;
-  }
-  .feature .ic .material-symbols-rounded { font-size: 26px; }
-  .feature h3 { font-size: 16.5px; font-weight: 700; margin-bottom: 8px; }
-  .feature p { color: var(--text-2); font-size: 14px; }
+.octicon { display: inline-block; vertical-align: text-bottom; fill: currentColor; }
 
-  /* interfaces */
-  .iface-tabs { display: flex; gap: 8px; margin: 36px 0 22px; flex-wrap: wrap; }
-  .iface-tab {
-    border: 1px solid var(--border); background: var(--surface);
-    color: var(--text-2); font: inherit; font-weight: 700; font-size: 14px;
-    border-radius: 999px; padding: 10px 22px; cursor: pointer;
-    display: inline-flex; align-items: center; gap: 8px;
-    transition: color .15s, border-color .15s;
-  }
-  .iface-tab.active { color: var(--accent); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface)); }
-  .iface-panel { display: none; animation: rise .35s ease; }
-  .iface-panel.active { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-  .iface-panel img {
-    width: 100%; border-radius: 14px; border: 1px solid var(--border);
-    box-shadow: 0 10px 40px rgba(0,0,0,.35); display: block;
-  }
-  .iface-panel .caption { grid-column: 1 / -1; color: var(--text-2); font-size: 14px; }
+/* ------------------------------------------------------------- layout */
 
-  /* cli demo */
-  .terminal {
-    background: #12121a; border: 1px solid var(--border); border-radius: 14px;
-    margin-top: 36px; overflow: hidden;
-    box-shadow: 0 14px 50px rgba(0,0,0,.4);
-  }
-  .term-bar { display: flex; gap: 7px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
-  .term-bar span { width: 11px; height: 11px; border-radius: 50%; background: var(--surface-2); }
-  .term-bar span:nth-child(1) { background: #f7768e; }
-  .term-bar span:nth-child(2) { background: #e0af68; }
-  .term-bar span:nth-child(3) { background: #9ece6a; }
-  .term-body { padding: 20px 22px; font-family: 'JetBrains Mono', monospace; font-size: 13.5px; line-height: 1.75; overflow-x: auto; }
-  .term-body .c { color: #565f89; }
-  .term-body .p { color: var(--accent); font-weight: 600; }
-  .term-body .g { color: var(--ok); }
-  .term-body .w { color: var(--text); }
+.container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 32px;
+}
+@media (max-width: 768px) { .container { padding: 0 16px; } }
 
-  /* footer */
-  footer { border-top: 1px solid var(--border); padding: 44px 0 60px; text-align: center; color: var(--text-2); font-size: 13.5px; }
-  footer a { color: var(--accent); text-decoration: none; }
-  .foot-note { margin-top: 10px; font-size: 12.5px; opacity: .8; }
+/* ------------------------------------------------------------- header */
 
-  .reveal { opacity: 0; transform: translateY(24px); transition: opacity .6s ease, transform .6s ease; }
-  .reveal.in { opacity: 1; transform: none; }
+.gh-header {
+  background: var(--header-bg);
+  color: #f0f6fc;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--border);
+}
+.gh-header .container { display: flex; align-items: center; gap: 16px; }
+.gh-header a { color: #f0f6fc; }
 
-  @media (max-width: 720px) {
-    .iface-panel.active { grid-template-columns: 1fr; }
-    .nav-links a:not(.gh-btn) { display: none; }
-  }
+.gh-logo { display: flex; align-items: center; flex: none; }
+.gh-logo svg { fill: #f0f6fc; }
+
+.gh-search {
+  flex: 1;
+  max-width: 320px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 12px;
+  border: 1px solid #494f57;
+  border-radius: 6px;
+  background: transparent;
+  color: #b7bdc4;
+  font-size: 13px;
+  cursor: text;
+}
+.gh-search kbd {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid #494f57;
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 16px;
+}
+.gh-header-links { margin-left: auto; display: flex; gap: 16px; font-size: 14px; font-weight: 600; }
+@media (max-width: 900px) { .gh-search, .gh-header-links { display: none; } }
+
+/* --------------------------------------------------------- repo header */
+
+.repo-head { padding: 16px 0 0; border-bottom: 1px solid var(--border); background: var(--canvas-subtle); }
+
+.repo-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 20px;
+  margin-bottom: 12px;
+}
+.repo-title .repo-name { font-weight: 600; }
+.repo-title .slash { color: var(--fg-muted); font-weight: 300; }
+.repo-badge {
+  padding: 0 7px;
+  border: 1px solid var(--border);
+  border-radius: 2em;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--fg-muted);
+}
+.repo-actions { margin-left: auto; display: flex; gap: 8px; flex-wrap: wrap; }
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--btn-bg);
+  color: var(--fg);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s, border-color .15s;
+  white-space: nowrap;
+}
+.btn:hover { background: var(--btn-hover); text-decoration: none; border-color: var(--fg-subtle); }
+.btn .octicon { fill: var(--fg-muted); }
+.btn-primary {
+  background: var(--btn-primary);
+  border-color: rgba(240,246,252,.1);
+  color: #fff;
+  font-weight: 600;
+}
+.btn-primary:hover { background: var(--btn-primary-hover); }
+.btn-primary .octicon { fill: #fff; }
+.btn-lg { padding: 8px 16px; font-size: 14px; }
+
+.btn-count {
+  margin-left: 2px;
+  padding: 0 6px;
+  border-left: 1px solid var(--border);
+  margin-left: 6px;
+  padding-left: 8px;
+  color: var(--fg-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* repo nav tabs */
+.repo-nav { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+.repo-nav::-webkit-scrollbar { display: none; }
+
+.repo-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 12px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--fg);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .15s;
+}
+.repo-tab:hover { border-bottom-color: var(--border); text-decoration: none; }
+.repo-tab.active { font-weight: 600; border-bottom-color: #fd8c73; }
+.repo-tab .octicon { fill: var(--fg-muted); }
+.repo-tab .counter {
+  padding: 0 6px;
+  border-radius: 2em;
+  background: var(--canvas-inset);
+  border: 1px solid var(--border-muted);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+
+/* ----------------------------------------------------------- main grid */
+
+.repo-body { display: grid; grid-template-columns: 1fr 296px; gap: 24px; padding: 24px 0 60px; }
+@media (max-width: 1012px) { .repo-body { grid-template-columns: 1fr; } }
+
+.pane { display: none; }
+.pane.active { display: block; animation: fade .18s ease; }
+@keyframes fade { from { opacity: 0 } to { opacity: 1 } }
+
+/* --------------------------------------------------------- file table */
+
+.file-box { border: 1px solid var(--border); border-radius: 6px; overflow: hidden; margin-bottom: 16px; }
+
+.file-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: var(--canvas-subtle);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--fg-muted);
+}
+.file-head .commit-msg { color: var(--fg); }
+.file-head .when { margin-left: auto; }
+
+.file-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-muted);
+  font-size: 14px;
+}
+.file-row:last-child { border-bottom: 0; }
+.file-row:hover { background: var(--canvas-subtle); }
+.file-row .octicon.dir { fill: #54aeff; }
+.file-row .octicon.file { fill: var(--fg-muted); }
+.file-row .fr-note { font-size: 12px; color: var(--fg-muted); text-align: right; }
+
+/* ------------------------------------------------------------- readme */
+
+.readme { border: 1px solid var(--border); border-radius: 6px; }
+.readme-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  border-bottom: 1px solid var(--border-muted);
+  font-weight: 600;
+  font-size: 14px;
+}
+.readme-body { padding: 32px 40px 40px; }
+@media (max-width: 768px) { .readme-body { padding: 20px; } }
+
+.readme-body h1, .readme-body h2 {
+  padding-bottom: .3em;
+  border-bottom: 1px solid var(--border-muted);
+  margin: 24px 0 16px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.readme-body h1 { font-size: 32px; margin-top: 0; }
+.readme-body h2 { font-size: 24px; }
+.readme-body h3 { font-size: 18px; margin: 24px 0 12px; font-weight: 600; }
+.readme-body p { margin: 0 0 16px; }
+.readme-body ul { margin: 0 0 16px; padding-left: 2em; }
+.readme-body li { margin: .25em 0; }
+.readme-body img { max-width: 100%; }
+
+.badges { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 20px; }
+.badge {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  border-radius: 3px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 20px;
+  font-family: ui-monospace, monospace;
+}
+.badge .b-k { padding: 0 6px; background: #555; color: #fff; }
+.badge .b-v { padding: 0 6px; color: #fff; }
+
+table.md { width: 100%; border-collapse: collapse; margin: 0 0 16px; display: block; overflow-x: auto; }
+table.md th, table.md td { padding: 6px 13px; border: 1px solid var(--border); font-size: 14px; }
+table.md th { background: var(--canvas-subtle); font-weight: 600; text-align: left; }
+table.md tr:nth-child(2n) td { background: var(--canvas-subtle); }
+
+pre.code {
+  margin: 0 0 16px;
+  padding: 16px;
+  background: var(--canvas-inset);
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.45;
+}
+[data-color-mode="light"] pre.code { background: var(--canvas-subtle); }
+pre.code .c { color: var(--fg-muted); }
+pre.code .p { color: var(--success); user-select: none; }
+pre.code .s { color: var(--done); }
+pre.code .f { color: var(--attention); }
+
+code.inline {
+  padding: .2em .4em;
+  margin: 0;
+  font-size: 85%;
+  background: var(--accent-subtle);
+  border-radius: 6px;
+}
+[data-color-mode="dark"] code.inline { background: rgba(110,118,129,.4); }
+
+blockquote {
+  margin: 0 0 16px;
+  padding: 0 1em;
+  border-left: .25em solid var(--border);
+  color: var(--fg-muted);
+}
+
+.note {
+  padding: 8px 16px;
+  margin: 0 0 16px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 6px;
+  background: var(--canvas-subtle);
+}
+.note strong { color: var(--accent); }
+
+/* --------------------------------------------------------- copy block */
+
+.copy-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--canvas-inset);
+  font-family: ui-monospace, monospace;
+  font-size: 12.5px;
+}
+[data-color-mode="light"] .copy-row { background: var(--canvas-subtle); }
+.copy-row span { flex: 1; overflow-x: auto; white-space: nowrap; }
+.copy-row button {
+  flex: none;
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--fg-muted);
+  cursor: pointer;
+}
+.copy-row button:hover { background: var(--btn-hover); color: var(--fg); }
+
+/* ------------------------------------------------------------ sidebar */
+
+.side-sec { padding: 16px 0; border-bottom: 1px solid var(--border-muted); }
+.side-sec:first-child { padding-top: 0; }
+.side-sec:last-child { border-bottom: 0; }
+.side-sec h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.side-sec p { margin: 0 0 12px; color: var(--fg-muted); font-size: 14px; }
+
+.topics { display: flex; flex-wrap: wrap; gap: 6px; }
+.topic {
+  padding: 0 10px;
+  border-radius: 2em;
+  background: var(--accent-subtle);
+  color: var(--accent);
+  font-size: 12px;
+  line-height: 22px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.topic:hover { background: var(--accent-emphasis); color: #fff; text-decoration: none; }
+
+.side-link {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+  color: var(--fg-muted);
+  font-size: 14px;
+}
+.side-link:hover { color: var(--accent); text-decoration: none; }
+.side-link strong { color: var(--fg); font-weight: 600; }
+
+/* language bar */
+.lang-bar { display: flex; height: 8px; border-radius: 6px; overflow: hidden; margin-bottom: 12px; }
+.lang-bar span { height: 100%; }
+.lang-list { display: grid; gap: 6px; }
+.lang-item { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+.lang-dot { width: 12px; height: 12px; border-radius: 50%; flex: none; }
+.lang-item .pct { margin-left: auto; color: var(--fg-muted); }
+.lang-item strong { font-weight: 600; }
+
+/* release card */
+.release-card { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--fg-muted); }
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px;
+  border-radius: 2em;
+  background: var(--success);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 20px;
+}
+
+/* ------------------------------------------------------- screenshots */
+
+.shot-tabs { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
+.shot-tab {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--btn-bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.shot-tab.active { background: var(--accent-emphasis); border-color: transparent; color: #fff; }
+
+.shot-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+.shot-grid img {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: block;
+}
+.shot-panel { display: none; }
+.shot-panel.active { display: block; }
+
+/* ------------------------------------------------------------ metrics */
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.metric {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--canvas-subtle);
+}
+.metric .m-v { font-size: 24px; font-weight: 600; line-height: 1.2; }
+.metric .m-k { margin-top: 2px; font-size: 12px; color: var(--fg-muted); }
+
+/* ------------------------------------------------------------- footer */
+
+.gh-footer {
+  padding: 40px 0;
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 12px;
+}
+.gh-footer .container { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.gh-footer .foot-links { display: flex; gap: 16px; flex-wrap: wrap; }
+
+/* -------------------------------------------------------- mode toggle */
+
+.mode-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid #494f57;
+  border-radius: 6px;
+  background: transparent;
+  color: #f0f6fc;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mode-btn:hover { background: rgba(255,255,255,.08); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
 </style>
 </head>
 <body>
 
-<div class="bg">
-  <div class="orb orb1"></div>
-  <div class="orb orb2"></div>
-  <div class="orb orb3"></div>
-  <canvas id="dots"></canvas>
-</div>
-
-<nav>
-  <div class="wrap nav-inner">
-    <a class="brand" href="#"><span class="material-symbols-rounded">auto_stories</span>MangaDL</a>
-    <div class="nav-links">
-      <a href="#features">Features</a>
-      <a href="#interfaces">Interfaces</a>
-      <a href="#cli">CLI</a>
-      <a class="gh-btn" href="https://github.com/Compromisee/WeebDL">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
-        GitHub
-      </a>
+<!-- ============================================================ header -->
+<header class="gh-header">
+  <div class="container">
+    <a class="gh-logo" href="https://github.com/Compromisee/WeebDL" aria-label="GitHub">
+      <svg height="32" viewBox="0 0 16 16" width="32"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    </a>
+    <div class="gh-search" onclick="document.querySelector('.repo-tab.active')">
+      <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>
+      Type <kbd>/</kbd> to search
     </div>
+    <nav class="gh-header-links">
+      <a href="#" data-goto="readme">Overview</a>
+      <a href="#" data-goto="screens">Screenshots</a>
+      <a href="#" data-goto="cli">CLI</a>
+      <a href="https://github.com/Compromisee/WeebDL">Repository</a>
+    </nav>
+    <button class="mode-btn" id="modeBtn" title="Toggle light / dark">
+      <span class="material-symbols-rounded" style="font-size:16px" id="modeIcon">light_mode</span>
+      <span id="modeText">Light</span>
+    </button>
   </div>
-</nav>
-
-<header class="hero wrap">
-  <h1>Your manga library,<br>beautifully downloaded.</h1>
-  <p class="tagline">Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as CBZ, PDF or EPUB — with a gorgeous desktop app, a full terminal UI, and a scriptable CLI.</p>
-  <div class="hero-ctas">
-    <a class="btn btn-primary" href="https://github.com/Compromisee/WeebDL/releases">
-      <span class="material-symbols-rounded">download</span>Get started
-    </a>
-    <a class="btn btn-ghost" href="#interfaces">
-      <span class="material-symbols-rounded">visibility</span>See it in action
-    </a>
-  </div>
-  <div class="hero-shot"><img src="gui-manga.png" alt="MangaDL GUI - manga view with green downloaded chapters"></div>
 </header>
 
-<div class="install wrap reveal">
-  <div class="install-box">
-    <span><span class="dollar">$</span> <span id="installCmd">git clone https://github.com/Compromisee/WeebDL.git && cd WeebDL</span></span>
-    <button class="copy-btn" onclick="copyInstall()" title="Copy"><span class="material-symbols-rounded" style="font-size:18px">content_copy</span></button>
+<!-- ======================================================= repo header -->
+<div class="repo-head">
+  <div class="container">
+    <div class="repo-title">
+      <svg class="octicon" height="16" width="16" viewBox="0 0 16 16" style="fill:var(--fg-muted)"><path d="M2 2.5A2.5 2.5 0 0 1 4.5 0h8.75a.75.75 0 0 1 .75.75v12.5a.75.75 0 0 1-.75.75h-2.5a.75.75 0 0 1 0-1.5h1.75v-2h-8a1 1 0 0 0-.714 1.7.75.75 0 1 1-1.072 1.05A2.495 2.495 0 0 1 2 11.5Zm10.5-1h-8a1 1 0 0 0-1 1v6.708A2.486 2.486 0 0 1 4.5 9h8ZM5 12.25a.25.25 0 0 1 .25-.25h3.5a.25.25 0 0 1 .25.25v3.25a.25.25 0 0 1-.4.2l-1.45-1.087a.249.249 0 0 0-.3 0L5.4 15.7a.25.25 0 0 1-.4-.2Z"/></svg>
+      <a href="https://github.com/Compromisee">Compromisee</a>
+      <span class="slash">/</span>
+      <a class="repo-name" href="https://github.com/Compromisee/WeebDL">WeebDL</a>
+      <span class="repo-badge">Public</span>
+
+      <div class="repo-actions">
+        <a class="btn" href="https://github.com/Compromisee/WeebDL">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M8 2c1.981 0 3.671.992 4.933 2.078 1.27 1.091 2.187 2.345 2.637 3.023a1.62 1.62 0 0 1 0 1.798c-.45.678-1.367 1.932-2.637 3.023C11.67 13.008 9.981 14 8 14c-1.981 0-3.671-.992-4.933-2.078C1.797 10.83.88 9.576.43 8.898a1.62 1.62 0 0 1 0-1.798c.45-.677 1.367-1.931 2.637-3.022C4.33 2.992 6.019 2 8 2ZM8 4a4 4 0 1 0 0 8 4 4 0 0 0 0-8Zm0 1.5a2.5 2.5 0 1 1 0 5 2.5 2.5 0 0 1 0-5Z"/></svg>
+          Watch
+        </a>
+        <a class="btn" href="https://github.com/Compromisee/WeebDL/fork">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M5 5.372v.878c0 .414.336.75.75.75h4.5a.75.75 0 0 0 .75-.75v-.878a2.25 2.25 0 1 1 1.5 0v.878a2.25 2.25 0 0 1-2.25 2.25h-1.5v2.128a2.251 2.251 0 1 1-1.5 0V8.5h-1.5A2.25 2.25 0 0 1 3.5 6.25v-.878a2.25 2.25 0 1 1 1.5 0ZM5 3.25a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Zm6.75.75a.75.75 0 1 0 0-1.5.75.75 0 0 0 0 1.5Zm-3 8.75a.75.75 0 1 0-1.5 0 .75.75 0 0 0 1.5 0Z"/></svg>
+          Fork
+        </a>
+        <a class="btn" href="https://github.com/Compromisee/WeebDL">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M8 .25a.75.75 0 0 1 .673.418l1.882 3.815 4.21.612a.75.75 0 0 1 .416 1.279l-3.046 2.97.719 4.192a.751.751 0 0 1-1.088.791L8 12.347l-3.766 1.98a.75.75 0 0 1-1.088-.79l.72-4.194L.818 6.374a.75.75 0 0 1 .416-1.28l4.21-.611L7.327.668A.75.75 0 0 1 8 .25Z"/></svg>
+          Star
+        </a>
+      </div>
+    </div>
+
+    <nav class="repo-nav" id="repoNav">
+      <button class="repo-tab active" data-pane="readme">
+        <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Zm7.251 10.324.004-5.073-.002-2.253A2.25 2.25 0 0 0 5.003 2.5H1.5v9h3.757a3.75 3.75 0 0 1 1.994.574ZM8.755 4.75l-.004 7.322a3.752 3.752 0 0 1 1.992-.572H14.5v-9h-3.495a2.25 2.25 0 0 0-2.25 2.25Z"/></svg>
+        Code
+      </button>
+      <button class="repo-tab" data-pane="features">
+        <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"/></svg>
+        Features <span class="counter">250</span>
+      </button>
+      <button class="repo-tab" data-pane="screens">
+        <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M16 13.25A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25V2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75ZM1.75 2.5a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM11.5 6a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0Zm-8.5 6 2.5-3 1.5 1.75L9.5 7l3.5 5Z"/></svg>
+        Screenshots
+      </button>
+      <button class="repo-tab" data-pane="cli">
+        <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Zm1.75-.25a.25.25 0 0 0-.25.25v10.5c0 .138.112.25.25.25h12.5a.25.25 0 0 0 .25-.25V2.75a.25.25 0 0 0-.25-.25ZM7.25 8a.75.75 0 0 1-.22.53l-2.25 2.25a.75.75 0 1 1-1.06-1.06L5.44 8 3.72 6.28a.75.75 0 1 1 1.06-1.06l2.25 2.25c.141.14.22.331.22.53Zm1.5 1.5h3a.75.75 0 0 1 0 1.5h-3a.75.75 0 0 1 0-1.5Z"/></svg>
+        CLI
+      </button>
+      <button class="repo-tab" data-pane="sources">
+        <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Zm0 5A.75.75 0 0 1 1.75 7h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 7.75ZM1.75 12h12.5a.75.75 0 0 1 0 1.5H1.75a.75.75 0 0 1 0-1.5Z"/></svg>
+        Sources <span class="counter">4</span>
+      </button>
+    </nav>
   </div>
 </div>
 
-<section id="features" class="wrap">
-  <div class="reveal">
-    <span class="sec-label"><span class="material-symbols-rounded" style="font-size:18px">bolt</span>Features</span>
-    <h2>Everything a manga archive needs</h2>
-    <p class="sec-sub">One command downloads a whole series into a single CBZ. Everything else is a flag or a click away.</p>
-  </div>
-  <div class="features-grid">
-    <div class="feature reveal"><div class="ic"><span class="material-symbols-rounded">package_2</span></div>
-      <h3>Flexible bundling</h3><p>One file for everything, one per chapter, or one per every N chapters. CBZ, PDF and EPUB — even several formats at once.</p></div>
-    <div class="feature reveal"><div class="ic"><span class="material-symbols-rounded">shelves</span></div>
-      <h3>Library tracking</h3><p>Every downloaded chapter is recorded in a JSON library. Reopen a manga and downloaded chapters glow green — grab only what's new.</p></div>
-    <div class="feature reveal"><div class="ic"><span class="material-symbols-rounded">bookmarks</span></div>
-      <h3>Bookmarks</h3><p>Save series you follow and jump back to them from a cover grid. Stored as plain JSON in your user folder.</p></div>
-    <div class="feature reveal"><div class="ic"><span class="material-symbols-rounded">import_contacts</span></div>
-      <h3>Open in your reader</h3><p>Point settings at Readest (or any reader executable) and open finished books straight from the library — parts listed individually.</p></div>
-    <div class="feature reveal"><div class="ic"><span class="material-symbols-rounded">speed</span></div>
-      <h3>Fast & resilient</h3><p>Parallel chapters and images, adaptive rate-limit backoff, checkpoint resume, and automatic FlareSolverr fallback for Cloudflare.</p></div>
-    <div class="feature reveal"><div class="ic"><span class="material-symbols-rounded">palette</span></div>
-      <h3>Beautiful by default</h3><p>Six pastel-dark themes, six accents, drifting gradient orbs and an animated dot matrix. Google Material icons — zero emojis.</p></div>
-  </div>
-</section>
+<!-- ========================================================== repo body -->
+<div class="container">
+<div class="repo-body">
 
-<section id="interfaces" class="wrap">
-  <div class="reveal">
-    <span class="sec-label"><span class="material-symbols-rounded" style="font-size:18px">devices</span>Interfaces</span>
-    <h2>GUI, TUI or CLI — your call</h2>
-    <p class="sec-sub">The same download engine powers all three, sharing settings, library and bookmarks.</p>
-  </div>
+  <main>
+    <!-- ------------------------------------------------- CODE / README -->
+    <div class="pane active" id="pane-readme">
 
-  <div class="iface-tabs reveal">
-    <button class="iface-tab active" data-panel="gui"><span class="material-symbols-rounded" style="font-size:19px">desktop_windows</span>Desktop GUI</button>
-    <button class="iface-tab" data-panel="tui"><span class="material-symbols-rounded" style="font-size:19px">terminal</span>Terminal UI</button>
-  </div>
+      <div class="file-box">
+        <div class="file-head">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16" style="fill:var(--success)"><path d="M11.93 8.5a4.002 4.002 0 0 1-7.86 0H.75a.75.75 0 0 1 0-1.5h3.32a4.002 4.002 0 0 1 7.86 0h3.32a.75.75 0 0 1 0 1.5Zm-1.43-.75a2.5 2.5 0 1 0-5 0 2.5 2.5 0 0 0 5 0Z"/></svg>
+          <strong>v1.2.0</strong>
+          <span class="commit-msg">new GUI tabs and a GitHub-style landing page</span>
+          <span class="when">255 tests passing</span>
+        </div>
+        <div class="file-row">
+          <svg class="octicon dir" height="16" width="16" viewBox="0 0 16 16"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>
+          <a href="https://github.com/Compromisee/WeebDL/tree/main/mangadl">mangadl</a>
+          <span class="fr-note">core package — engine, sources, GUI, TUI</span>
+        </div>
+        <div class="file-row">
+          <svg class="octicon dir" height="16" width="16" viewBox="0 0 16 16"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>
+          <a href="https://github.com/Compromisee/WeebDL/tree/main/mangadl/sources">mangadl/sources</a>
+          <span class="fr-note">one module per site</span>
+        </div>
+        <div class="file-row">
+          <svg class="octicon dir" height="16" width="16" viewBox="0 0 16 16"><path d="M1.75 1A1.75 1.75 0 0 0 0 2.75v10.5C0 14.216.784 15 1.75 15h12.5A1.75 1.75 0 0 0 16 13.25v-8.5A1.75 1.75 0 0 0 14.25 3H7.5a.25.25 0 0 1-.2-.1l-.9-1.2C6.07 1.26 5.55 1 5 1H1.75Z"/></svg>
+          <a href="https://github.com/Compromisee/WeebDL/tree/main/tests">tests</a>
+          <span class="fr-note">241 offline + 14 live</span>
+        </div>
+        <div class="file-row">
+          <svg class="octicon file" height="16" width="16" viewBox="0 0 16 16"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Z"/></svg>
+          <a href="https://github.com/Compromisee/WeebDL/blob/main/README.md">README.md</a>
+          <span class="fr-note">full documentation</span>
+        </div>
+        <div class="file-row">
+          <svg class="octicon file" height="16" width="16" viewBox="0 0 16 16"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Z"/></svg>
+          <a href="https://github.com/Compromisee/WeebDL/blob/main/FEATURES.md">FEATURES.md</a>
+          <span class="fr-note">250 numbered features</span>
+        </div>
+        <div class="file-row">
+          <svg class="octicon file" height="16" width="16" viewBox="0 0 16 16"><path d="M2 1.75C2 .784 2.784 0 3.75 0h6.586c.464 0 .909.184 1.237.513l2.914 2.914c.329.328.513.773.513 1.237v9.586A1.75 1.75 0 0 1 13.25 16h-9.5A1.75 1.75 0 0 1 2 14.25Zm1.75-.25a.25.25 0 0 0-.25.25v12.5c0 .138.112.25.25.25h9.5a.25.25 0 0 0 .25-.25V6h-2.75A1.75 1.75 0 0 1 9 4.25V1.5Z"/></svg>
+          <a href="https://github.com/Compromisee/WeebDL/blob/main/CHANGELOG.md">CHANGELOG.md</a>
+          <span class="fr-note">release history</span>
+        </div>
+      </div>
 
-  <div class="iface-panel active" id="panel-gui">
-    <img src="gui-manga.png" alt="GUI manga view">
-    <img src="gui-downloads.png" alt="GUI downloads queue">
-    <img src="gui-library.png" alt="GUI library">
-    <img src="gui-settings.png" alt="GUI settings with themes">
-    <p class="caption">Search with cover art, green-highlighted downloaded chapters, live per-chapter progress, a JSON-backed library with per-part reading, and deep appearance settings.</p>
-  </div>
-  <div class="iface-panel" id="panel-tui">
-    <img src="tui-manga.png" alt="TUI manga tab">
-    <img src="tui-downloads.png" alt="TUI downloads tab">
-    <p class="caption">The full experience over SSH: search, chapter multi-select, format and bundling pickers, live progress bars — built with Textual.</p>
-  </div>
-</section>
+      <div class="readme">
+        <div class="readme-head">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Z"/></svg>
+          README.md
+        </div>
+        <div class="readme-body">
+          <h1>MangaDL</h1>
 
-<section id="cli" class="wrap">
-  <div class="reveal">
-    <span class="sec-label"><span class="material-symbols-rounded" style="font-size:18px">terminal</span>Command line</span>
-    <h2>Scriptable to the core</h2>
-    <p class="sec-sub">Sane defaults: one command, all chapters, one CBZ, sorted into a folder per manga.</p>
-  </div>
-  <div class="terminal reveal">
-    <div class="term-bar"><span></span><span></span><span></span></div>
-    <div class="term-body">
-<span class="c"># everything as one CBZ</span><br>
-<span class="p">$</span> <span class="w">mangadl https://mangadex.org/title/&lt;uuid&gt;</span><br><br>
-<span class="c"># one CBZ per 10 chapters, custom naming</span><br>
-<span class="p">$</span> <span class="w">mangadl &lt;url&gt; --per 10 --name-range "{title} Vol {start}-{end}"</span><br><br>
-<span class="c"># chapters 1-50 as a single PDF + EPUB</span><br>
-<span class="p">$</span> <span class="w">mangadl &lt;url&gt; -c 1-50 -f pdf --also epub</span><br><br>
-<span class="c"># find something new</span><br>
-<span class="p">$</span> <span class="w">mangadl search "vinland saga"</span><br>
-<span class="g">  1  Vinland Saga   https://mangadex.org/title/…</span><br><br>
-<span class="c"># full-screen terminal app</span><br>
-<span class="p">$</span> <span class="w">mangadl tui</span>
+          <div class="badges">
+            <span class="badge"><span class="b-k">python</span><span class="b-v" style="background:#3776ab">3.9+</span></span>
+            <span class="badge"><span class="b-k">version</span><span class="b-v" style="background:#0969da">1.2.0</span></span>
+            <span class="badge"><span class="b-k">tests</span><span class="b-v" style="background:#1f883d">255 passing</span></span>
+            <span class="badge"><span class="b-k">sources</span><span class="b-v" style="background:#8250df">4</span></span>
+            <span class="badge"><span class="b-k">license</span><span class="b-v" style="background:#656d76">MIT</span></span>
+          </div>
+
+          <p>Download manga from <strong>MangaDex</strong>, <strong>Mangakatana</strong>,
+          <strong>Natomanga</strong> and <strong>Weeb Central</strong> as CBZ, PDF or EPUB —
+          from a desktop GUI, a full-screen terminal UI, or a scriptable CLI. All three
+          share one engine, one library and one settings store.</p>
+
+          <img src="gui-manga.png" alt="MangaDL desktop GUI showing a manga with downloaded chapters highlighted">
+
+          <h2>Install</h2>
+          <div class="copy-row">
+            <span id="cmdClone">git clone https://github.com/Compromisee/WeebDL.git &amp;&amp; cd WeebDL</span>
+            <button onclick="copyText('cmdClone', this)" title="Copy">
+              <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
+            </button>
+          </div>
+          <div class="copy-row">
+            <span id="cmdInstall">pip install -e ".[all]"</span>
+            <button onclick="copyText('cmdInstall', this)" title="Copy">
+              <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z"/><path d="M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z"/></svg>
+            </button>
+          </div>
+
+          <h2>Quick start</h2>
+          <pre class="code"><span class="c"># download everything as one CBZ</span>
+<span class="p">$</span> mangadl https://mangadex.org/title/&lt;uuid&gt;
+
+<span class="c"># no query? press search anyway — you get trending</span>
+<span class="p">$</span> mangadl search
+
+<span class="c"># browse a genre across every source</span>
+<span class="p">$</span> mangadl trending horror
+
+<span class="c"># the desktop app</span>
+<span class="p">$</span> mangadl gui</pre>
+
+          <div class="note">
+            <strong>Note</strong> — MangaDex covers are resolved in three sizes and the
+            thumbnail suffix is appended after the <em>complete</em> filename
+            (<code class="inline">abc.png.512.jpg</code>). Dropping the original extension
+            returns a 404, which is the usual cause of missing MangaDex artwork.
+          </div>
+
+          <h2>What it does</h2>
+          <ul>
+            <li><strong>Four sources, one tool</strong> — the right one is detected from any URL you paste.</li>
+            <li><strong>Trending on an empty search</strong> — the app opens on a discovery feed, not a blank page.</li>
+            <li><strong>Genre browsing</strong> — 99 genres merged across sites, ranked by how widely they are supported.</li>
+            <li><strong>Rank and exclude sources</strong> — drag them into order, or switch one off entirely.</li>
+            <li><strong>Robust by design</strong> — a circuit breaker skips sites that are down instead of waiting on timeouts.</li>
+            <li><strong>Passcode lock</strong> — PBKDF2-hashed, with auto-lock and a one-time recovery key.</li>
+            <li><strong>Track what you read</strong> — per-chapter progress, watchlists, ratings and notes.</li>
+          </ul>
+
+          <h2>Output formats</h2>
+          <table class="md">
+            <tr><th>Format</th><th>Notes</th></tr>
+            <tr><td><code class="inline">cbz</code></td><td>Default. One archive, chapters in ordered subfolders.</td></tr>
+            <tr><td><code class="inline">pdf</code></td><td>Each page sized exactly to its image — no borders.</td></tr>
+            <tr><td><code class="inline">epub</code></td><td>Chapter table of contents included.</td></tr>
+            <tr><td><code class="inline">images</code></td><td>Raw pages, no packaging.</td></tr>
+          </table>
+
+          <blockquote>For personal archival of content you have the right to access.
+          Support the official releases.</blockquote>
+        </div>
+      </div>
     </div>
-  </div>
-</section>
 
-<footer>
-  <div class="wrap">
-    <p><a href="https://github.com/Compromisee">GitHub</a> · MIT License · Built with Python, rich, Textual and pywebview</p>
-    <p class="foot-note">For personal archival of content you have the right to access. Support official releases.</p>
+    <!-- ---------------------------------------------------- FEATURES -->
+    <div class="pane" id="pane-features">
+      <div class="metric-grid">
+        <div class="metric"><div class="m-v">250</div><div class="m-k">documented features</div></div>
+        <div class="metric"><div class="m-v">4</div><div class="m-k">manga sources</div></div>
+        <div class="metric"><div class="m-v">99</div><div class="m-k">merged genres</div></div>
+        <div class="metric"><div class="m-v">255</div><div class="m-k">tests passing</div></div>
+      </div>
+
+      <div class="readme">
+        <div class="readme-head">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Z"/></svg>
+          FEATURES.md
+        </div>
+        <div class="readme-body">
+          <h3>Discovery</h3>
+          <ul>
+            <li>Pressing Search with an empty box shows trending instead of doing nothing</li>
+            <li>Genre browsing and genre-filtered search on every source</li>
+            <li>Quick-pick genre chips, <em>Load more</em> paging, type-ahead suggestions from history</li>
+            <li>Trending interleaves sources so the first screen is a mix</li>
+          </ul>
+
+          <h3>Reliability</h3>
+          <ul>
+            <li>Circuit breaker per source, with half-open probing and escalating cooldown</li>
+            <li>Bounded retries with exponential backoff and jitter</li>
+            <li>TTL caches for listings and genres — repeat browsing is instant</li>
+            <li>Partial results always win: one dead site never breaks a search</li>
+          </ul>
+
+          <h3>Library</h3>
+          <ul>
+            <li>Read progress, watchlists with parallel update checks, ratings and notes</li>
+            <li>Statistics, content filters, collections and a persistent download queue</li>
+            <li>Import/export as JSON, CSV or Markdown, plus restorable snapshots</li>
+            <li>Disk usage, SHA-256 duplicate scanning and orphan detection</li>
+          </ul>
+
+          <h3>Interface</h3>
+          <ul>
+            <li>Six themes, six accents, custom themed dropdowns with type-to-filter</li>
+            <li>Skeleton loaders, fade-in covers, actionable empty and error states</li>
+            <li>Optional passcode lock with auto-lock and cover blurring</li>
+            <li>Reduced-motion preferences respected throughout</li>
+          </ul>
+
+          <p><a href="https://github.com/Compromisee/WeebDL/blob/main/FEATURES.md">
+          Read the full list of 250 features →</a></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------- SCREENSHOTS -->
+    <div class="pane" id="pane-screens">
+      <div class="shot-tabs">
+        <button class="shot-tab active" data-shot="gui">Desktop GUI</button>
+        <button class="shot-tab" data-shot="tui">Terminal UI</button>
+      </div>
+
+      <div class="shot-panel active" id="shot-gui">
+        <div class="shot-grid">
+          <figure style="margin:0"><img src="gui-search.png" alt="Search results with cover art"></figure>
+          <figure style="margin:0"><img src="gui-manga.png" alt="Manga view with downloaded chapters highlighted"></figure>
+          <figure style="margin:0"><img src="gui-downloads.png" alt="Live download progress per chapter"></figure>
+          <figure style="margin:0"><img src="gui-library.png" alt="Library of downloaded series"></figure>
+          <figure style="margin:0"><img src="gui-settings.png" alt="Settings with themes and accents"></figure>
+          <figure style="margin:0"><img src="gui-theme-plum.png" alt="The plum theme"></figure>
+        </div>
+      </div>
+
+      <div class="shot-panel" id="shot-tui">
+        <div class="shot-grid">
+          <figure style="margin:0"><img src="tui-search.png" alt="TUI search tab"></figure>
+          <figure style="margin:0"><img src="tui-manga.png" alt="TUI manga tab with chapter selection"></figure>
+          <figure style="margin:0"><img src="tui-downloads.png" alt="TUI live download progress"></figure>
+          <figure style="margin:0"><img src="tui-settings.png" alt="TUI settings"></figure>
+        </div>
+      </div>
+    </div>
+
+    <!-- --------------------------------------------------------- CLI -->
+    <div class="pane" id="pane-cli">
+      <div class="readme">
+        <div class="readme-head">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M0 2.75C0 1.784.784 1 1.75 1h12.5c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 14.25 15H1.75A1.75 1.75 0 0 1 0 13.25Z"/></svg>
+          Command line
+        </div>
+        <div class="readme-body">
+          <h3>Downloading</h3>
+          <pre class="code"><span class="c"># all chapters into a single CBZ</span>
+<span class="p">$</span> mangadl https://mangadex.org/title/&lt;uuid&gt;
+
+<span class="c"># one CBZ per 10 chapters, with a custom name</span>
+<span class="p">$</span> mangadl &lt;url&gt; <span class="f">--per</span> 10 <span class="f">--name-range</span> <span class="s">"{title} Vol {start}-{end}"</span>
+
+<span class="c"># chapters 1-50 as a PDF, and an EPUB too</span>
+<span class="p">$</span> mangadl &lt;url&gt; <span class="f">-c</span> 1-50 <span class="f">-f</span> pdf <span class="f">--also</span> epub</pre>
+
+          <h3>Discovery</h3>
+          <pre class="code"><span class="c"># no query at all -> trending across every source</span>
+<span class="p">$</span> mangadl search
+
+<span class="p">$</span> mangadl trending horror        <span class="c"># top horror right now</span>
+<span class="p">$</span> mangadl genres                 <span class="c"># every genre and who offers it</span>
+<span class="p">$</span> mangadl search <span class="s">"blue"</span> <span class="f">-g</span> Romance</pre>
+
+          <h3>Sources</h3>
+          <pre class="code"><span class="p">$</span> mangadl sources                       <span class="c"># list them</span>
+<span class="p">$</span> mangadl config up mangakatana         <span class="c"># rank it higher</span>
+<span class="p">$</span> mangadl config disable natomanga      <span class="c"># exclude from results</span>
+<span class="p">$</span> mangadl health                        <span class="c"># breaker + cache state</span></pre>
+
+          <h3>Library</h3>
+          <pre class="code"><span class="p">$</span> mangadl watch add &lt;url&gt;    <span class="c"># track for new chapters</span>
+<span class="p">$</span> mangadl watch check        <span class="c"># check them all in parallel</span>
+<span class="p">$</span> mangadl stats              <span class="c"># download statistics</span>
+<span class="p">$</span> mangadl disk dupes         <span class="c"># find byte-identical files</span>
+<span class="p">$</span> mangadl lock set           <span class="c"># set an app passcode</span></pre>
+
+          <h3>Chapter selection</h3>
+          <table class="md">
+            <tr><th>Selector</th><th>Meaning</th></tr>
+            <tr><td><code class="inline">all</code></td><td>every chapter (default)</td></tr>
+            <tr><td><code class="inline">5</code> / <code class="inline">23.5</code></td><td>a single chapter, decimals supported</td></tr>
+            <tr><td><code class="inline">1-20</code></td><td>inclusive range</td></tr>
+            <tr><td><code class="inline">1,5,10-20</code></td><td>any combination</td></tr>
+            <tr><td><code class="inline">50-</code></td><td>chapter 50 to the end</td></tr>
+            <tr><td><code class="inline">latest</code> / <code class="inline">first</code></td><td>newest or oldest</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ----------------------------------------------------- SOURCES -->
+    <div class="pane" id="pane-sources">
+      <div class="readme">
+        <div class="readme-head">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 0 1 1.75 2h12.5a.75.75 0 0 1 0 1.5H1.75A.75.75 0 0 1 1 2.75Z"/></svg>
+          Supported sources
+        </div>
+        <div class="readme-body">
+          <table class="md">
+            <tr><th>ID</th><th>Site</th><th>How it works</th><th>Extras</th></tr>
+            <tr>
+              <td><code class="inline">mangadex</code></td>
+              <td>mangadex.org</td><td>Official JSON API</td>
+              <td>Languages, scanlation groups, data-saver, volume covers</td>
+            </tr>
+            <tr>
+              <td><code class="inline">mangakatana</code></td>
+              <td>mangakatana.com</td><td>HTML scraping</td>
+              <td>Decodes obfuscated JS page arrays</td>
+            </tr>
+            <tr>
+              <td><code class="inline">natomanga</code></td>
+              <td>natomanga.com</td><td>HTML + JSON chapter endpoint</td>
+              <td>Manganato / Mangakakalot successor</td>
+            </tr>
+            <tr>
+              <td><code class="inline">weebcentral</code></td>
+              <td>weebcentral.com</td><td>HTML scraping</td>
+              <td>FlareSolverr fallback for Cloudflare</td>
+            </tr>
+          </table>
+
+          <h3>Adding a source</h3>
+          <p>Sources are plugins. Drop a file in <code class="inline">mangadl/sources/</code>
+          and add one line to the registry — the CLI, GUI and TUI all pick it up
+          automatically.</p>
+
+          <pre class="code"><span class="s">from</span> .base <span class="s">import</span> Source
+
+<span class="s">class</span> <span class="f">MySource</span>(Source):
+    id = <span class="s">"mysite"</span>
+    name = <span class="s">"My Site"</span>
+    base_url = <span class="s">"https://mysite.com"</span>
+    domains = (<span class="s">"mysite.com"</span>,)
+
+    <span class="s">def</span> <span class="f">search</span>(self, query, limit=32, **filters): ...
+    <span class="s">def</span> <span class="f">get_manga_info</span>(self, url): ...
+    <span class="s">def</span> <span class="f">get_chapters</span>(self, url): ...        <span class="c"># oldest first</span>
+    <span class="s">def</span> <span class="f">get_chapter_images</span>(self, chapter): ...</pre>
+
+          <p>Retries, backoff, rate-limit handling, the circuit breaker and atomic
+          image writes all come from the base class.</p>
+
+          <div class="note">
+            <strong>Why not Comick?</strong> It was evaluated and left out: its
+            <code class="inline">md_images</code> array returns empty for every title and
+            request variant tested, so chapter pages cannot be resolved. Natomanga was
+            added instead. If that endpoint reopens, Comick drops in as one new module.
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- ------------------------------------------------------- sidebar -->
+  <aside>
+    <div class="side-sec">
+      <h2>About</h2>
+      <p>Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as
+         CBZ, PDF or EPUB — with a desktop GUI, a terminal UI and a scriptable CLI.</p>
+      <div class="topics">
+        <a class="topic" href="#">manga</a>
+        <a class="topic" href="#">downloader</a>
+        <a class="topic" href="#">mangadex</a>
+        <a class="topic" href="#">python</a>
+        <a class="topic" href="#">cbz</a>
+        <a class="topic" href="#">epub</a>
+        <a class="topic" href="#">tui</a>
+        <a class="topic" href="#">pywebview</a>
+      </div>
+      <div style="margin-top:12px">
+        <a class="side-link" href="https://github.com/Compromisee/WeebDL/blob/main/README.md">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M0 1.75A.75.75 0 0 1 .75 1h4.253c1.227 0 2.317.59 3 1.501A3.743 3.743 0 0 1 11.006 1h4.245a.75.75 0 0 1 .75.75v10.5a.75.75 0 0 1-.75.75h-4.507a2.25 2.25 0 0 0-1.591.659l-.622.621a.75.75 0 0 1-1.06 0l-.622-.621A2.25 2.25 0 0 0 5.258 13H.75a.75.75 0 0 1-.75-.75Z"/></svg>
+          Readme
+        </a>
+        <a class="side-link" href="https://github.com/Compromisee/WeebDL/blob/main/LICENSE">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M8.75.75V2h.985c.304 0 .603.08.867.231l1.29.736c.038.022.08.033.124.033h2.234a.75.75 0 0 1 0 1.5h-.427l2.111 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.006.005-.01.01-.045.04c-.21.176-.441.327-.686.45C14.556 10.78 13.88 11 13 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L12.178 4.5h-.162c-.305 0-.604-.079-.868-.231l-1.29-.736a.245.245 0 0 0-.124-.033H8.75V13h2.5a.75.75 0 0 1 0 1.5h-6.5a.75.75 0 0 1 0-1.5h2.5V3.5h-.984a.245.245 0 0 0-.124.033l-1.289.737c-.265.15-.564.23-.869.23h-.162l2.112 4.692a.75.75 0 0 1-.154.838l-.53-.53.529.531-.001.002-.002.002-.006.006-.016.015-.045.04c-.21.176-.441.327-.686.45C4.556 10.78 3.88 11 3 11a4.498 4.498 0 0 1-2.023-.454 3.544 3.544 0 0 1-.686-.45l-.045-.04-.016-.015-.006-.006-.004-.004v-.001a.75.75 0 0 1-.154-.838L2.178 4.5H1.75a.75.75 0 0 1 0-1.5h2.234a.249.249 0 0 0 .125-.033l1.288-.737c.265-.15.564-.23.869-.23h.984V.75a.75.75 0 0 1 1.5 0Z"/></svg>
+          MIT license
+        </a>
+        <a class="side-link" href="https://github.com/Compromisee/WeebDL/blob/main/FEATURES.md">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M8 0a8 8 0 1 1 0 16A8 8 0 0 1 8 0ZM1.5 8a6.5 6.5 0 1 0 13 0 6.5 6.5 0 0 0-13 0Z"/></svg>
+          <span><strong>250</strong> features</span>
+        </a>
+        <a class="side-link" href="https://github.com/Compromisee/WeebDL/actions">
+          <svg class="octicon" height="16" width="16" viewBox="0 0 16 16" style="fill:var(--success)"><path d="M8 16A8 8 0 1 1 8 0a8 8 0 0 1 0 16Zm3.78-9.72a.751.751 0 0 0-.018-1.042.751.751 0 0 0-1.042-.018L6.75 9.19 5.28 7.72a.751.751 0 0 0-1.042.018.751.751 0 0 0-.018 1.042l2 2a.75.75 0 0 0 1.06 0Z"/></svg>
+          <span><strong>255</strong> tests passing</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="side-sec">
+      <h2>Releases</h2>
+      <div class="release-card">
+        <span class="tag-pill">
+          <svg class="octicon" height="12" width="12" viewBox="0 0 16 16" style="fill:#fff"><path d="M1 7.775V2.75C1 1.784 1.784 1 2.75 1h5.025c.464 0 .91.184 1.238.513l6.25 6.25a1.75 1.75 0 0 1 0 2.474l-5.026 5.026a1.75 1.75 0 0 1-2.474 0l-6.25-6.25A1.752 1.752 0 0 1 1 7.775ZM4.5 6a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z"/></svg>
+          v1.2.0
+        </span>
+        <span>Latest</span>
+      </div>
+      <p style="margin:8px 0 0;font-size:12px">
+        New Updates, Insights and Tools tabs.
+        <a href="https://github.com/Compromisee/WeebDL/blob/main/CHANGELOG.md">Changelog →</a>
+      </p>
+    </div>
+
+    <div class="side-sec">
+      <h2>Languages</h2>
+      <div class="lang-bar">
+        <span style="width:66.2%;background:#3572A5" title="Python 66.2%"></span>
+        <span style="width:15.0%;background:#f1e05a" title="JavaScript 15.0%"></span>
+        <span style="width:9.8%;background:#e34c26" title="HTML 9.8%"></span>
+        <span style="width:9.0%;background:#563d7c" title="CSS 9.0%"></span>
+      </div>
+      <div class="lang-list">
+        <div class="lang-item"><span class="lang-dot" style="background:#3572A5"></span><strong>Python</strong><span class="pct">66.2%</span></div>
+        <div class="lang-item"><span class="lang-dot" style="background:#f1e05a"></span><strong>JavaScript</strong><span class="pct">15.0%</span></div>
+        <div class="lang-item"><span class="lang-dot" style="background:#e34c26"></span><strong>HTML</strong><span class="pct">9.8%</span></div>
+        <div class="lang-item"><span class="lang-dot" style="background:#563d7c"></span><strong>CSS</strong><span class="pct">9.0%</span></div>
+      </div>
+    </div>
+
+    <div class="side-sec">
+      <h2>Get it</h2>
+      <a class="btn btn-primary btn-lg" style="width:100%;justify-content:center"
+         href="https://github.com/Compromisee/WeebDL/releases">
+        <svg class="octicon" height="16" width="16" viewBox="0 0 16 16"><path d="M2.75 14A1.75 1.75 0 0 1 1 12.25v-2.5a.75.75 0 0 1 1.5 0v2.5c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25v-2.5a.75.75 0 0 1 1.5 0v2.5A1.75 1.75 0 0 1 13.25 14Z"/><path d="M7.25 7.689V2a.75.75 0 0 1 1.5 0v5.689l1.97-1.969a.749.749 0 1 1 1.06 1.06l-3.25 3.25a.749.749 0 0 1-1.06 0L4.22 6.78a.749.749 0 1 1 1.06-1.06Z"/></svg>
+        Download release
+      </a>
+    </div>
+  </aside>
+
+</div>
+</div>
+
+<!-- ============================================================ footer -->
+<footer class="gh-footer">
+  <div class="container">
+    <svg class="octicon" height="20" width="20" viewBox="0 0 16 16" style="fill:var(--fg-muted)"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+    <span>© MangaDL · MIT License</span>
+    <div class="foot-links">
+      <a href="https://github.com/Compromisee/WeebDL">Repository</a>
+      <a href="https://github.com/Compromisee/WeebDL/issues">Issues</a>
+      <a href="https://github.com/Compromisee/WeebDL/blob/main/CHANGELOG.md">Changelog</a>
+      <a href="https://github.com/Compromisee/WeebDL/blob/main/FEATURES.md">Features</a>
+    </div>
+    <span style="margin-left:auto">Built with Python, rich, Textual and pywebview</span>
   </div>
 </footer>
 
 <script>
-  // dot matrix
-  (function () {
-    const c = document.getElementById('dots'), x = c.getContext('2d');
-    let dots = [];
-    function resize() {
-      c.width = innerWidth; c.height = innerHeight;
-      dots = [];
-      for (let i = 24; i < c.width; i += 48)
-        for (let j = 24; j < c.height; j += 48)
-          dots.push({ i, j, p: Math.random() * 6.28, s: .4 + Math.random() * .8 });
-    }
-    resize(); addEventListener('resize', resize);
-    (function frame(t) {
-      x.clearRect(0, 0, c.width, c.height);
-      for (const d of dots) {
-        x.fillStyle = `rgba(230,230,240,${.02 + .045 * (0.5 + 0.5 * Math.sin(d.p + t * .0006 * d.s))})`;
-        x.beginPath(); x.arc(d.i, d.j, 1.3, 0, 6.28); x.fill();
-      }
-      requestAnimationFrame(frame);
-    })(0);
-  })();
+/* ------------------------------------------------------- repo tabs */
+const panes = document.querySelectorAll('.pane');
+const tabs  = document.querySelectorAll('.repo-tab');
 
-  // reveal on scroll
-  const io = new IntersectionObserver((es) => es.forEach(e => e.isIntersecting && e.target.classList.add('in')), { threshold: .12 });
-  document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+function showPane(name) {
+  panes.forEach(p => p.classList.toggle('active', p.id === 'pane-' + name));
+  tabs.forEach(t => t.classList.toggle('active', t.dataset.pane === name));
+  if (location.hash.slice(1) !== name) history.pushState(null, '', '#' + name);
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
 
-  // interface tabs
-  document.querySelectorAll('.iface-tab').forEach(tab => tab.addEventListener('click', () => {
-    document.querySelectorAll('.iface-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.iface-panel').forEach(p => p.classList.remove('active'));
+tabs.forEach(t => t.addEventListener('click', () => showPane(t.dataset.pane)));
+document.querySelectorAll('[data-goto]').forEach(a =>
+  a.addEventListener('click', (e) => { e.preventDefault(); showPane(a.dataset.goto); }));
+
+/* deep links: /#cli opens the CLI tab */
+function paneFromHash() {
+  const name = location.hash.slice(1);
+  if (name && document.getElementById('pane-' + name)) showPane(name);
+}
+paneFromHash();
+
+/* Same-document hash changes do not reload the page, so without this a link
+   to #cli from within the page -- and browser back/forward -- would do
+   nothing at all. */
+window.addEventListener('hashchange', paneFromHash);
+
+/* --------------------------------------------------- screenshot tabs */
+document.querySelectorAll('.shot-tab').forEach(tab =>
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.shot-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.shot-panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
-    document.getElementById('panel-' + tab.dataset.panel).classList.add('active');
+    document.getElementById('shot-' + tab.dataset.shot).classList.add('active');
   }));
 
-  function copyInstall() {
-    navigator.clipboard && navigator.clipboard.writeText(document.getElementById('installCmd').textContent);
+/* ---------------------------------------------------- colour mode */
+const root = document.documentElement;
+const saved = localStorage.getItem('mangadl-mode');
+if (saved) root.setAttribute('data-color-mode', saved);
+syncModeButton();
+
+document.getElementById('modeBtn').addEventListener('click', () => {
+  const next = root.getAttribute('data-color-mode') === 'dark' ? 'light' : 'dark';
+  root.setAttribute('data-color-mode', next);
+  localStorage.setItem('mangadl-mode', next);
+  syncModeButton();
+});
+
+function syncModeButton() {
+  const dark = root.getAttribute('data-color-mode') === 'dark';
+  document.getElementById('modeIcon').textContent = dark ? 'light_mode' : 'dark_mode';
+  document.getElementById('modeText').textContent = dark ? 'Light' : 'Dark';
+}
+
+/* ------------------------------------------------------------ copy */
+function copyText(id, btn) {
+  const text = document.getElementById(id).textContent;
+  const done = () => {
+    const original = btn.innerHTML;
+    btn.innerHTML = '<svg class="octicon" height="16" width="16" viewBox="0 0 16 16" style="fill:var(--success)"><path d="M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z"/></svg>';
+    setTimeout(() => { btn.innerHTML = original; }, 1400);
+  };
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(done).catch(() => {});
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); done(); } catch (e) {}
+    document.body.removeChild(ta);
   }
+}
+
+/* press "/" to jump to the repository search, like GitHub */
+document.addEventListener('keydown', (e) => {
+  if (e.key === '/' && !/input|textarea/i.test(document.activeElement.tagName)) {
+    e.preventDefault();
+    window.location.href = 'https://github.com/search?q=repo%3ACompromisee%2FWeebDL';
+  }
+});
 </script>
 </body>
 </html>

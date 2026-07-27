@@ -376,6 +376,14 @@ class Api:
                 failed.append({"path": path, "error": str(e)})
         return {"ok": True, "removed": removed, "failed": failed}
 
+    def get_health(self):
+        """Circuit-breaker state and cache hit rates, for the Tools tab."""
+        try:
+            from ..robust import health_report
+            return {"ok": True, "report": health_report()}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def get_sources(self):
         """Every supported site, for the source picker."""
         return {"ok": True, "sources": list_sources(),
