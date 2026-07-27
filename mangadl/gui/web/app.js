@@ -216,6 +216,22 @@ function syncSourceUI() {
     sortSel.parentElement.hidden = id !== "all" ? false : true;
   }
 
+  const browseGroup = $("browseSortGroup");
+  if (browseGroup) {
+    const sorts = (src && src.browse_sorts) || [];
+    if (sorts.length) {
+      const prev = $("fBrowseSort").value;
+      $("fBrowseSort").innerHTML = "";
+      sorts.forEach((name) => {
+        const opt = document.createElement("option");
+        opt.textContent = name;
+        $("fBrowseSort").appendChild(opt);
+      });
+      $("fBrowseSort").value = sorts.includes(prev) ? prev : sorts[0];
+    }
+    browseGroup.hidden = false;
+  }
+
   // WeebCentral-only controls
   const wcOnly = id === "weebcentral" || id === "all";
   const typeGroup = $("fType") && $("fType").parentElement;
@@ -227,6 +243,8 @@ function syncSourceUI() {
 function getFilters() {
   return {
     source: $("fSource").value,
+    genre: $("fGenre") ? $("fGenre").value : "",
+    browse_sort: $("fBrowseSort") ? $("fBrowseSort").value : "Trending",
     language: $("fLanguage") ? $("fLanguage").value : "en",
     sort: $("fSort").value,
     order: $("fOrder").dataset.order,
@@ -240,8 +258,52 @@ function getFilters() {
 
 function filtersActive() {
   const f = getFilters();
-  return f.source !== "all" || f.sort !== "Best Match" || f.order !== "Ascending"
-      || f.status !== "Any" || f.type !== "Any" || f.official !== "Any";
+  return f.source !== "all" || f.genre !== "" || f.sort !== "Best Match"
+      || f.order !== "Ascending" || f.status !== "Any" || f.type !== "Any"
+      || f.official !== "Any";
+}
+
+/* Genres are merged across the enabled sources by the backend, so the list
+   reflects whatever sites are currently switched on. */
+let GENRES = [];
+
+async function loadGenres() {
+  if (!api() || !api().get_genres) return;
+  const sel = $("fGenre");
+  const picked = sel.value;
+  const res = await api().get_genres($("fSource").value || "all");
+  if (!res || !res.ok) return;
+  GENRES = res.genres || [];
+
+  sel.innerHTML = '<option value="">Any genre</option>';
+  GENRES.forEach((g) => {
+    const opt = document.createElement("option");
+    opt.value = g.name;
+    opt.textContent = g.name;
+    sel.appendChild(opt);
+  });
+  if ([...sel.options].some((o) => o.value === picked)) sel.value = picked;
+  renderGenreChips();
+}
+
+/* Quick-pick chips for the most widely supported genres. */
+function renderGenreChips() {
+  const wrap = $("genreChips");
+  if (!wrap) return;
+  const current = $("fGenre").value;
+  wrap.innerHTML = "";
+  GENRES.slice(0, 10).forEach((g) => {
+    const chip = document.createElement("button");
+    chip.className = "genre-chip" + (current === g.name ? " active" : "");
+    chip.textContent = g.name;
+    chip.addEventListener("click", () => {
+      $("fGenre").value = (current === g.name) ? "" : g.name;
+      updateFilterDot();
+      renderGenreChips();
+      doSearch(true);
+    });
+    wrap.appendChild(chip);
+  });
 }
 
 function updateFilterDot() {
@@ -273,11 +335,22 @@ $("fSource").addEventListener("change", async () => {
   syncSourceUI();
   updateFilterDot();
   if (api()) await api().set_settings({ default_source: $("fSource").value });
-  if (lastQuery) doSearch(true);
+  await loadGenres();
+  doSearch(true);          // also refreshes the trending feed
 });
+
+$("fGenre").addEventListener("change", () => {
+  updateFilterDot();
+  renderGenreChips();
+  doSearch(true);
+});
+
+$("fBrowseSort").addEventListener("change", () => doSearch(true));
 
 $("fReset").addEventListener("click", () => {
   $("fSource").value = "all";
+  $("fGenre").value = "";
+  renderGenreChips();
   syncSourceUI();
   $("fSort").value = "Best Match";
   $("fStatus").value = "Any";
@@ -293,51 +366,142 @@ $("fReset").addEventListener("click", () => {
 let lastQuery = "";
 let searchSeq = 0;
 
-async function doSearch(rerun = false) {
-  const query = rerun ? lastQuery : $("searchInput").value.trim();
-  if (!query) return;
+let browsePage = 1;
+let browseMode = false;
+let lastResultCount = 0;
 
-  if (!rerun && /^https?:\/\//i.test(query)) {
-    openManga(query);
-    return;
-  }
-  lastQuery = query;
-
-  $("searchHero").classList.add("compact");
-  $("searchState").innerHTML = '<div class="spinner" style="margin:20px auto"></div>';
-  $("searchResults").innerHTML = "";
-
-  const seq = ++searchSeq;
-  const res = await api().search(query, getFilters());
-  if (seq !== searchSeq) return;   // a newer search superseded this one
-  $("searchState").textContent = "";
-
-  if (!res.ok) { $("searchState").textContent = "Search failed: " + res.error; return; }
-  if (!res.results.length) { $("searchState").textContent = "No results found."; return; }
-
+function renderCards(results, append = false) {
   const grid = $("searchResults");
-  res.results.forEach((r, i) => {
+  if (!append) grid.innerHTML = "";
+  const showBadge = $("fSource").value === "all";
+  const offset = append ? grid.children.length : 0;
+
+  results.forEach((r, i) => {
     const card = document.createElement("div");
     card.className = "result-card";
     card.style.setProperty("--i", Math.min(i, 17));
-    const badge = ($("fSource").value === "all" && r.source)
+
+    const badge = (showBadge && r.source)
       ? `<span class="rc-source" data-source="${escapeHtml(r.source)}">${escapeHtml(r.source_name || r.source)}</span>`
       : "";
+    const also = (r.also_on && r.also_on.length)
+      ? `<span class="rc-also" title="Also on ${r.also_on.map((a) => escapeHtml(a.source_name || a.source)).join(", ")}">+${r.also_on.length}</span>`
+      : "";
+
     card.innerHTML = `
-      ${badge}
+      ${badge}${also}
       <img loading="lazy" src="${r.cover || ""}" alt="" onerror="this.style.visibility='hidden'">
       <div class="rc-title">${escapeHtml(r.title)}</div>`;
     card.addEventListener("click", () => openManga(r.url, r.source));
     grid.appendChild(card);
   });
+  return offset + results.length;
 }
+
+/* One entry point for both modes. An empty box means "show me something",
+   which runs the trending/genre browse instead of a text search. */
+async function doSearch(rerun = false, append = false) {
+  const query = rerun || append ? lastQuery : $("searchInput").value.trim();
+
+  if (!rerun && !append && /^https?:\/\//i.test(query)) {
+    openManga(query);
+    return;
+  }
+  lastQuery = query;
+  const filters = getFilters();
+  browseMode = !query;
+
+  if (!append) {
+    browsePage = 1;
+    $("searchHero").classList.toggle("compact", true);
+    $("searchState").innerHTML = '<div class="spinner" style="margin:20px auto"></div>';
+    $("searchResults").innerHTML = "";
+    $("loadMoreBtn").classList.add("hidden");
+  } else {
+    $("loadMoreBtn").disabled = true;
+    $("loadMoreBtn").textContent = "Loading…";
+  }
+
+  // trending / genre header
+  const head = $("browseHead");
+  if (browseMode) {
+    const g = filters.genre;
+    $("browseHeadText").textContent = g
+      ? `Top ${g} right now`
+      : `${filters.browse_sort || "Trending"} now`;
+    head.classList.remove("hidden");
+    renderGenreChips();
+  } else {
+    head.classList.add("hidden");
+  }
+
+  const seq = ++searchSeq;
+  let res;
+  if (browseMode) {
+    res = await api().browse({
+      source: filters.source,
+      genre: filters.genre,
+      sort: filters.browse_sort || "Trending",
+      status: filters.status,
+      page: browsePage,
+    });
+  } else {
+    res = await api().search(query, { ...filters, page: browsePage });
+  }
+  if (seq !== searchSeq) return;   // a newer request superseded this one
+
+  $("loadMoreBtn").disabled = false;
+  $("loadMoreBtn").textContent = "Load more";
+  $("searchState").textContent = "";
+
+  if (!res.ok) {
+    $("searchState").innerHTML =
+      `<div class="source-down"><span class="material-symbols-rounded">error</span>
+       ${escapeHtml(res.error || "Request failed")}</div>`;
+    return;
+  }
+
+  // the backend may resolve a pasted URL instead of returning results
+  if (res.url) { openManga(res.url); return; }
+
+  const results = res.results || [];
+  if (!results.length && !append) {
+    $("searchState").textContent = browseMode
+      ? "Nothing to show. Try another genre, or enable more sources in Settings."
+      : "No results found.";
+    $("loadMoreBtn").classList.add("hidden");
+    return;
+  }
+
+  lastResultCount = renderCards(results, append);
+  $("loadMoreBtn").classList.toggle("hidden", results.length === 0);
+  if (res.message) $("searchState").textContent = res.message;
+}
+
+$("loadMoreBtn").addEventListener("click", () => {
+  browsePage += 1;
+  doSearch(true, true);
+});
 
 $("searchBtn").addEventListener("click", () => doSearch());
 $("searchInput").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+let suggestTimer = null;
+$("searchInput").addEventListener("input", () => {
+  clearTimeout(suggestTimer);
+  suggestTimer = setTimeout(async () => {
+    if (!api() || !api().suggest_query) return;
+    const res = await api().suggest_query($("searchInput").value.trim());
+    if (!res || !res.ok) return;
+    $("searchSuggestions").innerHTML = (res.items || [])
+      .map((q) => `<option value="${escapeHtml(q)}"></option>`).join("");
+  }, 180);
+});
+
 $("searchInput").addEventListener("input", () => {
   // restore the centered hero when the box is cleared
   if (!$("searchInput").value.trim() && !$("searchResults").children.length) {
     $("searchHero").classList.remove("compact");
+    $("browseHead").classList.add("hidden");
   }
 });
 
@@ -1092,6 +1256,7 @@ whenReady(async () => {
   $("setDedupe").checked = state.settings.dedupe_results !== false;
   $("setInterleave").checked = !!state.settings.interleave_results;
   await loadSourceConfig();
+  await loadGenres();
   await loadSecurity();
   await loadFilters();
   await loadStats();
@@ -1102,6 +1267,8 @@ whenReady(async () => {
   refreshLogInfo();
   checkPendingJob();
   if (!document.body.classList.contains("locked")) $("searchInput").focus();
+  // greet with a trending feed rather than a blank page
+  doSearch(true);
 });
 
 /* ================================================================= lock */

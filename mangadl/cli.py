@@ -40,8 +40,9 @@ from rich.progress import (
 from rich.table import Table
 
 from .downloader import DownloadEngine, DownloadOptions
-from .sources import (DEFAULT_SOURCE, SOURCES, detect_source, get_source,
-                      list_sources, search_all, source_for_url)
+from .sources import (DEFAULT_SOURCE, SOURCES, browse_all, detect_source,
+                      genres_all, get_source, list_sources, search_all,
+                      source_for_url)
 
 console = Console(highlight=False)
 
@@ -62,6 +63,10 @@ def build_parser():
             "  mangadl <url> -c latest              only the newest chapter\n"
             "  mangadl search \"one piece\"          search all sources\n"
             "  mangadl search \"berserk\" -s mangadex\n"
+            "  mangadl search                           (no query) trending titles\n"
+            "  mangadl trending romance                 top romance across sources\n"
+            "  mangadl genres                           list every genre\n"
+            "  mangadl search \"blue\" -g Romance         genre-filtered search\n"
             "  mangadl sources                          list supported sites\n"
             "  mangadl config disable natomanga         exclude a source\n"
             "  mangadl config up mangakatana            rank a source higher\n"
@@ -78,7 +83,7 @@ def build_parser():
     parser.add_argument("target", nargs="?",
                         help="manga URL, or a command: search | info | sources | config | "
                              "stats | history | lock | export | watch | disk | "
-                             "gui | tui | resume")
+                             "trending | genres | health | gui | tui | resume")
     parser.add_argument("query", nargs="*", help="arguments for search / info")
     parser.add_argument("-c", "--chapters", default="all", metavar="SEL",
                         help="chapter selection: all | 5 | 1-20 | 1,5,10-20 | 50- | latest | first (default: all)")
@@ -115,6 +120,8 @@ def build_parser():
                               help="preferred scanlation group, MangaDex only")
     source_group.add_argument("--data-saver", action="store_true",
                               help="download compressed pages, MangaDex only")
+    source_group.add_argument("-g", "--genre", default=None, metavar="NAME",
+                              help="filter by genre (see: mangadl genres)")
     parser.add_argument("-y", "--yes", action="store_true", help="skip the confirmation prompt")
     parser.add_argument("--plain", action="store_true", help="plain log output (no fancy progress UI)")
     return parser
@@ -335,6 +342,108 @@ def cmd_export(args) -> int:
     return 0
 
 
+def _print_results(results, header=None):
+    """Shared result table for search / browse output."""
+    from . import features
+
+    results = features.apply_filters(results)
+    if not results:
+        console.print("[yellow]Nothing to show.[/]")
+        return 1
+    if header:
+        console.print(f"[bold]{header}[/]")
+    table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+    table.add_column("#", style=DIM, justify="right")
+    table.add_column("Source", style=ACCENT)
+    table.add_column("Title")
+    table.add_column("URL", style=DIM, overflow="fold")
+    for index, row in enumerate(results, 1):
+        table.add_row(str(index), row.get("source_name") or row.get("source") or "?",
+                      row.get("title", "?"), row.get("url", ""))
+    console.print(table)
+    console.print(f"[{DIM}]Download with: mangadl <url>[/]")
+    return 0
+
+
+def cmd_trending(args) -> int:
+    """Discovery listing: trending, or a genre, across the enabled sources."""
+    rest = list(args.query)
+    genre = " ".join(rest) if rest else None
+    source_id = args.source
+
+    label = f"Top {genre}" if genre else "Trending now"
+    with console.status(f"Fetching {label.lower()}..."):
+        if source_id and source_id != "all":
+            source = get_source(source_id, language=args.language)
+            try:
+                if not getattr(source, "supports_browse", False):
+                    console.print(f"[yellow]{source.name} cannot list trending "
+                                  f"titles.[/]")
+                    return 1
+                results = source.browse(genre=genre, limit=24)
+            finally:
+                source.close()
+        else:
+            results = browse_all(genre=genre, limit=8)
+    return _print_results(results, label)
+
+
+def cmd_genres(args) -> int:
+    """List the genres available across the enabled sources."""
+    source_id = args.source
+    if source_id and source_id != "all":
+        source = get_source(source_id)
+        try:
+            rows = [{"name": g["name"], "sources": {source_id: g["id"]}}
+                    for g in (source.genres() or [])]
+        finally:
+            source.close()
+    else:
+        rows = genres_all()
+
+    if not rows:
+        console.print("[yellow]No genres available.[/]")
+        return 1
+
+    table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+    table.add_column("Genre")
+    table.add_column("Available on", style=DIM)
+    for row in rows:
+        table.add_row(row["name"], ", ".join(sorted(row["sources"])))
+    console.print(table)
+    console.print(f"[{DIM}]Browse one with: mangadl trending <genre>[/]")
+    return 0
+
+
+def cmd_health() -> int:
+    """Circuit-breaker and cache diagnostics."""
+    from .robust import health_report
+
+    report = health_report()
+    breakers = report["breakers"]
+    if not breakers:
+        console.print(f"[{DIM}]No source calls recorded yet this session.[/]")
+    else:
+        table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+        table.add_column("Source")
+        table.add_column("State")
+        table.add_column("Failures", justify="right")
+        table.add_column("Retry in", justify="right")
+        for name, row in sorted(breakers.items()):
+            state = row["state"]
+            colour = {"closed": ACCENT, "half-open": "yellow"}.get(state, "red")
+            table.add_row(name, f"[{colour}]{state}[/]", str(row["failures"]),
+                          f"{row['retry_after']:.0f}s" if row["retry_after"] else "-")
+        console.print(table)
+
+    for label, key in (("Browse cache", "browse_cache"),
+                       ("Genre cache", "genre_cache")):
+        stats = report[key]
+        console.print(f"[{DIM}]{label}: {stats['entries']} entries, "
+                      f"{stats['hit_rate']}% hit rate[/]")
+    return 0
+
+
 def cmd_watch(args) -> int:
     """Watch a series, or list / check the watchlist."""
     from . import tracking
@@ -470,22 +579,34 @@ def cmd_disk(args) -> int:
     return 1
 
 
-def cmd_search(query: str, source_id: str = "", language: str = "en"):
+def cmd_search(query: str, source_id: str = "", language: str = "en",
+               genre: str = None):
+    # An empty query is a request for discovery, not an error.
     if not query:
-        console.print("[red]Provide a search query, e.g.: mangadl search \"one piece\"[/]")
-        return 1
+        with console.status("Fetching trending titles..."):
+            if source_id and source_id != "all":
+                source = get_source(source_id, language=language)
+                try:
+                    results = (source.browse(genre=genre, limit=24)
+                               if getattr(source, "supports_browse", False) else [])
+                finally:
+                    source.close()
+            else:
+                results = browse_all(genre=genre, limit=8)
+        return _print_results(
+            results, f"Top {genre}" if genre else "Trending now")
 
     if source_id:
         label = SOURCES[source_id].name
         with console.status(f"Searching [bold]{label}[/] for [bold]{query}[/]..."):
             source = get_source(source_id, language=language)
             try:
-                results = source.search(query)
+                results = source.search(query, genre=genre)
             finally:
                 source.close()
     else:
         with console.status(f"Searching all sources for [bold]{query}[/]..."):
-            results = search_all(query, limit=10)
+            results = search_all(query, limit=10, genre=genre)
 
     from . import features
     results = features.apply_filters(results)
@@ -787,7 +908,14 @@ def main(argv=None):
     if command == "disk":
         return cmd_disk(args)
     if command == "search":
-        return cmd_search(" ".join(args.query), args.source, args.language)
+        return cmd_search(" ".join(args.query), args.source, args.language,
+                          args.genre)
+    if command in ("trending", "browse", "popular"):
+        return cmd_trending(args)
+    if command in ("genres", "genre"):
+        return cmd_genres(args)
+    if command == "health":
+        return cmd_health()
     if command == "info":
         return cmd_info(args.query[0] if args.query else "",
                         args.source, args.language)

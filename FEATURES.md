@@ -197,6 +197,67 @@ A complete feature reference for MangaDL.
 149. Paginated feed with the 10k offset cap handled
 150. All content ratings requested explicitly
 
+## Discovery: trending and genres
+
+151. Pressing Search with an empty box shows trending instead of doing nothing
+152. GUI opens on a trending feed rather than a blank page
+153. TUI opens on a trending feed
+154. `mangadl search` with no query lists trending
+155. `mangadl trending` explicit discovery command
+156. `mangadl trending <genre>` for per-genre trending
+157. `mangadl genres` lists every genre and which sites offer it
+158. `-g/--genre` filters any search by genre
+159. Genre dropdown in the GUI filter row
+160. Quick-pick genre chips for the ten most widely supported genres
+161. Genre dropdown in the TUI beside the source picker
+162. Genres merged across every enabled source
+163. Case-insensitive genre matching across sites
+164. Genres ordered by how widely they are supported
+165. Per-source genre id mapping kept alongside the shared label
+166. Genre list reflects only the sources you have enabled
+167. Trending results interleave sources so the first screen is a mix
+168. `Load more` pagination in the GUI
+169. Per-source browse sort options exposed to the UI
+170. MangaDex trending via follower count
+171. MangaDex genre browsing by resolved tag UUID
+172. MangaDex tag names resolved case-insensitively, with partial matching
+173. Raw MangaDex tag UUIDs accepted directly
+174. MangaDex tag list cached per process
+175. Mangakatana genre browsing over 46 genre slugs
+176. Mangakatana pagination via the site's real filter path
+177. Natomanga hot / latest / new discovery feeds
+178. Natomanga genre browsing with paging
+179. Weeb Central trending via popularity sort
+180. Weeb Central genre browsing over 26 tags
+181. Sources that cannot browse are skipped, with a clear message
+182. Type-ahead search suggestions drawn from history
+183. Empty results explain what to try next instead of just saying "none"
+184. Browse honours source ranking and exclusions
+185. Browse results pass through content filters and duplicate merging
+
+## Robust calling
+
+186. Circuit breaker per source, with closed / open / half-open states
+187. Repeated failures open the breaker so a dead site is skipped instantly
+188. Half-open probe after cooldown, closing again on success
+189. Cooldown doubles with each repeated trip, capped
+190. Success resets the failure count
+191. Bounded retries with exponential backoff
+192. Proportional jitter so retries do not synchronise
+193. `retry_if` hook to skip pointless retries such as 404s
+194. `on_retry` callback for progress reporting
+195. TTL cache for discovery listings, five minutes
+196. TTL cache for genre lists, one hour
+197. Cache eviction when full, with hit-rate statistics
+198. `call_safely` runs anything and falls back instead of raising
+199. `gather` runs many calls in parallel and keeps whatever succeeds
+200. Overall timeout support in `gather`, keeping finished work
+201. Rate-limit headers honoured, absolute and relative
+202. Partial results always returned rather than failing the whole request
+203. Every failure logged once with context
+204. `mangadl health` shows breaker state and cache hit rates
+205. Health diagnostics exposed to the GUI
+
 ## Core engine
 
 - Download any series from a supported site by URL

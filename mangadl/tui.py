@@ -40,8 +40,9 @@ from textual.widgets.selection_list import Selection
 
 from .downloader import DownloadEngine, DownloadOptions
 from .gui import load_settings, save_settings
-from .sources import (DEFAULT_SOURCE, SOURCES, detect_source, get_source,
-                      list_sources, search_all, source_for_url)
+from .sources import (DEFAULT_SOURCE, SOURCES, browse_all, detect_source,
+                      genres_all, get_source, list_sources, search_all,
+                      source_for_url)
 from .utils import chapter_number
 
 ACCENT = "#7aa2f7"
@@ -72,7 +73,8 @@ class MangaDLTUI(App):
     #src-actions Button { margin-right: 1; min-width: 12; }
 
     #search-bar { height: 3; margin-bottom: 1; }
-    #source-select { width: 22; margin-right: 1; }
+    #source-select { width: 20; margin-right: 1; }
+    #genre-select { width: 18; margin-left: 1; }
     #search-input { width: 1fr; }
     #search-btn { margin-left: 1; min-width: 12; }
     #search-status { color: $text-muted; height: 1; margin-bottom: 1; }
@@ -184,6 +186,8 @@ class MangaDLTUI(App):
                         placeholder="Search manga or paste a manga URL...",
                         id="search-input",
                     )
+                    yield Select([("Any genre", "")], value="", allow_blank=False,
+                                 id="genre-select")
                     yield Button("Search", variant="primary", id="search-btn")
                 yield Static("", id="search-status")
                 yield ListView(id="search-results")
@@ -372,6 +376,9 @@ class MangaDLTUI(App):
             self._refresh_source_list()
         except Exception:
             pass
+        self._load_genres()
+        # open on a trending feed instead of an empty list
+        self.handle_search()
 
     # ----------------------------------------------------------- actions
 
@@ -396,32 +403,91 @@ class MangaDLTUI(App):
     @on(Button.Pressed, "#search-btn")
     def handle_search(self, _event=None):
         query = self.query_one("#search-input", Input).value.strip()
-        if not query:
-            return
-        if query.startswith(("http://", "https://")) or detect_source(query):
+        # An empty box is no longer a no-op: it means "show me trending".
+        if query and (query.startswith(("http://", "https://"))
+                      or detect_source(query)):
             self._load_manga(query)
             return
-        self.query_one("#search-status", Static).update(
-            f"[dim]Searching for[/] [bold]{query}[/] ...")
+
+        genre = self._genre()
+        if query:
+            label = f"[dim]Searching for[/] [bold]{query}[/] ..."
+        elif genre:
+            label = f"[dim]Loading top[/] [bold]{genre}[/] ..."
+        else:
+            label = "[dim]Loading[/] [bold]trending[/] ..."
+        self.query_one("#search-status", Static).update(label)
         self.query_one("#search-results", ListView).clear()
         self._do_search(query)
 
+    def _genre(self):
+        try:
+            value = self.query_one("#genre-select", Select).value
+            return str(value) if value else None
+        except Exception:
+            return None
+
     @work(thread=True, exclusive=True, group="search")
     def _do_search(self, query: str):
+        genre = self._genre()
+        language = self.settings.get("language", "en")
         try:
-            if self.source_id in ("all", None, ""):
-                results = search_all(query, limit=12)
+            if not query:
+                # no query: show trending, optionally narrowed to a genre
+                if self.source_id in ("all", None, ""):
+                    results = browse_all(genre=genre, limit=8)
+                else:
+                    source = get_source(self.source_id, language=language)
+                    try:
+                        results = (source.browse(genre=genre, limit=30)
+                                   if getattr(source, "supports_browse", False)
+                                   else [])
+                    finally:
+                        source.close()
+            elif self.source_id in ("all", None, ""):
+                results = search_all(query, limit=12, genre=genre)
             else:
-                source = get_source(self.source_id,
-                                    language=self.settings.get("language", "en"))
+                source = get_source(self.source_id, language=language)
                 try:
-                    results = source.search(query)
+                    results = source.search(query, genre=genre)
                 finally:
                     source.close()
+            from . import features
+            results = features.apply_filters(results)
         except Exception as e:
             self.call_from_thread(self._search_done, [], str(e))
             return
         self.call_from_thread(self._search_done, results, None)
+
+    @work(thread=True, group="genres")
+    def _load_genres(self):
+        try:
+            if self.source_id in ("all", None, ""):
+                rows = genres_all()
+            else:
+                source = get_source(self.source_id)
+                try:
+                    rows = [{"name": g["name"]} for g in (source.genres() or [])]
+                finally:
+                    source.close()
+        except Exception:
+            rows = []
+        self.call_from_thread(self._genres_loaded, rows)
+
+    def _genres_loaded(self, rows):
+        try:
+            select = self.query_one("#genre-select", Select)
+        except Exception:
+            return
+        current = select.value
+        options = [("Any genre", "")] + [(r["name"], r["name"]) for r in rows[:60]]
+        select.set_options(options)
+        if any(value == current for _label, value in options):
+            select.value = current
+
+    @on(Select.Changed, "#genre-select")
+    def handle_genre_changed(self, event: Select.Changed):
+        self.handle_search()
 
     @on(Select.Changed, "#source-select")
     def handle_source_changed(self, event: Select.Changed):
@@ -431,11 +497,8 @@ class MangaDLTUI(App):
             save_settings(self.settings)
         except Exception:
             pass
-        query = self.query_one("#search-input", Input).value.strip()
-        if query:
-            self.query_one("#search-status", Static).update(
-                f"[dim]Searching[/] [bold]{query}[/] ...")
-            self._do_search(query)
+        self._load_genres()
+        self.handle_search()
 
     def _search_done(self, results, error):
         status = self.query_one("#search-status", Static)
@@ -445,7 +508,8 @@ class MangaDLTUI(App):
             status.update(f"[red]Search failed: {error}[/]")
             return
         if not results:
-            status.update("[yellow]No results found.[/]")
+            status.update("[yellow]Nothing to show. Try another genre, or "
+                          "enable more sources.[/]")
             return
         self.results = results
         status.update(f"[dim]{len(results)} results - press Enter to open[/]")

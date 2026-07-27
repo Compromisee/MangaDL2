@@ -80,7 +80,9 @@
       </div>
       <div class="searchbar">
         <span class="material-symbols-rounded">search</span>
-        <input id="searchInput" type="text" placeholder="Search manga or paste a manga URL" autocomplete="off" spellcheck="false">
+        <input id="searchInput" type="text" placeholder="Search manga, pick a genre, or press Search to see what's trending"
+               autocomplete="off" spellcheck="false" list="searchSuggestions">
+        <datalist id="searchSuggestions"></datalist>
         <button class="icon-btn filter-toggle" id="filterToggle" title="Filters">
           <span class="material-symbols-rounded">tune</span>
           <span class="filter-dot hidden" id="filterDot"></span>
@@ -92,6 +94,22 @@
           <span class="filter-label">Source</span>
           <select id="fSource">
             <option value="all">All sources</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">Genre</span>
+          <select id="fGenre">
+            <option value="">Any genre</option>
+          </select>
+        </div>
+        <div class="filter-group" id="browseSortGroup" hidden>
+          <span class="filter-label">Show</span>
+          <select id="fBrowseSort">
+            <option>Trending</option>
+            <option>Popularity</option>
+            <option>Latest Updates</option>
+            <option>Recently Added</option>
+            <option>Rating</option>
           </select>
         </div>
         <div class="filter-group" id="langGroup" hidden>
@@ -161,8 +179,16 @@
         <button class="text-btn" id="fReset">Reset</button>
       </div>
     </div>
+    <div class="browse-head hidden" id="browseHead">
+      <span class="material-symbols-rounded">local_fire_department</span>
+      <span id="browseHeadText">Trending now</span>
+      <div class="genre-chips" id="genreChips"></div>
+    </div>
     <div class="results-state" id="searchState"></div>
     <div class="results-grid" id="searchResults"></div>
+    <div class="load-more-wrap">
+      <button class="btn load-more hidden" id="loadMoreBtn">Load more</button>
+    </div>
   </section>
 
   <!-- =================================================== MANGA VIEW -->

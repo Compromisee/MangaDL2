@@ -45,6 +45,7 @@ Pages
 """
 
 import logging
+import re
 
 from .base import Source, ScrapeError
 
@@ -70,11 +71,19 @@ class MangaDexSource(Source):
     supports_search = True
     supports_language = True
     supports_scanlator = True
+    supports_browse = True
+    supports_genres = True
     search_sorts = ("Best Match", "Popularity", "Latest Updates",
                     "Recently Added", "Title", "Rating", "Year")
+    browse_sorts = ("Trending", "Popularity", "Latest Updates",
+                    "Recently Added", "Rating", "Year")
 
     # MangaDex sort key -> API order parameter
     _SORTS = {
+        # "Trending" is not a real API sort; follow count is the closest
+        # proxy the API exposes, and it is what the site's own popular
+        # listing is built on.
+        "Trending": ("followedCount", "desc"),
         "Best Match": ("relevance", "desc"),
         "Popularity": ("followedCount", "desc"),
         "Latest Updates": ("latestUploadedChapter", "desc"),
@@ -105,7 +114,6 @@ class MangaDexSource(Source):
     @staticmethod
     def extract_id(url: str) -> str:
         """Pull the manga UUID out of any MangaDex URL (or accept a raw UUID)."""
-        import re
         match = re.search(
             r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
             (url or "").lower(),
@@ -119,7 +127,6 @@ class MangaDexSource(Source):
         if super().handles(url):
             return True
         # bare UUID is treated as MangaDex
-        import re
         return bool(re.fullmatch(
             r"\s*[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\s*",
             (url or "").lower(),
@@ -180,6 +187,89 @@ class MangaDexSource(Source):
             })
         return covers
 
+    # ---------------------------------------------------------- genres
+
+    # Tag ids are stable UUIDs; cached per process after the first call.
+    _tag_cache = None
+
+    def genres(self, groups=("genre", "theme", "format")) -> list:
+        """Every tag MangaDex offers, usable as ``genre=`` in browse/search."""
+        cls = type(self)
+        if cls._tag_cache is None:
+            try:
+                data = self.fetch_json(f"{API}/manga/tag")
+            except ScrapeError:
+                return []
+            tags = []
+            for item in data.get("data", []):
+                attrs = item.get("attributes") or {}
+                name = (attrs.get("name") or {}).get("en")
+                if not name:
+                    continue
+                tags.append({
+                    "id": item.get("id"),
+                    "name": name,
+                    "group": attrs.get("group"),
+                })
+            tags.sort(key=lambda t: (t["group"] or "", t["name"]))
+            cls._tag_cache = tags
+        return [t for t in cls._tag_cache
+                if not groups or t.get("group") in groups]
+
+    def _tag_id(self, genre: str):
+        """Resolve a genre name (or raw UUID) to a tag id."""
+        if not genre:
+            return None
+        genre = genre.strip()
+        if re.fullmatch(r"[0-9a-f-]{36}", genre.lower()):
+            return genre
+        wanted = genre.lower()
+        for tag in self.genres(groups=None):
+            if tag["name"].lower() == wanted:
+                return tag["id"]
+        for tag in self.genres(groups=None):
+            if wanted in tag["name"].lower():
+                return tag["id"]
+        return None
+
+    # ---------------------------------------------------------- browse
+
+    def browse(self, sort: str = "Trending", genre: str = None, page: int = 1,
+               limit: int = 32, status=None, year=None, demographic=None,
+               content_rating=None, **_):
+        """Discovery listing: trending, popular, latest, or by genre."""
+        order_key, order_dir = self._SORTS.get(sort, self._SORTS["Trending"])
+        limit = max(1, min(100, limit))
+        params = [
+            ("limit", limit),
+            ("offset", max(0, (int(page) - 1) * limit)),
+            ("includes[]", "cover_art"),
+            ("includes[]", "author"),
+            (f"order[{order_key}]", order_dir),
+            # a listing full of empty series is useless
+            ("hasAvailableChapters", "true"),
+        ]
+        for rating in (content_rating or ALL_RATINGS):
+            params.append(("contentRating[]", rating))
+        if status and status != "Any":
+            params.append(("status[]", str(status).lower()))
+        if year:
+            params.append(("year", str(year)))
+        if demographic and demographic != "Any":
+            params.append(("publicationDemographic[]", str(demographic).lower()))
+
+        for name in ([genre] if isinstance(genre, str) else (genre or [])):
+            tag_id = self._tag_id(name)
+            if tag_id:
+                params.append(("includedTags[]", tag_id))
+
+        try:
+            data = self.fetch_json(f"{API}/manga", params=params)
+        except ScrapeError as e:
+            logger.error("MangaDex browse failed: %s", e)
+            return []
+        return [self._to_result(item) for item in data.get("data", [])]
+
     # ---------------------------------------------------------- search
 
     @staticmethod
@@ -199,7 +289,7 @@ class MangaDexSource(Source):
 
     def search(self, query: str, limit: int = 32, sort: str = "Best Match",
                status=None, content_rating=None, year=None,
-               included_tags=None, **_):
+               included_tags=None, genre=None, **_):
         order_key, order_dir = self._SORTS.get(sort, self._SORTS["Best Match"])
         params = [
             ("limit", max(1, min(100, limit))),
@@ -218,7 +308,12 @@ class MangaDexSource(Source):
         if year:
             params.append(("year", str(year)))
         for tag in included_tags or []:
-            params.append(("includedTags[]", tag))
+            resolved = self._tag_id(tag) or tag
+            params.append(("includedTags[]", resolved))
+        for name in ([genre] if isinstance(genre, str) else (genre or [])):
+            tag_id = self._tag_id(name)
+            if tag_id:
+                params.append(("includedTags[]", tag_id))
 
         try:
             data = self.fetch_json(f"{API}/manga", params=params)
@@ -226,30 +321,38 @@ class MangaDexSource(Source):
             logger.error("MangaDex search failed: %s", e)
             return []
 
-        results = []
-        for item in data.get("data", []):
-            manga_id = item.get("id")
-            attrs = item.get("attributes") or {}
-            covers = self._covers_from_relationships(manga_id, item.get("relationships"))
-            authors = [
-                (r.get("attributes") or {}).get("name")
-                for r in item.get("relationships", [])
-                if r.get("type") in ("author", "artist")
-                and (r.get("attributes") or {}).get("name")
-            ]
-            results.append(self._result(
-                self._title_of(attrs),
-                f"{SITE}/title/{manga_id}",
-                cover=covers["cover_medium"],
-                cover_small=covers["cover_small"],
-                cover_original=covers["cover"],
-                manga_id=manga_id,
-                status=(attrs.get("status") or "").title() or None,
-                year=attrs.get("year"),
-                authors=list(dict.fromkeys(authors)),
-                description=self._description(attrs),
-            ))
-        return results
+        return [self._to_result(item) for item in data.get("data", [])]
+
+    def _to_result(self, item):
+        """Convert one API manga object into a search/browse result."""
+        manga_id = item.get("id")
+        attrs = item.get("attributes") or {}
+        covers = self._covers_from_relationships(manga_id, item.get("relationships"))
+        authors = [
+            (r.get("attributes") or {}).get("name")
+            for r in item.get("relationships", [])
+            if r.get("type") in ("author", "artist")
+            and (r.get("attributes") or {}).get("name")
+        ]
+        tags = []
+        for tag in attrs.get("tags") or []:
+            label = ((tag.get("attributes") or {}).get("name") or {}).get("en")
+            if label:
+                tags.append(label)
+        return self._result(
+            self._title_of(attrs),
+            f"{SITE}/title/{manga_id}",
+            cover=covers["cover_medium"],
+            cover_small=covers["cover_small"],
+            cover_original=covers["cover"],
+            manga_id=manga_id,
+            status=(attrs.get("status") or "").title() or None,
+            year=attrs.get("year"),
+            authors=list(dict.fromkeys(authors)),
+            tags=tags,
+            content_rating=attrs.get("contentRating"),
+            description=self._description(attrs),
+        )
 
     @staticmethod
     def _description(attrs) -> str:

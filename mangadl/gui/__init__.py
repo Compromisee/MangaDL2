@@ -15,8 +15,9 @@ import time
 import traceback
 
 from ..downloader import DownloadEngine, DownloadOptions
-from ..sources import (DEFAULT_SOURCE, SOURCES, detect_source, get_source,
-                       list_sources, search_all, source_for_url)
+from ..sources import (DEFAULT_SOURCE, SOURCES, browse_all, detect_source,
+                       genres_all, get_source, list_sources, search_all,
+                       source_for_url)
 from .. import config as appconfig
 from .. import features
 from .. import library
@@ -46,6 +47,7 @@ DEFAULT_SETTINGS = {
     "sources": [],                  # legacy; per-source config lives in config.json
     "dedupe_results": True,         # collapse the same series across sources
     "interleave_results": False,    # round-robin sources instead of grouping
+    "interleave_browse": True,      # trending feed mixes sources by default
     "confirm_delete": True,
     "auto_snapshot": False,
     "default_source": DEFAULT_SOURCE,
@@ -388,14 +390,31 @@ class Api:
     # ------------------------------------------------------------ pages
 
     def search(self, query: str, filters: dict = None):
-        """Search one source, or every enabled source when set to 'all'."""
+        """Search, or show trending when there is no query.
+
+        Pressing Search with an empty box is treated as "show me something":
+        the same code path runs, but sources are asked for their discovery
+        listing instead of a text match. A genre with no query browses that
+        genre; a genre with a query filters the search.
+        """
         try:
             f = filters or {}
             source_id = (f.get("source") or "").strip()
+            genre = (f.get("genre") or "").strip()
+            query = (query or "").strip()
 
             # pasting a URL jumps straight to that manga
             if query and detect_source(query) and "/" in query:
                 return {"ok": True, "results": [], "url": query}
+
+            if not query:
+                return self.browse({
+                    "source": source_id,
+                    "genre": genre,
+                    "sort": f.get("browse_sort") or "Trending",
+                    "page": f.get("page", 1),
+                    "status": f.get("status"),
+                })
 
             kwargs = dict(
                 sort=f.get("sort") or None,
@@ -403,6 +422,7 @@ class Api:
                 series_type=f.get("type"),
                 order=f.get("order", "Ascending"),
                 official=f.get("official", "Any"),
+                genre=genre or None,
             )
             kwargs = {k: v for k, v in kwargs.items() if v not in (None, "", "Any")}
 
@@ -426,6 +446,56 @@ class Api:
         except Exception as e:
             logger.exception("Search failed")
             return {"ok": False, "error": str(e)}
+
+    def browse(self, options: dict = None):
+        """Trending / genre discovery, merged across the enabled sources."""
+        try:
+            o = options or {}
+            source_id = (o.get("source") or "").strip()
+            genre = (o.get("genre") or "").strip() or None
+            sort = o.get("sort") or "Trending"
+            page = max(1, int(o.get("page", 1) or 1))
+            settings = load_settings()
+
+            extra = {}
+            if o.get("status") and o["status"] != "Any":
+                extra["status"] = o["status"]
+
+            if source_id in ("", "all"):
+                results = browse_all(
+                    sort=sort, genre=genre, page=page, limit=12,
+                    interleave=bool(settings.get("interleave_browse", True)),
+                    **extra)
+            else:
+                source = self._source(source_id)
+                if not getattr(source, "supports_browse", False):
+                    return {"ok": True, "results": [], "browse": True,
+                            "message": f"{source.name} cannot list trending titles"}
+                # a per-source genre id may differ from the shared label
+                results = source.browse(sort=sort, genre=genre, page=page,
+                                        limit=32, **extra)
+
+            results = features.apply_filters(results)
+            if settings.get("dedupe_results", True) and source_id in ("", "all"):
+                ranks = {row["id"]: row.get("rank", 100)
+                         for row in appconfig.describe()}
+                results = features.dedupe(results, ranks)
+
+            return {"ok": True, "results": results, "browse": True,
+                    "genre": genre, "sort": sort, "page": page}
+        except Exception as e:
+            logger.exception("Browse failed")
+            return {"ok": False, "error": str(e)}
+
+    def get_genres(self, source_id: str = None):
+        """Genres for one source, or the union across enabled sources."""
+        try:
+            if source_id and source_id != "all":
+                source = self._source(source_id)
+                return {"ok": True, "genres": source.genres() or []}
+            return {"ok": True, "genres": genres_all()}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "genres": []}
 
     def get_manga(self, url: str, source_id: str = None):
         try:

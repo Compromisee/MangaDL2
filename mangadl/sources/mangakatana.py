@@ -54,14 +54,32 @@ class MangakatanaSource(Source):
 
     supports_search = True
     supports_language = False
+    supports_browse = True
+    supports_genres = True
     search_sorts = ("Latest Updates", "New", "Popularity", "Alphabet")
+    browse_sorts = ("Trending", "Latest Updates", "New", "Alphabet")
 
     _SORTS = {
+        # the site has no separate trending feed; chapter count ("numc") is
+        # its own popularity ordering, which is what /manga?order=numc uses
+        "Trending": "numc",
+        "Popularity": "numc",
         "Latest Updates": "latest",
         "New": "new",
-        "Popularity": "numc",
         "Alphabet": "az",
     }
+
+    # Slugs used by /genre/<slug>; taken from the site's own genre menu.
+    GENRES = (
+        "4-koma", "action", "adult", "adventure", "artbook", "award-winning",
+        "comedy", "cooking", "doujinshi", "drama", "ecchi", "erotica",
+        "fantasy", "gender-bender", "gore", "harem", "historical", "horror",
+        "isekai", "josei", "manhua", "manhwa", "martial-arts", "mature",
+        "mecha", "medical", "musical", "mystery", "one-shot", "psychological",
+        "romance", "school-life", "sci-fi", "seinen", "shoujo", "shoujo-ai",
+        "shounen", "shounen-ai", "slice-of-life", "smut", "sports",
+        "supernatural", "tragedy", "webtoon", "yaoi", "yuri",
+    )
 
     def headers(self):
         h = super().headers()
@@ -100,10 +118,21 @@ class MangakatanaSource(Source):
             except Exception:
                 pass
 
+        return self._parse_listing(response, limit)
+
+    def _parse_listing(self, response, limit):
+        """Parse a grid of series cards (shared by search and browse)."""
         soup = BeautifulSoup(response.content, "html.parser")
         results, seen = [], set()
 
-        for item in soup.select("#book_list .item, .book_list .item, div.item"):
+        # #book_list is the real results grid. A bare "div.item" also matches
+        # sidebar/recommendation cards that appear BEFORE the grid in the
+        # markup, so it is only used when the grid is genuinely absent.
+        items = soup.select("#book_list .item") or soup.select(".book_list .item")
+        if not items:
+            items = soup.select("div.item")
+
+        for item in items:
             link = item.select_one('a[href*="/manga/"]')
             if not link or not link.get("href"):
                 continue
@@ -141,6 +170,49 @@ class MangakatanaSource(Source):
             if len(results) >= limit:
                 break
         return results
+
+    # ---------------------------------------------------------- browse
+
+    def genres(self) -> list:
+        return [{"id": slug, "name": slug.replace("-", " ").title()}
+                for slug in self.GENRES]
+
+    def browse(self, sort: str = "Trending", genre: str = None, page: int = 1,
+               limit: int = 32, status=None, **_):
+        """Trending / latest listings, optionally narrowed to one genre.
+
+        Two things worth knowing, both established against the live site:
+
+        * ``/manga/page/N`` returns a plain alphabetical dump and ignores
+          ``order`` completely. The ``?filter=1`` form is the one the site's
+          own browse page uses and returns its curated recent listing, so
+          that is what we request.
+        * Even on the filter form the ``order`` value does not visibly change
+          the result set, so the sort choice is passed through but treated as
+          advisory rather than guaranteed.
+        """
+        page = max(1, int(page or 1))
+        order = self._SORTS.get(sort, "numc")
+
+        if genre:
+            slug = str(genre).strip().lower().replace(" ", "-")
+            url = f"{SITE}/genre/{quote(slug)}"
+            if page > 1:
+                url += f"/page/{page}"
+            url += f"?filter=1&order={order}"
+        elif page > 1:
+            url = f"{SITE}/page/{page}?filter=1&order={order}"
+        else:
+            url = f"{SITE}/?filter=1&order={order}"
+        if status and status != "Any":
+            url += f"&status={quote(str(status).lower())}"
+
+        try:
+            response = self.fetch(url)
+        except ScrapeError as e:
+            logger.error("Mangakatana browse failed: %s", e)
+            return []
+        return self._parse_listing(response, limit)
 
     # ------------------------------------------------------------ info
 

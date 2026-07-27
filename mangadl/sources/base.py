@@ -286,6 +286,20 @@ class Source:
         """Return ``[{title, url, cover, source, ...}]``."""
         raise NotImplementedError
 
+    def browse(self, sort: str = None, genre: str = None, page: int = 1,
+               limit: int = 32, **filters) -> list:
+        """Discovery without a query: trending / popular / latest.
+
+        Sources that cannot do this leave ``supports_browse`` False; the
+        registry then falls back to an empty list for them rather than
+        failing the whole request.
+        """
+        raise NotImplementedError
+
+    def genres(self) -> list:
+        """Available genres as ``[{"id": ..., "name": ...}]``."""
+        return []
+
     def get_manga_info(self, manga_url: str) -> dict:
         """Return ``{url, title, cover, description, tags, status, authors}``."""
         raise NotImplementedError

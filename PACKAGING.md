@@ -24,8 +24,8 @@ unified entry point **[`launcher.py`](launcher.py)**.
   everything importable, so a lean venv means a smaller exe)
 
 ```bash
-git clone https://github.com/Yui007/mangadl_downloader.git
-cd mangadl_downloader
+git clone https://github.com/Compromisee/WeebDL.git
+cd WeebDL
 
 python -m venv .venv
 # Windows

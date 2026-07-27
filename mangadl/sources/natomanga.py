@@ -44,13 +44,34 @@ class NatomangaSource(Source):
 
     supports_search = True
     supports_language = False
+    supports_browse = True
+    supports_genres = True
     search_sorts = ("Best Match", "Latest Updates", "Popularity", "Newest")
+    browse_sorts = ("Trending", "Latest Updates", "Newest")
 
     _SORTS = {
         "Latest Updates": "latest",
         "Popularity": "topview",
         "Newest": "newest",
     }
+
+    # /manga-list/<slug> feeds the site's own discovery pages
+    _BROWSE_PATHS = {
+        "Trending": "hot-manga",
+        "Popularity": "hot-manga",
+        "Latest Updates": "latest-manga",
+        "Newest": "new-manga",
+    }
+
+    GENRES = (
+        "action", "adventure", "comedy", "cooking", "doujinshi", "drama",
+        "ecchi", "fantasy", "gender-bender", "harem", "historical", "horror",
+        "isekai", "josei", "manhua", "manhwa", "martial-arts", "mature",
+        "mecha", "medical", "mystery", "one-shot", "psychological", "romance",
+        "school-life", "sci-fi", "seinen", "shoujo", "shoujo-ai", "shounen",
+        "shounen-ai", "slice-of-life", "smut", "sports", "supernatural",
+        "tragedy", "webtoons", "yaoi", "yuri",
+    )
 
     def headers(self):
         h = super().headers()
@@ -123,6 +144,74 @@ class NatomangaSource(Source):
                 title, href, cover=cover,
                 authors=[author] if author else [],
                 latest=latest_el.get_text(strip=True) if latest_el else None,
+            ))
+            if len(results) >= limit:
+                break
+        return results
+
+    # ---------------------------------------------------------- browse
+
+    def genres(self) -> list:
+        return [{"id": slug, "name": slug.replace("-", " ").title()}
+                for slug in self.GENRES]
+
+    def browse(self, sort: str = "Trending", genre: str = None, page: int = 1,
+               limit: int = 32, **_):
+        page = max(1, int(page or 1))
+        if genre:
+            slug = str(genre).strip().lower().replace(" ", "-")
+            url = f"{SITE}/genre/{quote(slug)}"
+            params = {"page": page}
+            order = self._SORTS.get(sort)
+            if order:
+                params["type"] = order
+        else:
+            path = self._BROWSE_PATHS.get(sort, "hot-manga")
+            url = f"{SITE}/manga-list/{path}"
+            params = {"page": page}
+
+        try:
+            response = self.fetch(url, params=params)
+        except ScrapeError as e:
+            logger.error("Natomanga browse failed: %s", e)
+            return []
+        return self._parse_listing(response, limit)
+
+    def _parse_listing(self, response, limit):
+        """Parse a discovery grid. Shared by browse and genre listings."""
+        soup = BeautifulSoup(response.content, "html.parser")
+        results, seen = [], set()
+
+        blocks = (soup.select(".list-comic-item-wrap")
+                  or soup.select(".list-truyen-item-wrap")
+                  or soup.select(".story_item"))
+        for item in blocks:
+            link = item.select_one('a[href*="/manga/"]')
+            if not link or not link.get("href"):
+                continue          # the grid carries a header row with no link
+            href = urljoin(SITE, link["href"])
+            if re.search(r"/chapter-", href) or href in seen:
+                continue
+            seen.add(href)
+
+            title = (link.get("title") or link.get_text(strip=True) or "").strip()
+            if not title:
+                heading = item.select_one("h3 a, .story_name a")
+                title = heading.get_text(strip=True) if heading else ""
+            if not title:
+                continue
+
+            img = item.select_one("img")
+            cover = None
+            if img is not None:
+                cover = img.get("src") or img.get("data-src")
+                if cover:
+                    cover = urljoin(SITE, cover)
+
+            latest = item.select_one('a[href*="/chapter"]')
+            results.append(self._result(
+                title, href, cover=cover,
+                latest=latest.get_text(strip=True) if latest else None,
             ))
             if len(results) >= limit:
                 break

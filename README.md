@@ -22,6 +22,9 @@
 
 - **Four sources, one tool.** MangaDex (official JSON API), Mangakatana, Natomanga and Weeb Central. The right source is detected from the URL you paste — no flags required. See [Sources](#sources).
 - **Search everything at once.** One query fans out across every site in parallel and merges the results, each tagged with where it came from.
+- **Press Search with an empty box** and you get trending titles instead of nothing — the app opens on a discovery feed rather than a blank page.
+- **Browse by genre.** 99 genres merged across sites, with quick-pick chips, genre-filtered search and per-genre trending.
+- **Robust by design.** A circuit breaker skips sites that are down instead of waiting for timeouts, retries use exponential backoff, and discovery listings are cached. One dead site never breaks a search.
 - **One command, one CBZ.** By default the CLI downloads *every* chapter and packs them into a single `.cbz` — no flags needed.
 - **Flexible bundling.** Choose one file for everything, one file per chapter, or one file per every N chapters (`--per 10`).
 - **Organized output.** Everything is sorted into a per-manga folder inside your output directory. Raw page images live in a `raw/` subfolder and are cleaned up automatically after packaging (unless you keep them).
@@ -248,6 +251,57 @@ mangadl gui        # or: python gui.py
 
 ---
 
+## Discovery: trending and genres
+
+Pressing **Search with an empty box is not an error** — it is how you browse.
+Every interface opens on a trending feed and lets you narrow it by genre.
+
+```bash
+mangadl search                     # no query -> trending across all sources
+mangadl trending                   # the same thing, explicitly
+mangadl trending horror            # top horror right now
+mangadl genres                     # every genre, and which sites offer it
+mangadl search "blue" -g Romance   # genre-filtered search
+mangadl trending -s mangadex       # trending on one source only
+```
+
+In the GUI the genre dropdown and quick-pick chips sit in the filter row, and
+`Load more` pages through the feed. The TUI has a genre dropdown beside the
+source picker (`F1`).
+
+Genres are merged across whichever sources are currently enabled, matched
+case-insensitively, and ordered by how widely each one is supported — so
+`Action` (on all four sites) sorts above a genre only one site offers.
+
+Sorting differs slightly per site because not every site exposes the same
+concept of "trending": MangaDex sorts by follower count, Weeb Central by
+popularity, Natomanga uses its hot-manga feed, and Mangakatana's listing
+ignores sort parameters entirely, so the choice is passed through as advisory.
+
+---
+
+## Reliability
+
+Third-party sites go down, rate-limit and change their markup. MangaDL assumes
+this rather than hoping otherwise:
+
+- **Circuit breaker per source** — after repeated failures a site is skipped
+  instantly instead of costing a full timeout on every request. It is probed
+  again after a cooldown that doubles with each further trip.
+- **Bounded retries** with exponential backoff and jitter, plus a `retry_if`
+  hook so hopeless failures (404s) are not retried at all.
+- **Caching** of discovery listings (5 min) and genre lists (1 hr), which makes
+  repeat browsing effectively instant and spares the sites identical requests.
+- **Partial results always win** — search, browse and genre listings keep
+  whatever succeeded and log the rest.
+- **Rate-limit headers** (`Retry-After`, `X-RateLimit-Retry-After`) are honoured.
+
+```bash
+mangadl health      # breaker state per source, plus cache hit rates
+```
+
+---
+
 ## Source ranking and exclusion
 
 Sources are ranked, and the ranking decides which copy of a series wins when the
@@ -470,6 +524,11 @@ mangadl/
 │   ├── mangakatana.py  # HTML + obfuscated JS page arrays
 │   ├── natomanga.py    # HTML + JSON chapter endpoint
 │   └── weebcentral.py  # the original scraper
+├── robust.py           # retries, circuit breaker, TTL caches, safe calling
+├── config.py           # per-source ranking, exclusion and overrides
+├── passlock.py         # optional app passcode
+├── tracking.py         # read progress, watchlist, notes, disk maintenance
+├── features.py         # history, queue, stats, filters, export, snapshots
 ├── packager.py         # CBZ / PDF / EPUB creation
 ├── flaresolverr.py     # optional Cloudflare bypass client
 ├── utils.py            # chapter parsing, natural sort, sanitising
@@ -501,7 +560,7 @@ demo terminal). To publish it:
 
 1. GitHub repo → **Settings → Pages**
 2. Source: **Deploy from a branch**, branch `main`, folder **`/docs`**
-3. Your page appears at `https://<user>.github.io/mangadl_downloader/`
+3. Your page appears at `https://<user>.github.io/WeebDL/`
 
 ## Data files
 

@@ -25,9 +25,60 @@ class WeebCentralSource(Source):
     domains = ("weebcentral.com",)
 
     supports_search = True
+    supports_browse = True
+    supports_genres = True
     needs_flaresolverr = True
     search_sorts = ("Best Match", "Alphabet", "Popularity", "Subscribers",
                     "Recently Added", "Latest Updates")
+    browse_sorts = ("Trending", "Popularity", "Subscribers",
+                    "Recently Added", "Latest Updates", "Alphabet")
+
+    # WeebCentral exposes these as `included_tag` values on its search route
+    GENRES = (
+        "Action", "Adventure", "Comedy", "Drama", "Ecchi", "Fantasy",
+        "Harem", "Historical", "Horror", "Isekai", "Josei", "Martial Arts",
+        "Mature", "Mecha", "Mystery", "Psychological", "Romance",
+        "School Life", "Sci-fi", "Seinen", "Shoujo", "Shounen",
+        "Slice of Life", "Sports", "Supernatural", "Tragedy",
+    )
+
+    # ---------------------------------------------------------- browse
+
+    def genres(self) -> list:
+        return [{"id": name, "name": name} for name in self.GENRES]
+
+    def browse(self, sort: str = "Trending", genre: str = None, page: int = 1,
+               limit: int = 32, status=None, series_type=None, **_):
+        """Query-less discovery.
+
+        WeebCentral has no dedicated trending feed, but its search route
+        accepts an empty ``text`` and a sort, which is exactly what its own
+        browse page issues. "Trending" maps to Popularity descending.
+        """
+        page = max(1, int(page or 1))
+        limit = max(1, min(100, limit))
+        api_sort = "Popularity" if sort == "Trending" else sort
+        if api_sort not in self.search_sorts:
+            api_sort = "Popularity"
+
+        url = (
+            f"{SITE}/search/data?limit={limit}&offset={(page - 1) * limit}"
+            f"&text=&sort={quote(api_sort)}&order=Descending&official=Any"
+            f"&display_mode=Full%20Display"
+        )
+        if genre:
+            url += f"&included_tag={quote(str(genre))}"
+        if status and status != "Any":
+            url += f"&included_status={quote(str(status))}"
+        if series_type and series_type != "Any":
+            url += f"&included_type={quote(str(series_type))}"
+
+        try:
+            response = self.fetch(url)
+        except ScrapeError as e:
+            logger.error("WeebCentral browse failed: %s", e)
+            return []
+        return self._parse_articles(response, limit)
 
     # ---------------------------------------------------------- search
 
@@ -55,6 +106,10 @@ class WeebCentralSource(Source):
             response = self.fetch(url)
         except ScrapeError:
             return []
+        return self._parse_articles(response, limit)
+
+    def _parse_articles(self, response, limit=32):
+        """Parse the article grid shared by search and browse."""
         soup = BeautifulSoup(response.content, "html.parser")
 
         results, seen = [], set()
@@ -86,6 +141,8 @@ class WeebCentralSource(Source):
                 cover=urljoin(SITE, img["src"])
                 if img is not None and img.get("src") else None,
             ))
+            if len(results) >= limit:
+                break
         return results
 
     # ------------------------------------------------------------ info
