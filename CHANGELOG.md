@@ -130,9 +130,27 @@ a desktop GUI sharing the same engine.
   instead of being rejected
 - Page ordering sorts numerically, so page 10 no longer lands before page 2
 
+### Interface
+
+- **Custom dropdowns** throughout the GUI. Native `<select>` popups are drawn
+  by the OS and cannot be themed, so on a dark theme they appeared as bright
+  system menus ignoring the accent colour. They are now themed listboxes with
+  a type-to-filter box for long lists (the genre list has ~99 entries), full
+  keyboard navigation, typeahead and ARIA roles.
+- The real `<select>` stays in the DOM as the source of truth, so every
+  existing `sel.value` / `innerHTML` / `appendChild` call site keeps working
+  and real `change` events still fire.
+- Fixed: closed dropdown panels were painted over the page because
+  `display:flex` in author CSS overrides the user-agent `[hidden]` rule.
+- Fixed: the GUI hero still read "WeebCentral Downloader"; it was split across
+  `<span>`s so the rename missed it.
+
 ### Testing
 
-- 157 offline tests plus 14 live-site tests behind `MANGADL_NETWORK_TESTS=1`
+- 182 offline tests plus 14 live-site tests behind `MANGADL_NETWORK_TESTS=1`
+- Dropdown behaviour is covered by 27 Playwright tests driving real headless
+  Chromium, since DOM, pointer and keyboard behaviour cannot be asserted from
+  Python alone. They skip automatically when Playwright is unavailable.
 
 ### Not included
 

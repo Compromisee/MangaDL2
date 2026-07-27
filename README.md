@@ -451,8 +451,16 @@ from the base class. The CLI, GUI and TUI discover it automatically.
 
 ```bash
 pip install -e ".[dev]"
-python -m pytest tests/                        # offline unit tests
+python -m pytest tests/                         # offline unit tests
 MANGADL_NETWORK_TESTS=1 python -m pytest tests/ # also hit the live sites
+```
+
+The GUI dropdown component is covered by Playwright tests that drive real
+headless Chromium. They skip automatically if it is not installed:
+
+```bash
+pip install playwright && python -m playwright install chromium
+python -m pytest tests/test_dropdown.py
 ```
 
 ## Python API
@@ -534,7 +542,7 @@ mangadl/
 ├── utils.py            # chapter parsing, natural sort, sanitising
 └── gui/
     ├── __init__.py     # pywebview app + JS API bridge
-    └── web/            # index.html, style.css, app.js (Material Symbols)
+    └── web/            # index.html, style.css, app.js, dropdown.js
 ```
 
 ## Standalone executable

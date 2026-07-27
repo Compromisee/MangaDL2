@@ -258,6 +258,32 @@ A complete feature reference for MangaDL.
 204. `mangadl health` shows breaker state and cache hit rates
 205. Health diagnostics exposed to the GUI
 
+## Custom dropdowns
+
+206. Themed dropdowns replacing unstyleable native select popups
+207. Native `<select>` kept in the DOM as the source of truth
+208. Existing code (`sel.value`, `innerHTML`, `appendChild`) keeps working
+209. `value` setter wrapped so programmatic assignment repaints the trigger
+210. MutationObserver picks up rebuilt option lists automatically
+211. Real `change` and `input` events dispatched on selection
+212. No event fired when reselecting the current value
+213. Panel portalled to `<body>`, so no ancestor can clip it
+214. Flips above the trigger when there is no room below
+215. Repositions on scroll and resize
+216. Type-to-filter box appears automatically past eight options
+217. "No matches" state when a filter excludes everything
+218. Full keyboard support: arrows, Home, End, Enter, Escape, Tab
+219. Typeahead on the closed trigger, like a native select
+220. Only one panel open at a time
+221. Closes on outside click
+222. ARIA combobox/listbox roles with active-descendant tracking
+223. Checkmark and accent colour on the selected row
+224. Follows every theme and accent via CSS custom properties
+225. Honours `prefers-reduced-motion`
+226. Disabled selects reflected on the trigger
+227. Enhancement failures are caught so styling can never break the page
+228. Opt out per element with `data-no-custom="true"`
+
 ## Core engine
 
 - Download any series from a supported site by URL

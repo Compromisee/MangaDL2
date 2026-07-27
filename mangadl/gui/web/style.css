@@ -1346,3 +1346,153 @@ body.locked .bm-card img { filter: blur(16px); }
   backdrop-filter: blur(6px);
   -webkit-backdrop-filter: blur(6px);
 }
+
+/* ==================================================== custom dropdowns */
+
+/* The real <select> stays in the DOM as the source of truth, but is taken
+   out of the visual and hit-test layer. Not display:none, so form semantics
+   and .value access keep working exactly as before. */
+.dd-native {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  pointer-events: none;
+  opacity: 0;
+}
+
+.dd { position: relative; display: inline-flex; }
+
+.dd-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 240px;
+  padding: 6px 8px 6px 10px;
+  border: none;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  outline: none;
+  transition: background var(--dur), color var(--dur);
+}
+.dd-btn:hover { background: color-mix(in srgb, var(--text) 8%, transparent); }
+.dd-btn:focus-visible { box-shadow: 0 0 0 2px var(--accent); }
+.dd-btn[disabled] { opacity: .5; cursor: not-allowed; }
+
+.dd-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dd-placeholder { color: var(--text-2); font-weight: 500; }
+
+.dd-caret {
+  font-size: 18px;
+  color: var(--text-2);
+  transition: transform var(--dur) cubic-bezier(.2,.7,.3,1.3);
+}
+.dd-btn[aria-expanded="true"] .dd-caret { transform: rotate(180deg); color: var(--accent); }
+
+/* Panel is portalled to <body>, so it is positioned in the viewport and can
+   never be clipped by a scrolling ancestor. */
+/* `display:flex` below is author-level and would beat the UA stylesheet's
+   `[hidden] { display: none }`, leaving every panel rendered at once.
+   This rule must come first and stay !important. */
+.dd-panel[hidden] { display: none !important; }
+
+.dd-panel {
+  position: fixed;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  min-width: 170px;
+  max-width: 320px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  outline: none;
+}
+.dd-panel.dd-open { animation: ddIn .14s cubic-bezier(.2,.7,.3,1.1); transform-origin: top center; }
+.dd-panel.dd-open.dd-up { transform-origin: bottom center; }
+
+@keyframes ddIn {
+  from { opacity: 0; transform: translateY(-4px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+.dd-up.dd-open { animation-name: ddInUp; }
+@keyframes ddInUp {
+  from { opacity: 0; transform: translateY(4px) scale(.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.dd-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  padding: 6px 9px;
+  border-radius: 9px;
+  background: var(--surface-2);
+}
+.dd-filter .material-symbols-rounded { font-size: 17px; color: var(--text-2); }
+.dd-filter-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+}
+.dd-filter-input::placeholder { color: var(--text-2); }
+
+.dd-list { overflow-y: auto; overscroll-behavior: contain; }
+
+.dd-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border-radius: 9px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+.dd-item .dd-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dd-item.dd-active { background: color-mix(in srgb, var(--text) 9%, transparent); }
+.dd-item.dd-selected { color: var(--accent); font-weight: 600; }
+.dd-item.dd-selected.dd-active { background: var(--accent-soft); }
+.dd-item-disabled { opacity: .4; cursor: not-allowed; }
+
+.dd-tick { font-size: 16px; width: 16px; flex: none; opacity: 0; }
+.dd-item.dd-selected .dd-tick { opacity: 1; }
+
+.dd-empty { padding: 12px 10px; text-align: center; font-size: 12.5px; color: var(--text-2); }
+
+/* Scrollbar inside the panel */
+.dd-list::-webkit-scrollbar { width: 8px; }
+.dd-list::-webkit-scrollbar-thumb {
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--text) 18%, transparent);
+}
+.dd-list::-webkit-scrollbar-track { background: transparent; }
+
+@media (prefers-reduced-motion: reduce) {
+  .dd-panel.dd-open { animation: none; }
+  .dd-caret { transition: none; }
+}
