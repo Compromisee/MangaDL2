@@ -24,7 +24,8 @@ unified entry point **[`launcher.py`](launcher.py)**.
   everything importable, so a lean venv means a smaller exe)
 
 ```bash
-git clone git clone https://github.com/Compromisee/WeebDL.git && cd WeebDL
+git clone https://github.com/Yui007/weebcentral_downloader.git
+cd weebcentral_downloader
 
 python -m venv .venv
 # Windows
@@ -51,7 +52,7 @@ Fast startup, easy to debug, updates only changed files:
 pyinstaller WeebCentral.spec
 ```
 
-Output: `dist/WeebCentral/` — Need entire folder, The executable is
+Output: `dist/WeebCentral/` — ship the whole folder. The executable is
 `dist/WeebCentral/WeebCentral(.exe)`.
 
 ### One-file build
@@ -81,6 +82,8 @@ pyinstaller WeebCentral.spec --clean --noconfirm
 - pywebview's platform backends as hidden imports (WinForms/EdgeChromium on
   Windows, Cocoa on macOS, GTK/Qt on Linux — only the matching one loads)
 - Rotating-log handler (`logging.handlers`)
+
+Excluded to keep size down: tkinter, numpy/matplotlib/etc. (unused).
 
 Typical sizes: roughly 80–140 MB one-folder, 40–80 MB one-file (varies by OS and installed backends).
 

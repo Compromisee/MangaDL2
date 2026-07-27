@@ -12,6 +12,7 @@ import subprocess
 import sys
 import threading
 import time
+import traceback
 
 from ..downloader import DownloadEngine, DownloadOptions
 from ..scraper import WeebCentralScraper
@@ -59,6 +60,15 @@ def save_settings(settings: dict) -> None:
     os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
     with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
         json.dump(settings, f, indent=2)
+
+
+def _dialog_types():
+    """Dialog type constants across pywebview versions (6.x moved them)."""
+    import webview
+    fd = getattr(webview, "FileDialog", None)
+    if fd is not None:  # pywebview >= 5.1 style
+        return fd.FOLDER, fd.OPEN, fd.SAVE
+    return webview.FOLDER_DIALOG, webview.OPEN_DIALOG, webview.SAVE_DIALOG
 
 
 class Api:
@@ -177,9 +187,9 @@ class Api:
     def export_log(self):
         """Save-as dialog, then export the combined log there."""
         try:
-            import webview
+            _, _, save_t = _dialog_types()
             dest = self.window.create_file_dialog(
-                webview.SAVE_DIALOG,
+                save_t,
                 save_filename=f"weebcentral-{time.strftime('%Y%m%d-%H%M%S')}.log",
             )
             if not dest:
@@ -237,8 +247,8 @@ class Api:
 
     def choose_folder(self):
         try:
-            import webview
-            result = self.window.create_file_dialog(webview.FOLDER_DIALOG)
+            folder_t, _, _ = _dialog_types()
+            result = self.window.create_file_dialog(folder_t)
             if result:
                 return result[0] if isinstance(result, (list, tuple)) else result
         except Exception as e:
@@ -248,8 +258,8 @@ class Api:
     def choose_file(self):
         """Pick a file (used for the reader executable)."""
         try:
-            import webview
-            result = self.window.create_file_dialog(webview.OPEN_DIALOG)
+            _, open_t, _ = _dialog_types()
+            result = self.window.create_file_dialog(open_t)
             if result:
                 return result[0] if isinstance(result, (list, tuple)) else result
         except Exception as e:
@@ -351,33 +361,65 @@ def _web_asset_path():
     return os.path.join(base, "index.html")
 
 
+def _show_fatal(message: str):
+    """Last-resort error reporting: console + native message box on Windows."""
+    print("\n[WeebCentral] GUI failed to start:\n" + message, file=sys.stderr)
+    print(f"\nLog file: {wclogs.LOG_FILE}\nCrash dumps: {wclogs.CRASH_FILE}",
+          file=sys.stderr)
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            ctypes.windll.user32.MessageBoxW(
+                None,
+                message + f"\n\nDetails were written to:\n{wclogs.LOG_FILE}",
+                "WeebCentral Downloader - startup error",
+                0x10,  # MB_ICONERROR
+            )
+        except Exception:
+            pass
+
+
 def run_gui():
     wclogs.setup_logging()
     wclogs.quiet_pywebview()
+    wclogs.enable_crash_dumps()
+
     try:
         import webview
     except ImportError:
-        print("pywebview is not installed. Run: pip install pywebview")
+        _show_fatal("pywebview is not installed. Run: pip install pywebview")
+        return 1
+
+    html_path = _web_asset_path()
+    if not os.path.isfile(html_path):
+        _show_fatal(f"GUI assets not found at:\n{html_path}\n\n"
+                    "If this is a packaged exe, rebuild it with the provided "
+                    "WeebCentral.spec so web assets are bundled.")
         return 1
 
     api = Api()
-    html_path = _web_asset_path()
-    window = webview.create_window(
-        "WeebCentral Downloader",
-        html_path,
-        js_api=api,
-        width=1180,
-        height=780,
-        min_size=(920, 620),
-        background_color="#16161e",
-    )
+    try:
+        window = webview.create_window(
+            "WeebCentral Downloader",
+            html_path,
+            js_api=api,
+            width=1180,
+            height=780,
+            min_size=(920, 620),
+            background_color="#16161e",
+        )
+    except Exception:
+        logger.exception("create_window failed")
+        _show_fatal("Could not create the application window:\n"
+                    + traceback.format_exc(limit=3))
+        return 1
     api.window = window
 
     def _on_loaded():
         # Remove the .NET bridge object pywebview injects on Windows.
         # We never use window.native, and Edge's accessibility/autofill
-        # layer walks it recursively, flooding the console with
-        # "Error while processing window.native..." errors.
+        # layer walks it recursively, which can flood the console and, in
+        # the worst case, overflow the native stack and crash the process.
         try:
             window.evaluate_js(
                 "try { delete window.native; window.native = undefined; } catch(e) {}"
@@ -385,6 +427,39 @@ def run_gui():
         except Exception:
             pass
 
-    window.events.loaded += _on_loaded
-    webview.start(debug=False)
-    return 0
+    try:
+        window.events.loaded += _on_loaded
+    except Exception:
+        pass
+
+    # Try the default backend first; on failure retry with alternatives so a
+    # broken/outdated runtime (e.g. WebView2) doesn't kill the app outright.
+    if sys.platform == "win32":
+        backends = [None, "edgechromium", "mshtml"]
+    elif sys.platform == "darwin":
+        backends = [None, "cocoa"]
+    else:
+        backends = [None, "gtk", "qt"]
+
+    last_error = None
+    for backend in backends:
+        try:
+            if backend is None:
+                webview.start(debug=False)
+            else:
+                logger.warning("Retrying GUI with '%s' backend", backend)
+                webview.start(debug=False, gui=backend)
+            return 0
+        except Exception as e:
+            last_error = e
+            logger.exception("webview.start failed (backend=%s)", backend)
+
+    _show_fatal(
+        "The embedded browser engine could not start.\n\n"
+        f"Last error: {last_error}\n\n"
+        "On Windows this usually means the Microsoft Edge WebView2 Runtime "
+        "is missing or outdated - install it from:\n"
+        "https://developer.microsoft.com/microsoft-edge/webview2/\n"
+        "then restart the app."
+    )
+    return 1

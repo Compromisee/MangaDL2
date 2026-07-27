@@ -4,6 +4,8 @@
 
 **Download manga from [weebcentral.com](https://weebcentral.com) as CBZ, PDF or EPUB — from a modern CLI or a minimalist desktop GUI.**
 
+[Project landing page](https://yui007.github.io/weebcentral_downloader/) (GitHub Pages, served from `docs/`)
+
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![pywebview](https://img.shields.io/badge/pywebview-GUI-2962FF?style=for-the-badge)](https://pywebview.flowrl.com)
 [![License](https://img.shields.io/badge/License-MIT-00875A?style=for-the-badge)](LICENSE)
@@ -270,6 +272,14 @@ You only need this if downloads start failing with Cloudflare errors.
 
 ---
 
+## Google Colab
+
+Run in the browser with no local setup — see [`colab/WeebCentral_Downloader.ipynb`](colab/WeebCentral_Downloader.ipynb).
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Yui007/weebcentral_downloader/blob/main/colab/WeebCentral_Downloader.ipynb)
+
+---
+
 ## Project layout
 
 ```
@@ -302,6 +312,16 @@ Double-clicking the exe opens the GUI; `WeebCentral tui`, `WeebCentral <url>`,
 `WeebCentral search ...` and `WeebCentral resume` all work from a terminal.
 Full per-platform instructions: **[PACKAGING.md](PACKAGING.md)**.
 
+## Landing page (GitHub Pages)
+
+`docs/index.html` is a ready-made landing page with the same ambient design as
+the app (gradient orbs, dot matrix, feature grid, GUI/TUI screenshot tabs, CLI
+demo terminal). To publish it:
+
+1. GitHub repo → **Settings → Pages**
+2. Source: **Deploy from a branch**, branch `main`, folder **`/docs`**
+3. Your page appears at `https://<user>.github.io/weebcentral_downloader/`
+
 ## Data files
 
 Everything lives in `~/.weebcentral/`:
@@ -325,6 +345,7 @@ and instantly see what you're missing.
 | `429 Too Many Requests` | Raise `--delay`, lower `--workers`. The engine also backs off automatically. |
 | Cloudflare "Just a moment..." | Start FlareSolverr (see above). |
 | GUI window doesn't open on Linux | Install a webview backend: `sudo apt install gir1.2-webkit2-4.1` or `pip install pywebview[qt]`. |
+| GUI crashes or closes immediately on open | Since v2.6.3 the app retries alternative browser backends and shows the real error instead of dying. Check `~/.weebcentral/logs/weebcentral.log` and `crash.log`. On Windows, install/update the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) and make sure `pip install -U pywebview pythonnet` are current. |
 | Console spam: `Error while processing window.native...` / `maximum recursion depth exceeded` (Windows) | Harmless pywebview/WebView2 bridge noise — fixed in v2.6.1 (the `window.native` bridge is removed at load and the messages are filtered from logs). Seeing `E_NOINTERFACE` / `ICoreWebView2Controller4` too? Your **WebView2 Runtime is outdated** — update it from Microsoft or via Windows Update. |
 | Interrupted download | Re-run the same command — completed chapters are skipped via the verified `.checkpoint` and already-downloaded images are not re-fetched. |
 | Crash / power outage | Launch the GUI (a Resume banner appears) or run `weebcentral resume` — the job journal restarts the download where it left off. |
@@ -340,8 +361,3 @@ Support the official releases of the manga you enjoy.
 ## License
 
 [MIT](LICENSE)
-
----
-
-
-Based on: https://github.com/Yui007/weebcentral_downloader

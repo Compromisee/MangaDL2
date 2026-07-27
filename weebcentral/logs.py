@@ -13,9 +13,29 @@ from logging.handlers import RotatingFileHandler
 BASE_DIR = os.path.join(os.path.expanduser("~"), ".weebcentral")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "weebcentral.log")
+CRASH_FILE = os.path.join(LOG_DIR, "crash.log")
 JOURNAL_PATH = os.path.join(BASE_DIR, "job.json")
 
 _configured = False
+_crash_fh = None
+
+
+def enable_crash_dumps():
+    """Write a Python traceback of every thread to crash.log on hard crashes
+    (segfaults, stack overflow, fatal aborts) via faulthandler."""
+    global _crash_fh
+    if _crash_fh is not None:
+        return CRASH_FILE
+    try:
+        import faulthandler
+        os.makedirs(LOG_DIR, exist_ok=True)
+        _crash_fh = open(CRASH_FILE, "a", encoding="utf-8", errors="replace")
+        _crash_fh.write(f"\n--- session start {__import__('time').strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        _crash_fh.flush()
+        faulthandler.enable(file=_crash_fh, all_threads=True)
+    except Exception:
+        _crash_fh = None
+    return CRASH_FILE
 
 
 class _BridgeNoiseFilter(logging.Filter):

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "weebcentral-downloader"
-version = "2.6.2"
+version = "2.6.3"
 description = "Download manga from weebcentral.com as CBZ, PDF or EPUB - CLI and GUI"
 readme = "README.md"
 license = { file = "LICENSE" }

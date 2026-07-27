@@ -2,6 +2,27 @@
 
 All notable changes to this fork, newest first.
 
+## v2.6.3 — GUI crash-on-open fixes
+
+### Fixed
+- **Crash on GUI startup**: `webview.start()` failures no longer kill the
+  process. The app now tries the default backend, then falls back to
+  alternatives (Windows: EdgeChromium → MSHTML; Linux: GTK → Qt), and if all
+  fail it shows a clear error (native message box on Windows) pointing at
+  the WebView2 Runtime installer instead of crashing silently
+- pywebview version compatibility: dialog constants (`FOLDER_DIALOG` etc.)
+  were removed in pywebview 6.x — the app now resolves `webview.FileDialog`
+  first and falls back to the legacy constants, fixing `AttributeError`
+  crashes when choosing folders/files or exporting logs
+- Missing GUI assets (e.g. a mis-built exe) now produce a helpful error
+  with the expected path instead of a blank window/crash
+
+### Added
+- **faulthandler crash dumps**: hard crashes (segfault/stack overflow, e.g.
+  the WebView2 accessibility recursion) write Python tracebacks of all
+  threads to `~/.weebcentral/logs/crash.log` for diagnosis
+- Full tracebacks of startup failures written to the rotating log
+
 ## v2.6.2 — Direct-file launch fix
 
 ### Fixed
