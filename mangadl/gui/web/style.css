@@ -1,7 +1,14 @@
 /* MangaDL - pastel dark UI with ambient gradients */
 
 :root {
-  --radius: 16px;
+  /* Radius scale. Corner rounding had drifted to 13 different ad-hoc values
+     (6, 7, 8, 9, 10, 12, 13, 14px...), which read as inconsistent across
+     settings. Everything now snaps to these four steps. */
+  --radius-sm: 8px;    /* chips, small inputs, list rows */
+  --radius-md: 12px;   /* buttons, fields, tiles */
+  --radius-lg: 16px;   /* cards, panels */
+  --radius-xl: 20px;   /* modals, overlays */
+  --radius: var(--radius-lg);
   --dur: .18s;
 }
 
@@ -166,7 +173,7 @@ body {
   border: none;
   background: transparent;
   color: var(--text-2);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   display: flex;
   flex-direction: column;
@@ -275,7 +282,7 @@ body {
   font-size: 13px;
   cursor: pointer;
   padding: 5px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   transition: background var(--dur);
 }
 .text-btn:hover { background: var(--accent-soft); }
@@ -315,7 +322,7 @@ body {
 .hero-icon {
   width: 74px; height: 74px;
   margin: 0 auto 22px;
-  border-radius: 24px;
+  border-radius: var(--radius-xl);
   background: linear-gradient(135deg,
     color-mix(in srgb, var(--accent) 25%, var(--surface)),
     color-mix(in srgb, var(--accent-2) 18%, var(--surface)));
@@ -601,7 +608,7 @@ body {
 .segmented {
   display: inline-flex;
   background: var(--surface-2);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 3px;
   gap: 2px;
 }
@@ -613,7 +620,7 @@ body {
   font-weight: 600;
   font-size: 13px;
   padding: 7px 16px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   cursor: pointer;
   transition: background var(--dur), color var(--dur);
 }
@@ -626,7 +633,7 @@ body {
   width: 76px;
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -639,7 +646,7 @@ body {
   align-items: center;
   gap: 8px;
   background: var(--surface-2);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 4px 6px 4px 14px;
 }
 .path-row .material-symbols-rounded { color: var(--text-2); font-size: 20px; }
@@ -662,7 +669,7 @@ body {
   align-items: center;
   gap: 10px;
   background: var(--surface-2);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 4px 6px 4px 14px;
   margin-bottom: 10px;
 }
@@ -687,7 +694,7 @@ body {
   max-height: 340px;
   overflow-y: auto;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
 }
 
 .chapter-item {
@@ -716,7 +723,7 @@ body {
 .chapter-item .cbx {
   width: 18px; height: 18px;
   border: 2px solid var(--text-2);
-  border-radius: 5px;
+  border-radius: var(--radius-sm);
   flex-shrink: 0;
   display: flex;
   align-items: center;
@@ -835,7 +842,7 @@ body {
   align-items: center;
   gap: 10px;
   padding: 6px 8px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-size: 13px;
   transition: background var(--dur);
 }
@@ -850,7 +857,7 @@ body {
 
 .lib-cover {
   width: 52px; height: 72px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   object-fit: cover;
   background: var(--surface-2);
   flex-shrink: 0;
@@ -874,7 +881,7 @@ body {
 .naming-hint code {
   background: var(--surface-2);
   padding: 1px 7px;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-family: ui-monospace, monospace;
   font-size: 11.5px;
   color: var(--accent);
@@ -898,7 +905,7 @@ body {
   border: 1px solid var(--border);
   background: var(--surface-2);
   color: var(--text-2);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   padding: 8px 10px;
   font: inherit; font-size: 11.5px; font-weight: 600;
   cursor: pointer;
@@ -906,7 +913,7 @@ body {
 }
 .theme-swatch:hover { transform: translateY(-2px); }
 .theme-swatch.active { border-color: var(--accent); color: var(--accent); }
-.theme-swatch .sw { width: 34px; height: 24px; border-radius: 7px; display: block; }
+.theme-swatch .sw { width: 34px; height: 24px; border-radius: var(--radius-sm); display: block; }
 
 .accent-grid { display: flex; gap: 10px; }
 .accent-dot {
@@ -925,7 +932,7 @@ body {
   text-align: center;
   padding: 8px 4px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--text);
   font: inherit;
@@ -979,7 +986,7 @@ body {
   gap: 14px;
   background: var(--surface);
   border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   padding: 14px 18px;
   box-shadow: var(--shadow), 0 0 24px color-mix(in srgb, var(--accent) 22%, transparent);
   max-width: 480px;
@@ -1154,7 +1161,7 @@ body {
 .lock-box {
   width: 340px;
   padding: 30px 28px 24px;
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
   text-align: center;
   background: var(--surface-1, #1a1a24);
   border: 1px solid rgba(255, 255, 255, .07);
@@ -1183,7 +1190,7 @@ body {
   font-size: 14px;
   text-align: center;
   letter-spacing: 1px;
-  border-radius: 11px;
+  border-radius: var(--radius-md);
   color: var(--text-1, #e6e9f0);
   background: var(--surface-2, #22222e);
   border: 1px solid rgba(255, 255, 255, .09);
@@ -1216,7 +1223,7 @@ body.locked .bm-card img { filter: blur(16px); }
   gap: 11px;
   margin-bottom: 7px;
   padding: 11px 13px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--surface-2, #22222e);
   border: 1px solid rgba(255, 255, 255, .06);
   cursor: grab;
@@ -1241,7 +1248,7 @@ body.locked .bm-card img { filter: blur(16px); }
 .source-rank .rank-num {
   width: 22px; height: 22px; flex: none;
   display: grid; place-items: center;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   font-size: 11.5px; font-weight: 700;
   background: rgba(255, 255, 255, .07);
   color: var(--text-2, #9aa2b4);
@@ -1278,7 +1285,7 @@ body.locked .bm-card img { filter: blur(16px); }
 
 .stat-tile {
   padding: 13px;
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--surface-2, #22222e);
   border: 1px solid rgba(255, 255, 255, .06);
 }
@@ -1342,7 +1349,7 @@ body.locked .bm-card img { filter: blur(16px); }
   gap: 7px;
   margin: 8px 0;
   padding: 9px 13px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-size: 12.5px;
   background: rgba(247, 118, 142, .09);
   border: 1px solid rgba(247, 118, 142, .22);
@@ -1392,7 +1399,7 @@ body.locked .bm-card img { filter: blur(16px); }
   max-width: 240px;
   padding: 6px 8px 6px 10px;
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: transparent;
   color: var(--text);
   font: inherit;
@@ -1436,7 +1443,7 @@ body.locked .bm-card img { filter: blur(16px); }
   max-width: 320px;
   padding: 6px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow);
   overflow: hidden;
@@ -1461,7 +1468,7 @@ body.locked .bm-card img { filter: blur(16px); }
   gap: 6px;
   margin-bottom: 4px;
   padding: 6px 9px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: var(--surface-2);
 }
 .dd-filter .material-symbols-rounded { font-size: 17px; color: var(--text-2); }
@@ -1484,7 +1491,7 @@ body.locked .bm-card img { filter: blur(16px); }
   align-items: center;
   gap: 7px;
   padding: 8px 10px;
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   font-size: 13px;
   color: var(--text);
   cursor: pointer;
@@ -1504,7 +1511,7 @@ body.locked .bm-card img { filter: blur(16px); }
 /* Scrollbar inside the panel */
 .dd-list::-webkit-scrollbar { width: 8px; }
 .dd-list::-webkit-scrollbar-thumb {
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--text) 18%, transparent);
 }
 .dd-list::-webkit-scrollbar-track { background: transparent; }
@@ -1554,7 +1561,7 @@ body.locked .bm-card img { filter: blur(16px); }
   border: 1px solid var(--border);
 }
 .skeleton-card .sk-img { aspect-ratio: 2 / 3; }
-.skeleton-card .sk-line { height: 11px; margin: 9px 10px; border-radius: 6px; }
+.skeleton-card .sk-line { height: 11px; margin: 9px 10px; border-radius: var(--radius-sm); }
 
 .sk-img, .sk-line {
   background: linear-gradient(
@@ -1641,7 +1648,7 @@ body.locked .bm-card img { filter: blur(16px); }
   align-items: center;
   gap: 12px;
   padding: 12px 14px;
-  border-radius: 13px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   border: 1px solid var(--border);
   transition: border-color var(--dur), transform var(--dur);
@@ -1654,7 +1661,7 @@ body.locked .bm-card img { filter: blur(16px); }
   width: 38px;
   height: 54px;
   flex: none;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   object-fit: cover;
   background: var(--surface-2);
 }
@@ -1707,7 +1714,7 @@ body.locked .bm-card img { filter: blur(16px); }
 .bar-row .b-track {
   display: block;
   height: 8px;
-  border-radius: 99px;
+  border-radius: 999px;
   background: var(--surface-2);
   overflow: hidden;
 }
@@ -1716,7 +1723,7 @@ body.locked .bm-card img { filter: blur(16px); }
      renders as an empty track -- it must be a block to be sized */
   display: block;
   height: 100%;
-  border-radius: 99px;
+  border-radius: 999px;
   background: linear-gradient(90deg, var(--accent), var(--accent-2, var(--accent)));
   width: 0;
   transition: width .5s cubic-bezier(.2,.7,.3,1);
@@ -1771,7 +1778,7 @@ body.locked .bm-card img { filter: blur(16px); }
 
 .dupe-group {
   padding: 12px 14px;
-  border-radius: 13px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   border: 1px solid var(--border);
 }
@@ -1823,7 +1830,7 @@ body.locked .bm-card img { filter: blur(16px); }
 .setting-row input[type="password"] {
   padding: 8px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface-2);
   color: var(--text);
   font: inherit;
@@ -1880,7 +1887,7 @@ body.locked .bm-card img { filter: blur(16px); }
 .range-row input[type="number"] {
   padding: 7px 11px;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--radius-md);
   background: var(--surface-2);
   color: var(--text);
   font: inherit;

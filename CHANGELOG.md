@@ -7,6 +7,54 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.1 — Crash on close, Natomanga covers, lock order, rounding, saved folder
+
+### Fixed — crash on window close
+
+Closing the window raised `unhashable type: 'dict'`. pywebview collects event
+handler return values into a **set** (`return_values.add(value)` in
+`webview/event.py`), and the `closed` handler added in v1.1.0 was
+`api.shutdown`, which returns `{"ok": True}` for the JS bridge. A dict is not
+hashable, so every close threw. The handler is now a thin wrapper that
+discards the return value; `shutdown()` keeps its dict for the bridge.
+
+### Fixed — Natomanga covers not showing
+
+Natomanga mirrors each thumbnail across interchangeable CDN hosts, and any
+one of them intermittently fails while the others serve the identical file.
+Measured live: `storage.waitst.com` returned **429** and `img-r2` returned
+**404** for images that came back **HTTP 200 with identical bytes** from the
+sibling hosts.
+
+Covers now carry a mirror list, and the UI walks it on error instead of
+giving up on the first failure. Only when every mirror fails does the
+fallback tile appear.
+
+### Fixed — passcode did not gate startup
+
+The lock check ran seven steps into boot, so settings, sources, genres,
+filters, statistics and the trending feed were all fetched and painted
+underneath the overlay before it appeared. The lock is now the first thing
+boot does, and the rest waits for the unlock. Verified: only `lock_status`
+is called before the passcode is accepted.
+
+### Fixed — inconsistent corner rounding
+
+Radii had drifted to 13 different ad-hoc values (6, 7, 8, 9, 10, 12, 13,
+14px and more), which read as sloppy across the settings panels. Everything
+now snaps to a four-step scale — `--radius-sm/md/lg/xl` — with pills and
+circles deliberately left alone.
+
+### Fixed — download location was not saved
+
+Picking a folder only filled in the field; the choice was lost on restart.
+It is now written to `settings.json` immediately, whether picked from the
+folder dialog or typed directly, and both folder fields stay in sync.
+
+### Testing
+
+- 307 offline tests plus 17 live-site tests
+
 ## v1.4.0 — Chapter-range filenames, moved-folder recovery, chapter filters
 
 ### Changed — files are named by the chapters they contain

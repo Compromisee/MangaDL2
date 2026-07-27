@@ -476,6 +476,38 @@ function showState(icon, title, hint, actions) {
   });
 }
 
+/* Some CDNs mirror the same thumbnail across interchangeable hosts, and any
+   one of them intermittently answers 404 or 429 while the others serve the
+   identical file. Walk the mirror list on error rather than giving up on the
+   first failure and showing an empty tile. */
+function attachCover(img, card, item) {
+    const candidates = [];
+    if (item.cover) candidates.push(item.cover);
+    (item.cover_mirrors || []).forEach((u) => {
+      if (u && !candidates.includes(u)) candidates.push(u);
+    });
+    if (!candidates.length) {
+      if (card) card.classList.add("no-cover");
+      return;
+    }
+
+    let index = 0;
+    const tryNext = () => {
+      if (index >= candidates.length) {
+        if (card) card.classList.add("no-cover");
+        return;
+      }
+      img.src = candidates[index++];
+    };
+
+    img.addEventListener("load", () => {
+      img.classList.add("loaded");
+      if (card) card.classList.remove("no-cover");
+    });
+    img.addEventListener("error", tryNext);
+    tryNext();
+}
+
 function renderCards(results, append = false) {
   const grid = $("searchResults");
   if (!append) grid.innerHTML = "";
@@ -504,13 +536,7 @@ function renderCards(results, append = false) {
     // Set src in JS so load/error can be handled without inline handlers,
     // and fade in only once the bitmap is actually decoded.
     const img = card.querySelector("img");
-    if (r.cover) {
-      img.addEventListener("load", () => img.classList.add("loaded"), { once: true });
-      img.addEventListener("error", () => card.classList.add("no-cover"), { once: true });
-      img.src = r.cover;
-    } else {
-      card.classList.add("no-cover");
-    }
+    attachCover(img, card, r);
 
     card.addEventListener("click", () => openManga(r.url, r.source));
     grid.appendChild(card);
@@ -693,9 +719,13 @@ async function openManga(url, sourceId) {
   }
   const cover = $("mangaCover");
   cover.style.display = "";
-  cover.onerror = () => { cover.style.display = "none"; };
-  cover.src = res.info.cover || "";
-  if (!res.info.cover) cover.style.display = "none";
+  cover.className = "";
+  // replace the node so previous listeners do not stack across opens
+  const freshCover = cover.cloneNode(false);
+  cover.parentNode.replaceChild(freshCover, cover);
+  freshCover.addEventListener("error", () => { freshCover.style.display = "none"; });
+  attachCover(freshCover, null, res.info);
+  if (!res.info.cover) freshCover.style.display = "none";
   $("mangaDesc").textContent = res.info.description || "";
   $("mangaAuthors").textContent = (res.info.authors || []).join(", ");
   setBookmarkIcon(!!res.bookmarked);
@@ -993,8 +1023,27 @@ bindSegmented("bundleSeg", (v) => {
 
 $("browseBtn").addEventListener("click", async () => {
   const folder = await api().choose_folder();
-  if (folder) $("outputDir").value = folder;
+  if (!folder) return;
+  $("outputDir").value = folder;
+  if ($("setOutputDir")) $("setOutputDir").value = folder;
+  // persist it, otherwise the choice is lost on restart
+  await saveOutputDir(folder);
 });
+
+/* Write the download location straight to settings.json so it survives a
+   restart. Previously picking a folder only filled the field in. */
+async function saveOutputDir(folder) {
+  folder = (folder || "").trim();
+  if (!folder) return;
+  const res = await callApi("set_settings", { output_dir: folder });
+  if (res) {
+    state.settings = res;
+    toast("Download folder saved");
+  }
+}
+
+$("outputDir") && $("outputDir").addEventListener("change", (e) =>
+  saveOutputDir(e.target.value));
 
 /* -------------------------------------------------------------- download */
 
@@ -1512,6 +1561,15 @@ async function bootStep(label, fn) {
 let bootFailures = [];
 
 whenReady(async () => {
+  // The passcode has to gate the app before anything else happens.
+  // Previously the lock check ran seven steps into boot, so the library,
+  // stats and trending feed were already fetched and painted underneath
+  // the overlay before it appeared.
+  await bootStep("lock", checkLock);
+  if (document.body.classList.contains("locked")) {
+    await waitForUnlock();
+  }
+
   state.settings = (await bootStep("settings", () => api().get_settings())) || {};
   bootStep("fillSettings", () => fillSettings(state.settings));
   await bootStep("sources", loadSources);
@@ -1532,7 +1590,6 @@ whenReady(async () => {
   await bootStep("security", loadSecurity);
   await bootStep("filters", loadFilters);
   await bootStep("stats", loadStats);
-  await bootStep("lock", checkLock);
   resetIdleTimer();
 
   const lib = await bootStep("library", () => api().get_library());
@@ -1553,9 +1610,21 @@ whenReady(async () => {
 
 let lockIdleTimer = null;
 
+/* Resolves once the lock screen is dismissed, so boot can await it. */
+let _unlockResolvers = [];
+function waitForUnlock() {
+  if (!document.body.classList.contains("locked")) return Promise.resolve();
+  return new Promise((resolve) => _unlockResolvers.push(resolve));
+}
+
 function showLock(show) {
   $("lockOverlay").classList.toggle("hidden", !show);
   document.body.classList.toggle("locked", !!show);
+  if (!show && _unlockResolvers.length) {
+    const waiting = _unlockResolvers;
+    _unlockResolvers = [];
+    waiting.forEach((resolve) => resolve());
+  }
   // nothing is visible behind the lock screen, so stop animating
   if (show) matrix.pause(); else matrix.resume();
   if (show) {

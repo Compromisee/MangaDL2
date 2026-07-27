@@ -34,6 +34,18 @@ logger = logging.getLogger(__name__)
 SITE = "https://www.natomanga.com"
 PAGE_LIMIT = 200          # server honours this; keeps long series to few calls
 
+#: Cover thumbnails are mirrored across several interchangeable hosts. Any
+#: single one intermittently answers 404 or 429 (rate limited) while the
+#: others serve the identical file -- verified: the same thumbnail returned
+#: HTTP 200 and identical bytes from all three 2xstorage hosts while
+#: storage.waitst.com was returning 429. Covers therefore carry a list of
+#: mirrors so the UI can fall back instead of showing a blank tile.
+COVER_HOSTS = (
+    "img-r1.2xstorage.com",
+    "imgs-2.2xstorage.com",
+    "img-r2.2xstorage.com",
+)
+
 
 class NatomangaSource(Source):
     id = "natomanga"
@@ -79,6 +91,28 @@ class NatomangaSource(Source):
         return h
 
     # ------------------------------------------------------------ slug
+
+    @staticmethod
+    def cover_mirrors(url):
+        """Alternative URLs for a cover, best-first.
+
+        Returns the original plus the same path on every sibling host, so a
+        transient 404/429 on one mirror does not leave an empty cover.
+        """
+        if not url:
+            return []
+        match = re.match(r"^(https?://)([^/]+)(/.*)$", url)
+        if not match:
+            return [url]
+        scheme, host, path = match.groups()
+        mirrors = [url]
+        for candidate in COVER_HOSTS:
+            if candidate == host:
+                continue
+            alternative = f"{scheme}{candidate}{path}"
+            if alternative not in mirrors:
+                mirrors.append(alternative)
+        return mirrors
 
     @staticmethod
     def slug_of(manga_url: str) -> str:
@@ -142,6 +176,7 @@ class NatomangaSource(Source):
             latest_el = item.select_one(".story_chapter a, .item-chapter a")
             results.append(self._result(
                 title, href, cover=cover,
+                cover_mirrors=self.cover_mirrors(cover),
                 authors=[author] if author else [],
                 latest=latest_el.get_text(strip=True) if latest_el else None,
             ))
@@ -211,6 +246,7 @@ class NatomangaSource(Source):
             latest = item.select_one('a[href*="/chapter"]')
             results.append(self._result(
                 title, href, cover=cover,
+                cover_mirrors=self.cover_mirrors(cover),
                 latest=latest.get_text(strip=True) if latest else None,
             ))
             if len(results) >= limit:
@@ -269,6 +305,7 @@ class NatomangaSource(Source):
             "url": manga_url,
             "title": title,
             "cover": cover,
+            "cover_mirrors": self.cover_mirrors(cover),
             "description": description,
             "tags": tags,
             "status": status,

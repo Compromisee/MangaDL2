@@ -983,8 +983,21 @@ def run_gui():
 
     # Release the flush timer, cached sessions and sockets on close, so a
     # closing window cannot leave background threads alive.
+    def _on_closed():
+        """Release background resources when the window closes.
+
+        pywebview collects handler return values into a *set*, so a handler
+        that returns a dict raises "unhashable type: 'dict'". This wrapper
+        swallows the return value; api.shutdown() stays dict-returning for
+        the JS bridge, which expects one.
+        """
+        try:
+            api.shutdown()
+        except Exception:
+            logger.debug("shutdown handler failed", exc_info=True)
+
     try:
-        window.events.closed += api.shutdown
+        window.events.closed += _on_closed
     except Exception:
         pass
 

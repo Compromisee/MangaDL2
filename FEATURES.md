@@ -359,6 +359,18 @@ A complete feature reference for MangaDL.
 293. Filters change only the display, never the selection keys
 294. One-click reset for all chapter filters
 
+## Stability and polish
+
+295. Window close no longer crashes with "unhashable type: 'dict'"
+296. Cover mirrors: a failing CDN host falls back to a sibling automatically
+297. Covers walk every mirror before showing a fallback tile
+298. Passcode gates the app before any data is fetched or painted
+299. Boot pauses until the lock screen is dismissed
+300. Corner radii snap to a four-step scale instead of 13 ad-hoc values
+301. Download location saved to settings.json when chosen
+302. Download location saved when typed directly
+303. Both folder fields stay in sync
+
 ## Core engine
 
 - Download any series from a supported site by URL
