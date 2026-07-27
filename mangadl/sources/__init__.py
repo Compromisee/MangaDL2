@@ -90,23 +90,46 @@ def source_for_url(url: str, **kwargs) -> Source:
 
 
 def search_all(query: str, source_ids=None, limit: int = 20,
-               workers: int = 4, **filters) -> list:
+               workers: int = 4, use_config: bool = True,
+               interleave: bool = False, **filters) -> list:
     """Search several sources at once and merge the results.
 
+    Ordering respects the user's per-source ranking from ``mangadl.config``
+    (drag-and-drop in the GUI), and sources the user excluded are skipped.
     Failures are logged and skipped so one dead site cannot break a search.
+
+    interleave=True round-robins the sources so the first screen shows a mix
+    rather than every hit from the top-ranked site first.
     """
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
-    ids = [s for s in (source_ids or list(SOURCES)) if s in SOURCES]
+    ranks, limits = {}, {}
+    if source_ids:
+        ids = [s for s in source_ids if s in SOURCES]
+    elif use_config:
+        try:
+            from ..config import load_config, search_ids
+            ids = search_ids()
+            entries = load_config()["sources"]
+            ranks = {sid: entries[sid].get("rank", 100) for sid in ids}
+            limits = {sid: int(entries[sid].get("limit", 0) or 0) for sid in ids}
+        except Exception:
+            ids = list(SOURCES)
+    else:
+        ids = list(SOURCES)
+
     if not ids:
         return []
+    if not ranks:
+        ranks = {sid: i for i, sid in enumerate(ids)}
 
-    results = []
+    buckets = {}
 
     def run(source_id):
         source = get_source(source_id)
         try:
-            return source.search(query, limit=limit, **filters)
+            return source.search(query, limit=limits.get(source_id) or limit,
+                                 **filters)
         finally:
             source.close()
 
@@ -115,11 +138,28 @@ def search_all(query: str, source_ids=None, limit: int = 20,
         for future in as_completed(futures):
             source_id = futures[future]
             try:
-                results.extend(future.result() or [])
+                buckets[source_id] = future.result() or []
             except Exception as e:
                 logger.warning("Search failed on %s: %s", source_id, e)
+                buckets[source_id] = []
 
-    # keep the registry order stable in mixed results
-    order = {sid: i for i, sid in enumerate(SOURCES)}
-    results.sort(key=lambda r: order.get(r.get("source"), 99))
-    return results
+    ordered_ids = sorted(buckets, key=lambda sid: ranks.get(sid, 100))
+
+    if interleave:
+        merged, index = [], 0
+        while True:
+            added = False
+            for source_id in ordered_ids:
+                items = buckets[source_id]
+                if index < len(items):
+                    merged.append(items[index])
+                    added = True
+            if not added:
+                break
+            index += 1
+        return merged
+
+    merged = []
+    for source_id in ordered_ids:
+        merged.extend(buckets[source_id])
+    return merged

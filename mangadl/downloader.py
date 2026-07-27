@@ -92,6 +92,7 @@ class DownloadEngine:
     def run(self) -> dict:
         """Execute the job. Returns a result summary dict."""
         opt = self.opt
+        started_at = time.time()
         self.emit("status", message="Fetching manga information")
 
         info = self.source.get_manga_info(opt.url)
@@ -287,6 +288,24 @@ class DownloadEngine:
                 os.remove(checkpoint)
             except OSError:
                 pass
+
+        # statistics
+        try:
+            from . import features
+            total_pages = sum(done_pages.get(c["name"], 0) for c in selected)
+            byte_total = 0
+            for out in outputs:
+                try:
+                    byte_total += os.path.getsize(out)
+                except OSError:
+                    pass
+            features.record_stat(
+                self.source.id, chapters=completed, pages=total_pages,
+                bytes_=byte_total, seconds=time.time() - started_at,
+                failed=len(self.failed),
+            )
+        except Exception:
+            logger.debug("Failed to record statistics", exc_info=True)
 
         if outputs:
             try:

@@ -63,13 +63,22 @@ def build_parser():
             "  mangadl search \"one piece\"          search all sources\n"
             "  mangadl search \"berserk\" -s mangadex\n"
             "  mangadl sources                          list supported sites\n"
+            "  mangadl config disable natomanga         exclude a source\n"
+            "  mangadl config up mangakatana            rank a source higher\n"
+            "  mangadl stats                            download statistics\n"
+            "  mangadl lock set                         set an app passcode\n"
+            "  mangadl watch add <url>                  track a series for updates\n"
+            "  mangadl watch check                      check every watched series\n"
+            "  mangadl disk usage                       disk usage per series\n"
             "  mangadl info <url>\n"
             "  mangadl resume                       resume an interrupted download\n"
             "  mangadl tui                          full-screen terminal UI\n"
         ),
     )
     parser.add_argument("target", nargs="?",
-                        help="manga URL, or a command: search | info | sources | gui | tui | resume")
+                        help="manga URL, or a command: search | info | sources | config | "
+                             "stats | history | lock | export | watch | disk | "
+                             "gui | tui | resume")
     parser.add_argument("query", nargs="*", help="arguments for search / info")
     parser.add_argument("-c", "--chapters", default="all", metavar="SEL",
                         help="chapter selection: all | 5 | 1-20 | 1,5,10-20 | 50- | latest | first (default: all)")
@@ -134,6 +143,333 @@ def cmd_sources():
     return 0
 
 
+def cmd_config(args) -> int:
+    """Show or change per-source ranking and exclusions."""
+    from . import config as appconfig
+
+    rest = [a for a in args.query]
+    action = (rest[0].lower() if rest else "show")
+
+    if action in ("enable", "disable", "include", "exclude"):
+        if len(rest) < 2:
+            console.print("[red]Usage: mangadl config enable|disable <source>[/]")
+            return 1
+        source_id = rest[1].lower()
+        if source_id not in SOURCES:
+            console.print(f"[red]Unknown source '{source_id}'[/]")
+            return 1
+        on = action in ("enable", "include")
+        appconfig.set_enabled(source_id, on)
+        console.print(f"{SOURCES[source_id].name}: "
+                      f"[{ACCENT}]{'enabled' if on else 'excluded'}[/]")
+    elif action in ("up", "down"):
+        if len(rest) < 2:
+            console.print(f"[red]Usage: mangadl config {action} <source>[/]")
+            return 1
+        appconfig.move(rest[1].lower(), -1 if action == "up" else 1)
+    elif action == "rank":
+        order = [s.lower() for s in rest[1:]]
+        if not order:
+            console.print("[red]Usage: mangadl config rank <source> <source> ...[/]")
+            return 1
+        appconfig.reorder(order)
+        console.print("Ranking updated.")
+    elif action == "reset":
+        appconfig.reset_config()
+        console.print("Source configuration reset.")
+    elif action != "show":
+        console.print(f"[red]Unknown action '{action}'[/]")
+        console.print(f"[{DIM}]show | enable | disable | up | down | rank | reset[/]")
+        return 1
+
+    table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+    table.add_column("#", style=DIM, justify="right")
+    table.add_column("ID")
+    table.add_column("Site")
+    table.add_column("Search", justify="center")
+    table.add_column("Status")
+    for index, row in enumerate(appconfig.describe(), 1):
+        enabled = row.get("enabled", True)
+        table.add_row(
+            str(index), row["id"], row.get("name", row["id"]),
+            "yes" if row.get("search_enabled", True) else "no",
+            f"[{ACCENT}]enabled[/]" if enabled else "[red]excluded[/]",
+        )
+    console.print(table)
+    console.print(f"[{DIM}]mangadl config up|down <source>   "
+                  f"mangadl config disable <source>[/]")
+    return 0
+
+
+def cmd_stats() -> int:
+    from . import features
+
+    stats = features.get_stats()
+    totals = stats.get("totals", {})
+    derived = stats.get("derived", {})
+    if not totals:
+        console.print("[yellow]No download statistics yet.[/]")
+        return 0
+
+    grid = Table.grid(padding=(0, 3))
+    grid.add_column(style=DIM)
+    grid.add_column()
+    grid.add_row("Downloads", str(totals.get("downloads", 0)))
+    grid.add_row("Chapters", str(totals.get("chapters", 0)))
+    grid.add_row("Pages", str(totals.get("pages", 0)))
+    grid.add_row("Data", derived.get("human_bytes", "-"))
+    grid.add_row("Time", derived.get("human_time", "-"))
+    grid.add_row("Speed", f"{derived.get('avg_pages_per_second', 0)} pages/s")
+    grid.add_row("Top source", derived.get("top_source", "-"))
+    console.print(Panel(grid, title="[bold]Statistics[/]",
+                        border_style=ACCENT, box=box.ROUNDED))
+
+    per_source = stats.get("sources", {})
+    if per_source:
+        table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+        table.add_column("Source")
+        table.add_column("Chapters", justify="right")
+        table.add_column("Pages", justify="right")
+        table.add_column("Data", justify="right")
+        for name, row in sorted(per_source.items(),
+                                key=lambda kv: -kv[1].get("chapters", 0)):
+            table.add_row(name, str(row.get("chapters", 0)),
+                          str(row.get("pages", 0)),
+                          features.human_size(row.get("bytes", 0)))
+        console.print(table)
+    return 0
+
+
+def cmd_history(args) -> int:
+    from . import features
+
+    rest = [a for a in args.query]
+    if rest and rest[0].lower() == "clear":
+        features.clear_history()
+        console.print("History cleared.")
+        return 0
+    items = features.get_history(25)
+    if not items:
+        console.print("[yellow]No search history.[/]")
+        return 0
+    table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+    table.add_column("Query")
+    table.add_column("Source", style=DIM)
+    table.add_column("Hits", justify="right", style=DIM)
+    table.add_column("When", style=DIM)
+    for item in items:
+        table.add_row(item.get("query", ""), item.get("source", ""),
+                      str(item.get("results", 0)), item.get("date", ""))
+    console.print(table)
+    return 0
+
+
+def cmd_lock(args) -> int:
+    """Manage the app passcode from the terminal."""
+    import getpass
+
+    from . import passlock
+
+    rest = [a for a in args.query]
+    action = (rest[0].lower() if rest else "status")
+
+    if action == "status":
+        status = passlock.status()
+        console.print(Panel(
+            f"Passcode: [{ACCENT}]{'on' if status['enabled'] else 'off'}[/]\n"
+            f"Auto-lock: {status['auto_lock_minutes'] or 'never'}\n"
+            f"Recovery key configured: {'yes' if status['has_recovery'] else 'no'}",
+            title="[bold]Lock[/]", border_style=ACCENT, box=box.ROUNDED))
+        return 0
+
+    if action in ("set", "on", "enable"):
+        code = getpass.getpass("New passcode: ")
+        if code != getpass.getpass("Confirm passcode: "):
+            console.print("[red]Passcodes do not match.[/]")
+            return 1
+        result = passlock.set_passcode(code)
+        if not result.get("ok"):
+            console.print(f"[red]{result['error']}[/]")
+            return 1
+        console.print(Panel(
+            f"[bold]{result['recovery_key']}[/]\n\n"
+            f"[{DIM}]Store this somewhere safe. It is shown once and is the only "
+            f"way back in if you forget the passcode.[/]",
+            title="[bold]Recovery key[/]", border_style=ACCENT, box=box.ROUNDED))
+        return 0
+
+    if action in ("off", "disable"):
+        result = passlock.disable(getpass.getpass("Current passcode: "))
+        console.print("Lock disabled." if result.get("ok")
+                      else f"[red]{result['error']}[/]")
+        return 0 if result.get("ok") else 1
+
+    if action == "change":
+        current = getpass.getpass("Current passcode: ")
+        new = getpass.getpass("New passcode: ")
+        result = passlock.change_passcode(current, new)
+        console.print("Passcode changed." if result.get("ok")
+                      else f"[red]{result['error']}[/]")
+        return 0 if result.get("ok") else 1
+
+    console.print(f"[{DIM}]Usage: mangadl lock status|set|change|off[/]")
+    return 1
+
+
+def cmd_export(args) -> int:
+    from . import features
+
+    rest = [a for a in args.query]
+    if not rest:
+        console.print("[red]Usage: mangadl export <file> [json|csv|md][/]")
+        return 1
+    path = rest[0]
+    fmt = rest[1] if len(rest) > 1 else (
+        os.path.splitext(path)[1].lstrip(".") or "json")
+    try:
+        features.export_library(path, fmt)
+    except Exception as e:
+        console.print(f"[red]Export failed:[/] {e}")
+        return 1
+    console.print(f"Exported library to [bold]{path}[/]")
+    return 0
+
+
+def cmd_watch(args) -> int:
+    """Watch a series, or list / check the watchlist."""
+    from . import tracking
+
+    rest = list(args.query)
+    action = (rest[0].lower() if rest else "list")
+
+    if action == "list":
+        entries = tracking.get_watchlist()
+        if not entries:
+            console.print("[yellow]Nothing is being watched.[/]")
+            console.print(f"[{DIM}]Add one with: mangadl watch add <url>[/]")
+            return 0
+        table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+        table.add_column("Title")
+        table.add_column("Source", style=DIM)
+        table.add_column("Chapters", justify="right")
+        table.add_column("New", justify="right")
+        table.add_column("Checked", style=DIM)
+        for entry in entries:
+            new = entry.get("new_chapters", 0)
+            table.add_row(
+                entry.get("title", "?"), entry.get("source", "-"),
+                str(entry.get("known_chapters", 0)),
+                f"[{ACCENT}]+{new}[/]" if new else "-",
+                entry.get("checked", "-"))
+        console.print(table)
+        return 0
+
+    if action in ("add", "remove", "rm"):
+        if len(rest) < 2:
+            console.print(f"[red]Usage: mangadl watch {action} <url>[/]")
+            return 1
+        url = rest[1]
+        if action == "add":
+            try:
+                source = source_for_url(url)
+                info = source.get_manga_info(url)
+                chapters = source.get_chapters(url)
+                source.close()
+            except Exception as e:
+                console.print(f"[red]Error:[/] {e}")
+                return 1
+            tracking.watch(url, info["title"], len(chapters),
+                           source=info.get("source"), cover=info.get("cover"))
+            console.print(f"Watching [bold]{info['title']}[/] "
+                          f"([{DIM}]{len(chapters)} chapters[/])")
+        else:
+            console.print("Removed." if tracking.unwatch(url)
+                          else "[yellow]Not in the watchlist.[/]")
+        return 0
+
+    if action == "check":
+        entries = tracking.get_watchlist()
+        if not entries:
+            console.print("[yellow]Nothing is being watched.[/]")
+            return 0
+        with console.status(f"Checking {len(entries)} series..."):
+            updates = tracking.check_updates()
+        if not updates:
+            console.print("[green]Everything is up to date.[/]")
+            return 0
+        table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+        table.add_column("Title")
+        table.add_column("New", justify="right")
+        table.add_column("Total", justify="right")
+        for update in updates:
+            table.add_row(update["title"], f"[{ACCENT}]+{update['new']}[/]",
+                          str(update["total"]))
+        console.print(table)
+        return 0
+
+    console.print(f"[{DIM}]Usage: mangadl watch list|add|remove|check [url][/]")
+    return 1
+
+
+def cmd_disk(args) -> int:
+    """Disk usage, duplicate files and orphaned library entries."""
+    from . import features, tracking
+
+    rest = list(args.query)
+    action = (rest[0].lower() if rest else "usage")
+    root = rest[1] if len(rest) > 1 else args.output
+
+    if action == "usage":
+        rows = tracking.disk_usage(root)
+        if not rows:
+            console.print(f"[yellow]Nothing found in {root}[/]")
+            return 0
+        table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+        table.add_column("Series")
+        table.add_column("Files", justify="right", style=DIM)
+        table.add_column("Size", justify="right")
+        total = 0
+        for row in rows[:30]:
+            total += row["bytes"]
+            table.add_row(row["name"], str(row["files"]),
+                          features.human_size(row["bytes"]))
+        console.print(table)
+        console.print(f"[{DIM}]Total: {features.human_size(total)}[/]")
+        return 0
+
+    if action in ("dupes", "duplicates"):
+        with console.status(f"Scanning {root}..."):
+            groups = tracking.scan_duplicates(root)
+        if not groups:
+            console.print("[green]No duplicate files found.[/]")
+            return 0
+        wasted = sum(g["wasted"] for g in groups)
+        for group in groups[:20]:
+            console.print(f"[{ACCENT}]{features.human_size(group['size'])}[/] "
+                          f"x{len(group['files'])}")
+            for path in group["files"]:
+                console.print(f"  [{DIM}]{path}[/]")
+        console.print(f"\n[bold]{features.human_size(wasted)}[/] wasted "
+                      f"across {len(groups)} groups")
+        return 0
+
+    if action == "orphans":
+        orphans = tracking.find_orphans()
+        if not orphans:
+            console.print("[green]No orphaned library entries.[/]")
+            return 0
+        for orphan in orphans:
+            console.print(f"[yellow]{orphan['title']}[/]")
+            if orphan["directory_gone"]:
+                console.print(f"  [{DIM}]folder missing: {orphan['directory']}[/]")
+            for missing in orphan["missing"]:
+                console.print(f"  [{DIM}]missing: {missing}[/]")
+        return 0
+
+    console.print(f"[{DIM}]Usage: mangadl disk usage|dupes|orphans [dir][/]")
+    return 1
+
+
 def cmd_search(query: str, source_id: str = "", language: str = "en"):
     if not query:
         console.print("[red]Provide a search query, e.g.: mangadl search \"one piece\"[/]")
@@ -150,6 +486,10 @@ def cmd_search(query: str, source_id: str = "", language: str = "en"):
     else:
         with console.status(f"Searching all sources for [bold]{query}[/]..."):
             results = search_all(query, limit=10)
+
+    from . import features
+    results = features.apply_filters(results)
+    features.add_history(query, source_id or "all", len(results))
 
     if not results:
         console.print("[yellow]No results found.[/]")
@@ -188,7 +528,8 @@ def cmd_info(url: str, source_id: str = "", language: str = "en"):
         finally:
             source.close()
 
-    body = [f"[{DIM}]Source[/]   {info.get('source_name') or source.name}"]
+    provider = info.get("source_name") or source.name
+    body = [f"[{DIM}]from[/] [{ACCENT}]{provider}[/]", ""]
     if info.get("authors"):
         body.append(f"[{DIM}]Author[/]   {', '.join(info['authors'])}")
     if info.get("status"):
@@ -431,6 +772,20 @@ def main(argv=None):
     command = args.target.lower()
     if command in ("sources", "source"):
         return cmd_sources()
+    if command == "config":
+        return cmd_config(args)
+    if command == "stats":
+        return cmd_stats()
+    if command == "history":
+        return cmd_history(args)
+    if command == "lock":
+        return cmd_lock(args)
+    if command == "export":
+        return cmd_export(args)
+    if command == "watch":
+        return cmd_watch(args)
+    if command == "disk":
+        return cmd_disk(args)
     if command == "search":
         return cmd_search(" ".join(args.query), args.source, args.language)
     if command == "info":

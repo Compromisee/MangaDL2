@@ -373,6 +373,24 @@ async function openManga(url, sourceId) {
   state.selected = new Set(fresh.length ? fresh : res.chapters.map((_, i) => i));
 
   $("mangaTitle").textContent = res.info.title;
+
+  // provider note, directly beneath the title
+  const srcId = res.source || res.info.source || "";
+  const srcName = res.source_name || res.info.source_name || srcId;
+  const note = $("mangaSourceNote");
+  if (srcName) {
+    $("mangaSourceName").textContent = srcName;
+    $("mangaSourceDot").dataset.source = srcId;
+    const link = $("mangaSourceLink");
+    link.href = res.info.url || "#";
+    link.onclick = (e) => {
+      e.preventDefault();
+      if (api().open_url) api().open_url(res.info.url);
+    };
+    note.style.display = "";
+  } else {
+    note.style.display = "none";
+  }
   const cover = $("mangaCover");
   cover.style.display = "";
   cover.onerror = () => { cover.style.display = "none"; };
@@ -1071,9 +1089,298 @@ whenReady(async () => {
       updateFilterDot();
     }
   }
+  $("setDedupe").checked = state.settings.dedupe_results !== false;
+  $("setInterleave").checked = !!state.settings.interleave_results;
+  await loadSourceConfig();
+  await loadSecurity();
+  await loadFilters();
+  await loadStats();
+  await checkLock();
+  resetIdleTimer();
   const lib = await api().get_library();
   if (lib && lib.path) $("dataLibPath").textContent = lib.path;
   refreshLogInfo();
   checkPendingJob();
-  $("searchInput").focus();
+  if (!document.body.classList.contains("locked")) $("searchInput").focus();
+});
+
+/* ================================================================= lock */
+
+let lockIdleTimer = null;
+
+function showLock(show) {
+  $("lockOverlay").classList.toggle("hidden", !show);
+  document.body.classList.toggle("locked", !!show);
+  if (show) {
+    $("lockError").textContent = "";
+    $("lockInput").value = "";
+    $("lockRecovery").classList.add("hidden");
+    setTimeout(() => $("lockInput").focus(), 60);
+  }
+}
+
+async function checkLock() {
+  if (!api() || !api().lock_status) return;
+  const st = await api().lock_status();
+  if (!st.enabled) { showLock(false); return; }
+  const hint = st.hint ? `Hint: ${st.hint}` : "Enter your passcode to continue";
+  $("lockSub").textContent = hint;
+  showLock(true);
+}
+
+async function attemptUnlock() {
+  const code = $("lockInput").value;
+  if (!code) return;
+  const res = await api().lock_verify(code);
+  if (res.ok) {
+    showLock(false);
+    resetIdleTimer();
+    toast("Unlocked");
+    return;
+  }
+  $("lockError").textContent = res.cooldown
+    ? `Too many attempts — wait ${res.cooldown}s`
+    : `${res.error}${res.attempts_left != null ? ` (${res.attempts_left} left)` : ""}`;
+  $("lockInput").value = "";
+  $("lockInput").focus();
+}
+
+$("lockUnlockBtn").addEventListener("click", attemptUnlock);
+$("lockInput").addEventListener("keydown", (e) => { if (e.key === "Enter") attemptUnlock(); });
+
+$("lockForgotBtn").addEventListener("click", () => {
+  $("lockRecovery").classList.toggle("hidden");
+});
+$("recoverCancelBtn").addEventListener("click", () => {
+  $("lockRecovery").classList.add("hidden");
+});
+$("recoverBtn").addEventListener("click", async () => {
+  const res = await api().lock_recover($("recoveryKeyInput").value,
+                                       $("recoveryNewInput").value);
+  if (res.ok) { toast("Passcode reset"); showLock(false); resetIdleTimer(); }
+  else $("lockError").textContent = res.error;
+});
+
+/* auto-lock on idle */
+function resetIdleTimer() {
+  clearTimeout(lockIdleTimer);
+  const minutes = (state.lock && state.lock.auto_lock_minutes) || 0;
+  if (!minutes) return;
+  lockIdleTimer = setTimeout(() => checkLock(), minutes * 60 * 1000);
+}
+["mousemove", "keydown", "click", "wheel"].forEach((evt) =>
+  window.addEventListener(evt, () => {
+    if (!document.body.classList.contains("locked")) resetIdleTimer();
+  }, { passive: true }));
+
+/* ============================================== source ranking (drag) */
+
+let rankOrder = [];
+
+function renderSourceRanks(rows) {
+  const list = $("sourceRankList");
+  list.innerHTML = "";
+  rankOrder = rows.map((r) => r.id);
+
+  rows.forEach((row, index) => {
+    const li = document.createElement("li");
+    li.draggable = true;
+    li.dataset.id = row.id;
+    li.classList.toggle("disabled", !row.enabled);
+
+    const caps = [];
+    if (row.supports_language) caps.push("languages");
+    if (row.supports_scanlator) caps.push("scanlators");
+    if (row.needs_flaresolverr) caps.push("cloudflare");
+
+    li.innerHTML = `
+      <span class="drag-handle material-symbols-rounded">drag_indicator</span>
+      <span class="rank-num">${index + 1}</span>
+      <span class="src-name">${escapeHtml(row.name)}
+        <span class="src-host">${escapeHtml((row.base_url || "").replace(/^https?:\/\//, ""))}</span>
+      </span>
+      <span class="src-caps">${caps.map((c) => `<span class="cap">${c}</span>`).join("")}</span>
+      <span class="move-btns">
+        <button data-move="-1" title="Move up"><span class="material-symbols-rounded">expand_less</span></button>
+        <button data-move="1" title="Move down"><span class="material-symbols-rounded">expand_more</span></button>
+      </span>
+      <label class="switch" title="Include this source">
+        <input type="checkbox" ${row.enabled ? "checked" : ""}><span></span>
+      </label>`;
+
+    li.querySelector("input[type=checkbox]").addEventListener("change", async (e) => {
+      const res = await api().toggle_source(row.id, e.target.checked);
+      renderSourceRanks(res.sources);
+      await loadSources();
+      toast(`${row.name} ${e.target.checked ? "enabled" : "excluded"}`);
+    });
+
+    li.querySelectorAll("[data-move]").forEach((btn) =>
+      btn.addEventListener("click", async () => {
+        const res = await api().move_source(row.id, parseInt(btn.dataset.move));
+        renderSourceRanks(res.sources);
+      }));
+
+    li.addEventListener("dragstart", () => {
+      li.classList.add("dragging");
+      list.dataset.dragging = row.id;
+    });
+    li.addEventListener("dragend", async () => {
+      li.classList.remove("dragging");
+      [...list.children].forEach((c) => c.classList.remove("drag-over"));
+      const order = [...list.children].map((c) => c.dataset.id);
+      const res = await api().reorder_sources(order);
+      renderSourceRanks(res.sources);
+    });
+    li.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      const dragging = list.querySelector(".dragging");
+      if (!dragging || dragging === li) return;
+      li.classList.add("drag-over");
+      const rect = li.getBoundingClientRect();
+      const after = e.clientY > rect.top + rect.height / 2;
+      list.insertBefore(dragging, after ? li.nextSibling : li);
+    });
+    li.addEventListener("dragleave", () => li.classList.remove("drag-over"));
+
+    list.appendChild(li);
+  });
+}
+
+async function loadSourceConfig() {
+  if (!api() || !api().get_source_config) return;
+  const res = await api().get_source_config();
+  if (res.ok) renderSourceRanks(res.sources);
+}
+
+$("resetSourcesBtn").addEventListener("click", async () => {
+  const res = await api().reset_source_config();
+  renderSourceRanks(res.sources);
+  await loadSources();
+  toast("Source ranking reset");
+});
+
+/* ==================================================== settings wiring */
+
+async function loadSecurity() {
+  const st = await api().lock_status();
+  state.lock = st;
+  $("setLockEnabled").checked = st.enabled;
+  $("lockStateHint").textContent = st.enabled
+    ? `On${st.auto_lock_minutes ? ` · auto-locks after ${st.auto_lock_minutes} min` : ""}`
+    : "Off";
+  $("lockConfigRows").classList.toggle("hidden", !st.enabled);
+  $("setAutoLock").value = st.auto_lock_minutes || 0;
+  $("setLockOnStart").checked = st.lock_on_start;
+  $("setBlurCovers").checked = st.blur_covers;
+  $("setLockHint").value = st.hint || "";
+}
+
+$("setLockEnabled").addEventListener("change", async (e) => {
+  if (e.target.checked) {
+    const code = prompt("Choose a passcode (at least 4 characters):");
+    if (!code) { e.target.checked = false; return; }
+    const res = await api().lock_set(code, "", 0, true, true);
+    if (!res.ok) { toast(res.error); e.target.checked = false; return; }
+    alert("Save this recovery key somewhere safe.\n\nIt is shown only once and " +
+          "is the only way back in if you forget your passcode:\n\n" + res.recovery_key);
+  } else {
+    const code = prompt("Enter your current passcode to turn the lock off:");
+    if (!code) { e.target.checked = true; return; }
+    const res = await api().lock_disable(code);
+    if (!res.ok) { toast(res.error); e.target.checked = true; return; }
+  }
+  await loadSecurity();
+});
+
+$("changePassBtn").addEventListener("click", async () => {
+  const current = prompt("Current passcode:");
+  if (!current) return;
+  const next = prompt("New passcode:");
+  if (!next) return;
+  const res = await api().lock_change(current, next);
+  toast(res.ok ? "Passcode changed" : res.error);
+});
+
+["setAutoLock", "setLockOnStart", "setBlurCovers", "setLockHint"].forEach((id) =>
+  $(id).addEventListener("change", async () => {
+    await api().lock_options({
+      auto_lock_minutes: parseInt($("setAutoLock").value) || 0,
+      lock_on_start: $("setLockOnStart").checked,
+      blur_covers: $("setBlurCovers").checked,
+      hint: $("setLockHint").value,
+    });
+    await loadSecurity();
+    resetIdleTimer();
+  }));
+
+async function loadFilters() {
+  const res = await api().get_filters();
+  const f = res.filters || {};
+  $("setSafeMode").checked = !!f.safe_mode;
+  $("setHideNoCover").checked = !!f.hide_no_cover;
+  $("setBlockedTags").value = (f.blocked_tags || []).join(", ");
+  $("setBlockedTitles").value = (f.blocked_titles || []).join(", ");
+}
+
+function splitList(value) {
+  return value.split(",").map((s) => s.trim()).filter(Boolean);
+}
+
+["setSafeMode", "setHideNoCover", "setBlockedTags", "setBlockedTitles"].forEach((id) =>
+  $(id).addEventListener("change", async () => {
+    await api().set_filters({
+      safe_mode: $("setSafeMode").checked,
+      hide_no_cover: $("setHideNoCover").checked,
+      blocked_tags: splitList($("setBlockedTags").value),
+      blocked_titles: splitList($("setBlockedTitles").value),
+    });
+    toast("Filters updated");
+  }));
+
+["setDedupe", "setInterleave"].forEach((id) =>
+  $(id).addEventListener("change", async () => {
+    await api().set_settings({
+      dedupe_results: $("setDedupe").checked,
+      interleave_results: $("setInterleave").checked,
+    });
+  }));
+
+async function loadStats() {
+  const [statsRes, insightRes] = await Promise.all([
+    api().get_stats(), api().get_insights(),
+  ]);
+  const t = (statsRes.stats && statsRes.stats.totals) || {};
+  const d = (statsRes.stats && statsRes.stats.derived) || {};
+  const i = insightRes.insights || {};
+  const tiles = [
+    ["Series", i.series || 0],
+    ["Chapters", t.chapters || 0],
+    ["Pages", t.pages || 0],
+    ["Downloaded", d.human_bytes || "0 B"],
+    ["Time spent", d.human_time || "0s"],
+    ["Top source", d.top_source || "-"],
+  ];
+  $("statGrid").innerHTML = tiles.map(
+    ([k, v]) => `<div class="stat-tile"><div class="v">${escapeHtml(String(v))}</div><div class="k">${k}</div></div>`
+  ).join("");
+}
+
+document.querySelectorAll("[data-export]").forEach((btn) =>
+  btn.addEventListener("click", async () => {
+    const res = await api().export_library(btn.dataset.export);
+    if (res.ok) toast("Exported to " + res.path);
+    else if (!res.cancelled) toast(res.error || "Export failed");
+  }));
+
+$("importLibBtn").addEventListener("click", async () => {
+  const res = await api().import_library();
+  if (res.ok) toast(`Imported ${res.imported} entries (${res.added} new)`);
+  else if (!res.cancelled) toast(res.error || "Import failed");
+});
+
+$("resetStatsBtn").addEventListener("click", async () => {
+  await api().reset_stats();
+  await loadStats();
+  toast("Statistics reset");
 });

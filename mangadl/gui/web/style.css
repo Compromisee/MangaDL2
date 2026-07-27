@@ -1086,3 +1086,187 @@ body {
   border-radius: 50%;
   background: currentColor;
 }
+
+
+/* ------------------------------------------------- provider note (manga) */
+
+.source-note {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 2px 0 8px;
+  font-size: 12.5px;
+  color: var(--text-2, #a9b0c0);
+}
+
+.source-note .src-text b { color: var(--text-1, #e6e9f0); font-weight: 600; }
+
+.source-note .src-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--accent, #7aa2f7);
+  box-shadow: 0 0 0 3px rgba(122, 162, 247, .16);
+  flex: none;
+}
+
+.source-note .src-dot[data-source="mangadex"]    { background:#ff6740; box-shadow:0 0 0 3px rgba(255,103,64,.16); }
+.source-note .src-dot[data-source="mangakatana"] { background:#388e3c; box-shadow:0 0 0 3px rgba(56,142,60,.16); }
+.source-note .src-dot[data-source="natomanga"]   { background:#0288d1; box-shadow:0 0 0 3px rgba(2,136,209,.16); }
+.source-note .src-dot[data-source="weebcentral"] { background:#7b61ff; box-shadow:0 0 0 3px rgba(123,97,255,.16); }
+
+.source-note .src-link {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+  opacity: .6;
+  text-decoration: none;
+}
+.source-note .src-link:hover { opacity: 1; }
+.source-note .src-link .material-symbols-rounded { font-size: 15px; }
+
+.chip.source { background: rgba(122,162,247,.16); color: var(--text-1,#e6e9f0); font-weight:600; }
+
+/* ==================================================== lock screen */
+
+.lock-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 16, .82);
+  backdrop-filter: blur(22px) saturate(120%);
+  -webkit-backdrop-filter: blur(22px) saturate(120%);
+  animation: lockFade .22s ease;
+}
+
+@keyframes lockFade { from { opacity: 0 } to { opacity: 1 } }
+
+.lock-box {
+  width: 340px;
+  padding: 30px 28px 24px;
+  border-radius: 20px;
+  text-align: center;
+  background: var(--surface-1, #1a1a24);
+  border: 1px solid rgba(255, 255, 255, .07);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, .55);
+}
+
+.lock-box h2 { margin: 14px 0 4px; font-size: 19px; }
+.lock-sub { margin: 0 0 16px; font-size: 13px; color: var(--text-2, #9aa2b4); }
+
+.lock-icon {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(122, 162, 247, .14);
+  color: var(--accent, #7aa2f7);
+}
+.lock-icon .material-symbols-rounded { font-size: 27px; }
+
+.lock-input {
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 11px 13px;
+  font-size: 14px;
+  text-align: center;
+  letter-spacing: 1px;
+  border-radius: 11px;
+  color: var(--text-1, #e6e9f0);
+  background: var(--surface-2, #22222e);
+  border: 1px solid rgba(255, 255, 255, .09);
+  outline: none;
+}
+.lock-input:focus { border-color: var(--accent, #7aa2f7); }
+
+.lock-btn { width: 100%; margin: 6px 0 8px; justify-content: center; }
+
+.lock-error {
+  min-height: 17px;
+  margin-bottom: 6px;
+  font-size: 12.5px;
+  color: #f7768e;
+}
+
+.lock-recovery { margin-top: 14px; padding-top: 14px; border-top: 1px solid rgba(255,255,255,.07); }
+
+body.locked .manga-cover-wrap img,
+body.locked .result-card img,
+body.locked .bm-card img { filter: blur(16px); }
+
+/* ============================================ source ranking list */
+
+.source-rank { list-style: none; margin: 0 0 8px; padding: 0; }
+
+.source-rank li {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 7px;
+  padding: 11px 13px;
+  border-radius: 12px;
+  background: var(--surface-2, #22222e);
+  border: 1px solid rgba(255, 255, 255, .06);
+  cursor: grab;
+  transition: border-color .15s, opacity .15s, transform .12s;
+}
+.source-rank li:hover { border-color: rgba(255, 255, 255, .16); }
+.source-rank li.dragging { opacity: .45; cursor: grabbing; }
+.source-rank li.drag-over { border-color: var(--accent, #7aa2f7); transform: translateY(1px); }
+.source-rank li.disabled { opacity: .45; }
+
+.source-rank .drag-handle { color: var(--text-3, #6b7280); cursor: grab; display: flex; }
+.source-rank .rank-num {
+  width: 22px; height: 22px; flex: none;
+  display: grid; place-items: center;
+  border-radius: 6px;
+  font-size: 11.5px; font-weight: 700;
+  background: rgba(255, 255, 255, .07);
+  color: var(--text-2, #9aa2b4);
+}
+.source-rank .src-name { flex: 1; font-weight: 600; font-size: 13.5px; }
+.source-rank .src-host { font-size: 11.5px; color: var(--text-3, #6b7280); }
+.source-rank .src-caps { display: flex; gap: 5px; }
+
+.source-rank .cap {
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, .07);
+  color: var(--text-2, #9aa2b4);
+}
+
+.source-rank .move-btns { display: flex; flex-direction: column; }
+.source-rank .move-btns button {
+  border: 0; background: none; cursor: pointer; padding: 0;
+  color: var(--text-3, #6b7280); line-height: 1;
+}
+.source-rank .move-btns button:hover { color: var(--accent, #7aa2f7); }
+.source-rank .move-btns .material-symbols-rounded { font-size: 16px; }
+
+/* ==================================================== stat grid */
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.stat-tile {
+  padding: 13px;
+  border-radius: 12px;
+  background: var(--surface-2, #22222e);
+  border: 1px solid rgba(255, 255, 255, .06);
+}
+.stat-tile .v { font-size: 19px; font-weight: 700; color: var(--text-1, #e6e9f0); }
+.stat-tile .k { margin-top: 2px; font-size: 11.5px; color: var(--text-3, #6b7280); }
+
+.inline-field { display: flex; align-items: center; gap: 8px; }
+.btn.danger { color: #f7768e; }

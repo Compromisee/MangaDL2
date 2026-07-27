@@ -38,6 +38,12 @@
 - **File logging.** Rotating log at `~/.mangadl/logs/mangadl.log`, exportable from Settings.
 - **Cloudflare-ready.** Falls back to [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) automatically if a site puts up a challenge.
 - **Pluggable by design.** A new site is one file in `mangadl/sources/` plus one line in the registry; CLI, GUI and TUI pick it up automatically.
+- **Rank and exclude sources.** Drag sources into your preferred order, or switch one off to drop it from results entirely. Ranking decides which copy wins when a series exists on several sites.
+- **Provider always visible.** Every manga page names the site it came from, right under the title, with a link back to the original.
+- **Passcode lock.** Optional PBKDF2-hashed app passcode with auto-lock, cover blurring and a one-time recovery key.
+- **Track what you read.** Per-chapter read state, progress percentages, next-unread jump, star ratings and notes.
+- **Watch for new chapters.** Keep a watchlist and check every series in parallel for updates.
+- **Stats, filters, queue and cleanup.** Download statistics, content filters, a persistent job queue, library import/export, duplicate-file scanning and orphan detection.
 
 See **[FEATURES.md](FEATURES.md)** for the complete feature reference and
 **[CHANGELOG.md](CHANGELOG.md)** for the history of every update.
@@ -239,6 +245,66 @@ mangadl gui        # or: python gui.py
 - **File naming settings** — templates for single-file / per-chapter / range bundles with `{title}` `{chapter}` `{start}` `{end}` placeholders and a live preview
 - **Reader settings** — path to the Readest executable (or any reader); empty uses your system's default app
 - Ambient design: solid pastel-dark backgrounds with drifting circular gradients and an animated dot matrix; Google Material Symbols throughout, no emojis anywhere
+
+---
+
+## Source ranking and exclusion
+
+Sources are ranked, and the ranking decides which copy of a series wins when the
+same title exists on several sites. Drag the list in **Settings → Sources**, or
+use the terminal:
+
+```bash
+mangadl config                          # show the table
+mangadl config up mangakatana           # rank it higher
+mangadl config disable natomanga        # exclude it from results
+mangadl config rank mangadex natomanga mangakatana weebcentral
+mangadl config reset
+```
+
+A **disabled** source is skipped everywhere except direct URLs — paste a link to
+an excluded site and it still works, so you never lose access to a link someone
+sends you. The TUI has the same controls under its **Sources** tab (`F4`).
+
+---
+
+## Passcode lock
+
+An optional passcode gates the app's interface.
+
+```bash
+mangadl lock status
+mangadl lock set        # prompts, then prints a one-time recovery key
+mangadl lock change
+mangadl lock off
+```
+
+The passcode is stored as a PBKDF2-HMAC-SHA256 verifier (240,000 rounds) over a
+per-install random salt, so the file cannot be reversed and two people with the
+same passcode get different hashes. Five wrong attempts start an escalating
+cooldown. A recovery key is issued once at setup and is the only way back in if
+you forget the passcode.
+
+**Scope:** this is a privacy screen for the UI, not disk encryption. Your
+downloaded files stay readable on disk to anyone with access to the machine.
+
+---
+
+## Tracking and maintenance
+
+```bash
+mangadl watch add <url>     # track a series
+mangadl watch check         # check every watched series in parallel
+mangadl watch list
+
+mangadl stats               # download statistics
+mangadl history             # recent searches
+mangadl export lib.md md    # export the library
+
+mangadl disk usage          # size per series
+mangadl disk dupes          # byte-identical files, with wasted space
+mangadl disk orphans        # library entries whose files are gone
+```
 
 ---
 

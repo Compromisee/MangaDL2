@@ -4,15 +4,198 @@ A complete feature reference for MangaDL.
 
 ## Sources
 
-- **MangaDex** — official JSON API: languages, scanlation groups, data-saver
-  mode, correct cover art in three sizes, per-volume covers
-- **Mangakatana** — HTML scraping, including its obfuscated JS page arrays
-- **Natomanga** — Manganato / Mangakakalot successor, JSON chapter endpoint
-- **Weeb Central** — the original source, with FlareSolverr fallback
-- Source auto-detected from any pasted URL; `-s/--source` to force one
-- `mangadl sources` lists every site and what it supports
-- Cross-source search runs every site in parallel and merges results
-- Adding a site is one file in `mangadl/sources/` plus one registry line
+1. **MangaDex** — official JSON API
+2. **Mangakatana** — HTML scraping with obfuscated JS page decoding
+3. **Natomanga** — Manganato / Mangakakalot successor, JSON chapter endpoint
+4. **Weeb Central** — the original source, FlareSolverr fallback
+5. Source auto-detected from any pasted URL
+6. `-s/--source` to force a source
+7. `mangadl sources` lists every site and its capabilities
+8. Cross-source search runs every site in parallel
+9. Bare MangaDex UUIDs are accepted as URLs
+10. Adding a site is one file plus one registry line
+11. Per-source capability flags drive the UI (languages, scanlators, Cloudflare)
+12. Shared base class: retries, backoff, rate limits, atomic writes
+13. `Retry-After` / `X-RateLimit-Retry-After` honoured
+14. Magic-byte image validation (accepts `application/octet-stream`)
+15. Per-chapter `Referer` and header overrides for hotlink-protected CDNs
+
+## Source ranking and exclusion
+
+16. Drag-and-drop source ranking in the GUI
+17. Move up / down buttons as a keyboard-friendly alternative
+18. Rank order decides which copy wins when a series exists on several sites
+19. Toggle a source off to exclude its results entirely
+20. Excluded sources still work from a direct URL
+21. `search_enabled` — keep a source usable but out of multi-source search
+22. Per-source result limit override
+23. Per-source weight for duplicate scoring
+24. Per-source language override
+25. Per-source extra delay for politeness
+26. Free-text note per source
+27. Ranking is shared by CLI, GUI and TUI
+28. New sources are auto-appended, ranked last
+29. Stale config entries are pruned automatically
+30. `mangadl config` shows the full table
+31. `mangadl config enable|disable <source>`
+32. `mangadl config up|down <source>`
+33. `mangadl config rank <a> <b> ...` to set the whole order
+34. `mangadl config reset`
+35. Sources tab in the TUI with the same controls
+
+## Provider attribution
+
+36. Provider shown directly beneath the manga title in the GUI
+37. Colour-coded provider dot per source
+38. "Open on source site" link next to the provider name
+39. Provider line under the title in the TUI
+40. Provider line in `mangadl info`
+41. Source badges on GUI search result cards
+42. Source column in CLI search results
+43. Source tag in TUI search results
+44. Source recorded on every library entry
+45. Source recorded on every bookmark
+46. Source stamped on download results and plan events
+
+## Passcode lock
+
+47. Optional app passcode
+48. PBKDF2-HMAC-SHA256 with 240,000 rounds
+49. Per-install random salt — identical passcodes hash differently
+50. Constant-time comparison
+51. Passcode never stored in plaintext
+52. One-time recovery key issued at setup
+53. Recovery key is case-insensitive and ignores spacing
+54. Recovery flow built into the lock screen
+55. Change passcode (requires the current one)
+56. Disable lock (requires the passcode)
+57. Attempt throttling after 5 failures
+58. Escalating cooldown, capped at 15 minutes
+59. Auto-lock after N idle minutes
+60. Lock on app start
+61. Optional cover blurring behind the lock screen
+62. Optional passcode hint
+63. Lock file written with owner-only permissions
+64. `mangadl lock status|set|change|off` from the terminal
+
+## Content filters
+
+65. Blocked tags
+66. Blocked title words
+67. Blocked authors
+68. Safe mode drops adult-rated results
+69. Hide results with no cover
+70. Minimum chapter count filter
+71. Filters apply to both GUI and CLI search
+
+## Duplicate handling
+
+72. Cross-source duplicate detection by normalised title
+73. Decorations stripped when matching (Colored, Official, Doujinshi, brackets)
+74. Best-ranked copy survives a merge
+75. `also_on` lists the other sources carrying the same series
+76. Toggle merging on or off
+77. Interleave mode round-robins sources instead of grouping them
+
+## Reading progress
+
+78. Mark individual chapters read or unread
+79. Bulk mark a range
+80. Percentage progress per series
+81. Unread count per series
+82. Jump to next unread chapter
+83. Last-read chapter remembered
+84. Clear progress per series or globally
+
+## Update watching
+
+85. Watch a series for new chapters
+86. Watchlist with per-series known chapter count
+87. Parallel update checking across all watched series
+88. New-chapter counts per series
+89. Acknowledge updates to reset the badge
+90. Progress callback while checking
+91. Failing sites are skipped, not fatal
+92. `mangadl watch list|add|remove|check`
+
+## Notes, ratings, collections
+
+93. Free-text note per series
+94. 0–5 star rating, clamped
+95. Custom tags per series
+96. Filter by minimum rating
+97. Named collections
+98. Add / remove series in a collection
+99. Duplicate-safe collection inserts
+
+## Statistics and insights
+
+100. Total chapters, pages, bytes and time
+101. Per-source statistics
+102. Per-day statistics
+103. Average pages per second
+104. Busiest day and top source
+105. Human-readable sizes and durations
+106. Library insights: series, chapters, pages, disk use
+107. Largest and most recent series
+108. Statistics recorded automatically after every download
+109. Stat tiles in GUI settings
+110. `mangadl stats` in the terminal
+111. Reset statistics
+
+## Search history
+
+112. Every search recorded with source and hit count
+113. Duplicate queries collapse to the newest
+114. Type-ahead suggestions from history
+115. Prefix matches ranked above substring matches
+116. Remove a single entry or clear all
+117. Capped at 500 entries
+118. `mangadl history` / `mangadl history clear`
+
+## Download queue
+
+119. Persistent job queue
+120. Reorder queued jobs
+121. Per-job status: pending, running, done, failed, paused
+122. Progress and error recorded per job
+123. Fetch the next pending job
+124. Remove one job or clear by status
+
+## Import, export, backup
+
+125. Export library as JSON
+126. Export library as CSV
+127. Export library as Markdown table
+128. Import a previously exported library
+129. Merge or replace on import
+130. Snapshots of library + bookmarks + config
+131. Restore any snapshot
+132. Last 20 snapshots retained
+133. `mangadl export <file> [format]`
+
+## Disk maintenance
+
+134. Per-series disk usage report
+135. Duplicate file scan by SHA-256, size-bucketed for speed
+136. Wasted-space total
+137. Orphan detection for missing files and folders
+138. Bulk delete chosen files
+139. `mangadl disk usage|dupes|orphans`
+
+## MangaDex specifics
+
+140. Correct cover URLs in three sizes
+141. Per-volume and localised cover listing
+142. Reference expansion so covers arrive in one request
+143. Translation language selection
+144. Preferred scanlation group
+145. Automatic dedupe of multiple releases per chapter
+146. Alternatives recorded on the chosen release
+147. Data-saver mode
+148. Externally hosted chapters filtered out
+149. Paginated feed with the 10k offset cap handled
+150. All content ratings requested explicitly
 
 ## Core engine
 

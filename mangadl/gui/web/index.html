@@ -12,6 +12,30 @@
 </head>
 <body>
 
+<!-- =============================================== LOCK SCREEN -->
+<div class="lock-overlay hidden" id="lockOverlay">
+  <div class="lock-box">
+    <div class="lock-icon"><span class="material-symbols-rounded">lock</span></div>
+    <h2 id="lockTitle">MangaDL is locked</h2>
+    <p class="lock-sub" id="lockSub">Enter your passcode to continue</p>
+    <input type="password" id="lockInput" class="lock-input" placeholder="Passcode"
+           autocomplete="off" spellcheck="false">
+    <div class="lock-error" id="lockError"></div>
+    <button class="btn btn-filled lock-btn" id="lockUnlockBtn">Unlock</button>
+    <button class="text-btn" id="lockForgotBtn">Forgot passcode?</button>
+
+    <div class="lock-recovery hidden" id="lockRecovery">
+      <p class="lock-sub">Enter your recovery key and choose a new passcode.</p>
+      <input type="text" id="recoveryKeyInput" class="lock-input"
+             placeholder="XXXXX-XXXXX-XXXXX-XXXXX" autocomplete="off">
+      <input type="password" id="recoveryNewInput" class="lock-input"
+             placeholder="New passcode" autocomplete="off">
+      <button class="btn btn-filled lock-btn" id="recoverBtn">Reset passcode</button>
+      <button class="text-btn" id="recoverCancelBtn">Back</button>
+    </div>
+  </div>
+</div>
+
 <!-- ambient background: solid pastel-dark base + circular gradients + dot matrix -->
 <div class="bg">
   <div class="bg-orb orb-1"></div>
@@ -157,6 +181,13 @@
             <button class="icon-btn bookmark-btn" id="bookmarkBtn" title="Bookmark">
               <span class="material-symbols-rounded" id="bookmarkIcon">bookmark_add</span>
             </button>
+          </div>
+          <div class="source-note" id="mangaSourceNote">
+            <span class="src-dot" id="mangaSourceDot"></span>
+            <span class="src-text">from <b id="mangaSourceName"></b></span>
+            <a class="src-link" id="mangaSourceLink" href="#" title="Open on the source site">
+              <span class="material-symbols-rounded">open_in_new</span>
+            </a>
           </div>
           <div class="meta-row" id="mangaAuthors"></div>
           <div class="chips" id="mangaTags"></div>
@@ -312,6 +343,111 @@
   <!-- ================================================ SETTINGS VIEW -->
   <section class="view" id="view-settings">
     <h1 class="view-heading"><span class="material-symbols-rounded heading-icon">settings</span>Settings</h1>
+
+    <!-- ------------------------------------------------ SOURCES -->
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">lan</span> Sources &amp; ranking</div>
+      <p class="hint" style="margin:-4px 0 12px">
+        Drag to rank. Higher sources are preferred when the same series appears on
+        several sites. Turn a source off to exclude its results entirely.
+      </p>
+      <ul class="source-rank" id="sourceRankList"></ul>
+      <div class="setting-row">
+        <div><label>Merge duplicates</label><p class="hint">Collapse the same series found on multiple sites into one result</p></div>
+        <label class="switch"><input type="checkbox" id="setDedupe"><span></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Interleave results</label><p class="hint">Round-robin the sources instead of grouping them</p></div>
+        <label class="switch"><input type="checkbox" id="setInterleave"><span></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Reset ranking</label><p class="hint">Restore the default order and re-enable every source</p></div>
+        <button class="btn" id="resetSourcesBtn">Reset</button>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------ SECURITY -->
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">lock</span> Security</div>
+      <p class="hint" style="margin:-4px 0 12px">
+        A passcode gates this app's interface. It is not disk encryption — your
+        downloaded files stay readable on disk.
+      </p>
+
+      <div class="setting-row">
+        <div><label>App passcode</label><p class="hint" id="lockStateHint">Off</p></div>
+        <label class="switch"><input type="checkbox" id="setLockEnabled"><span></span></label>
+      </div>
+
+      <div id="lockConfigRows" class="hidden">
+        <div class="setting-row">
+          <div><label>Auto-lock after</label><p class="hint">Lock again when idle. 0 = never</p></div>
+          <div class="inline-field">
+            <input type="number" id="setAutoLock" min="0" max="240" step="1" style="width:80px">
+            <span class="hint">minutes</span>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div><label>Lock on start</label><p class="hint">Ask for the passcode each time MangaDL opens</p></div>
+          <label class="switch"><input type="checkbox" id="setLockOnStart"><span></span></label>
+        </div>
+        <div class="setting-row">
+          <div><label>Blur covers when locked</label><p class="hint">Hide artwork behind the lock screen</p></div>
+          <label class="switch"><input type="checkbox" id="setBlurCovers"><span></span></label>
+        </div>
+        <div class="setting-row">
+          <div><label>Hint</label><p class="hint">Shown on the lock screen. Keep it vague</p></div>
+          <input type="text" id="setLockHint" placeholder="optional" style="width:230px">
+        </div>
+        <div class="setting-row">
+          <div><label>Change passcode</label><p class="hint">Requires your current passcode</p></div>
+          <button class="btn" id="changePassBtn">Change</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------ FILTERS -->
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">filter_alt</span> Content filters</div>
+      <div class="setting-row">
+        <div><label>Safe mode</label><p class="hint">Drop adult-rated results where the source reports a rating</p></div>
+        <label class="switch"><input type="checkbox" id="setSafeMode"><span></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Hide results without covers</label><p class="hint">Usually low-quality or placeholder entries</p></div>
+        <label class="switch"><input type="checkbox" id="setHideNoCover"><span></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Blocked tags</label><p class="hint">Comma separated, e.g. Doujinshi, Ecchi</p></div>
+        <input type="text" id="setBlockedTags" placeholder="none" style="width:230px">
+      </div>
+      <div class="setting-row">
+        <div><label>Blocked title words</label><p class="hint">Hide results whose title contains these</p></div>
+        <input type="text" id="setBlockedTitles" placeholder="none" style="width:230px">
+      </div>
+    </div>
+
+    <!-- ------------------------------------------------ STATS -->
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">insights</span> Statistics</div>
+      <div class="stat-grid" id="statGrid"></div>
+      <div class="setting-row">
+        <div><label>Export library</label><p class="hint">Save your library as JSON, CSV or Markdown</p></div>
+        <div class="inline-field">
+          <button class="btn" data-export="json">JSON</button>
+          <button class="btn" data-export="csv">CSV</button>
+          <button class="btn" data-export="md">Markdown</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div><label>Import library</label><p class="hint">Merge a previously exported JSON file</p></div>
+        <button class="btn" id="importLibBtn">Import</button>
+      </div>
+      <div class="setting-row">
+        <div><label>Reset statistics</label><p class="hint">Clear all counters</p></div>
+        <button class="btn danger" id="resetStatsBtn">Reset</button>
+      </div>
+    </div>
 
     <div class="card settings-card">
       <div class="card-title"><span class="material-symbols-rounded">palette</span> Appearance</div>

@@ -2,6 +2,60 @@
 
 All notable changes to this fork, newest first.
 
+## v3.1.0 — Provider attribution, passcode lock, source ranking, 150 features
+
+### Added — provider attribution
+- The source a manga came from is now shown **directly beneath its title** in
+  the GUI (with a coloured dot and a link back to the original page), in the
+  TUI, and in `mangadl info`
+- Source recorded on library entries, bookmarks, plan events and results
+
+### Added — source ranking and exclusion
+- New `mangadl/config.py`: per-source settings at `~/.mangadl/config.json`
+- Drag-and-drop source ranking in GUI settings, with move up/down buttons
+- Ranking decides which copy wins when a series exists on several sites
+- Exclude a source entirely, or only from multi-source search
+- Excluded sources still work from a direct URL
+- Per-source limit, weight, language, delay and note overrides
+- `mangadl config show|enable|disable|up|down|rank|reset`
+- Sources tab in the TUI (F4) with the same controls
+- New sources auto-append at the end; stale entries pruned
+
+### Added — passcode lock
+- New `mangadl/passlock.py`: optional app passcode
+- PBKDF2-HMAC-SHA256, 240,000 rounds, per-install random salt, constant-time
+  comparison; the passcode is never stored in plaintext
+- One-time recovery key, attempt throttling with escalating cooldown,
+  auto-lock on idle, lock on start, optional cover blurring and a hint
+- Full-screen lock overlay in the GUI with a built-in recovery flow
+- `mangadl lock status|set|change|off`
+
+### Added — tracking
+- New `mangadl/tracking.py`: per-chapter read state, progress percentages,
+  next-unread jump, watchlist with parallel update checking, notes and
+  0-5 star ratings
+- `mangadl watch list|add|remove|check`
+
+### Added — features module
+- New `mangadl/features.py`: search history with type-ahead suggestions,
+  persistent download queue, statistics (overall, per source, per day),
+  content filters, cross-source duplicate merging, collections, library
+  import/export (JSON / CSV / Markdown) and snapshots
+- `mangadl stats`, `mangadl history`, `mangadl export`
+- Statistics recorded automatically after every download
+
+### Added — disk maintenance
+- Per-series disk usage, SHA-256 duplicate scanning with wasted-space totals,
+  and orphan detection for missing files
+- `mangadl disk usage|dupes|orphans`
+
+### Changed
+- `search_all()` respects the user's ranking, skips excluded sources, and
+  gained `interleave` mode for round-robin results
+- GUI JS API grew to 81 methods; settings gained Sources, Security, Filters
+  and Statistics panels
+- Test suite expanded to 118 offline tests plus 4 opt-in live tests
+
 ## v3.0.0 — Multi-source support (MangaDex, Mangakatana, Natomanga)
 
 Renamed from **WeebCentral Downloader** to **MangaDL**: the project is no

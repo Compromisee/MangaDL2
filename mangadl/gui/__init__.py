@@ -17,8 +17,12 @@ import traceback
 from ..downloader import DownloadEngine, DownloadOptions
 from ..sources import (DEFAULT_SOURCE, SOURCES, detect_source, get_source,
                        list_sources, search_all, source_for_url)
+from .. import config as appconfig
+from .. import features
 from .. import library
 from .. import logs as wclogs
+from .. import passlock
+from .. import tracking
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +43,11 @@ DEFAULT_SETTINGS = {
     "matrix": True,
     "confirm_large": True,
     "large_threshold": 100,
-    "sources": [],                  # enabled source ids; [] = all of them
+    "sources": [],                  # legacy; per-source config lives in config.json
+    "dedupe_results": True,         # collapse the same series across sources
+    "interleave_results": False,    # round-robin sources instead of grouping
+    "confirm_delete": True,
+    "auto_snapshot": False,
     "default_source": DEFAULT_SOURCE,
     "language": "en",               # MangaDex translation language
     "scanlator": "",                # preferred MangaDex scanlation group
@@ -108,6 +116,260 @@ class Api:
             )
         return self._sources[key]
 
+    # ------------------------------------------------------------ passlock
+
+    def lock_status(self):
+        return {"ok": True, **passlock.status()}
+
+    def lock_verify(self, passcode: str):
+        result = passlock.verify(passcode)
+        if result.get("ok"):
+            self._unlocked_at = time.time()
+        return result
+
+    def lock_set(self, passcode: str, hint: str = "", auto_lock_minutes: int = 0,
+                 lock_on_start: bool = True, blur_covers: bool = True):
+        return passlock.set_passcode(passcode, hint, auto_lock_minutes,
+                                     lock_on_start, blur_covers)
+
+    def lock_change(self, current: str, new: str):
+        return passlock.change_passcode(current, new)
+
+    def lock_disable(self, passcode: str):
+        return passlock.disable(passcode)
+
+    def lock_recover(self, recovery_key: str, new_passcode: str):
+        return passlock.recover(recovery_key, new_passcode)
+
+    def lock_options(self, options: dict):
+        return {"ok": True, **passlock.update_options(**(options or {}))}
+
+    def lock_should_lock(self):
+        """Whether the UI should show the lock screen right now."""
+        status = passlock.status()
+        if not status["enabled"]:
+            return {"ok": True, "locked": False}
+        idle_minutes = status["auto_lock_minutes"]
+        if getattr(self, "_unlocked_at", 0) and idle_minutes:
+            idle = (time.time() - self._unlocked_at) / 60.0
+            return {"ok": True, "locked": idle >= idle_minutes}
+        return {"ok": True, "locked": not getattr(self, "_unlocked_at", 0)}
+
+    # -------------------------------------------------- source config
+
+    def get_source_config(self):
+        """Sources with their rank/enabled state, for the drag-and-drop list."""
+        return {"ok": True, "sources": appconfig.describe()}
+
+    def set_source_config(self, source_id: str, changes: dict):
+        return {"ok": True, "entry": appconfig.set_source_config(
+            source_id, **(changes or {}))}
+
+    def reorder_sources(self, order: list):
+        """Persist a new ranking after a drag-and-drop reorder."""
+        appconfig.reorder(list(order or []))
+        return {"ok": True, "sources": appconfig.describe()}
+
+    def move_source(self, source_id: str, delta: int):
+        appconfig.move(source_id, int(delta))
+        return {"ok": True, "sources": appconfig.describe()}
+
+    def toggle_source(self, source_id: str, enabled: bool):
+        appconfig.set_enabled(source_id, bool(enabled))
+        return {"ok": True, "sources": appconfig.describe()}
+
+    def toggle_source_search(self, source_id: str, enabled: bool):
+        appconfig.set_search_enabled(source_id, bool(enabled))
+        return {"ok": True, "sources": appconfig.describe()}
+
+    def reset_source_config(self):
+        appconfig.reset_config()
+        return {"ok": True, "sources": appconfig.describe()}
+
+    # ------------------------------------------------------- features
+
+    def get_history(self, limit: int = 30):
+        return {"ok": True, "items": features.get_history(limit)}
+
+    def suggest_query(self, prefix: str):
+        return {"ok": True, "items": features.suggest(prefix)}
+
+    def clear_history(self):
+        features.clear_history()
+        return {"ok": True}
+
+    def remove_history(self, query: str):
+        return {"ok": True, "items": features.remove_history(query)}
+
+    def get_filters(self):
+        return {"ok": True, "filters": features.get_filters()}
+
+    def set_filters(self, changes: dict):
+        return {"ok": True, "filters": features.set_filters(**(changes or {}))}
+
+    def get_stats(self):
+        return {"ok": True, "stats": features.get_stats()}
+
+    def reset_stats(self):
+        features.reset_stats()
+        return {"ok": True}
+
+    def get_insights(self):
+        return {"ok": True, "insights": features.library_insights()}
+
+    def get_collections(self):
+        return {"ok": True, "collections": features.get_collections()}
+
+    def add_to_collection(self, name: str, item: dict):
+        return {"ok": True, "collections": features.add_to_collection(name, item)}
+
+    def remove_from_collection(self, name: str, url: str):
+        return {"ok": True,
+                "collections": features.remove_from_collection(name, url)}
+
+    def delete_collection(self, name: str):
+        return {"ok": True, "collections": features.delete_collection(name)}
+
+    def get_queue(self):
+        return {"ok": True, "items": features.queue_list()}
+
+    def queue_add(self, job: dict):
+        return {"ok": True, "job": features.queue_add(job or {})}
+
+    def queue_remove(self, job_id: str):
+        return {"ok": True, "items": features.queue_remove(job_id)}
+
+    def queue_move(self, job_id: str, delta: int):
+        return {"ok": True, "items": features.queue_move(job_id, int(delta))}
+
+    def queue_clear(self, status: str = None):
+        return {"ok": True, "items": features.queue_clear(status)}
+
+    def export_library(self, fmt: str = "json"):
+        try:
+            _, _, save_t = _dialog_types()
+            ext = {"json": "json", "csv": "csv", "md": "md"}.get(fmt, "json")
+            dest = self.window.create_file_dialog(
+                save_t, save_filename=f"mangadl-library.{ext}")
+            if not dest:
+                return {"ok": False, "cancelled": True}
+            if isinstance(dest, (list, tuple)):
+                dest = dest[0]
+            features.export_library(dest, fmt)
+            return {"ok": True, "path": dest}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def import_library(self):
+        try:
+            _, open_t, _ = _dialog_types()
+            chosen = self.window.create_file_dialog(open_t)
+            if not chosen:
+                return {"ok": False, "cancelled": True}
+            if isinstance(chosen, (list, tuple)):
+                chosen = chosen[0]
+            return {"ok": True, **features.import_library(chosen)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def snapshot(self, label: str = ""):
+        return {"ok": True, "snapshot": features.snapshot(label)}
+
+    def list_snapshots(self):
+        return {"ok": True, "items": features.list_snapshots()}
+
+    def restore_snapshot(self, snapshot_id: str):
+        return {"ok": features.restore_snapshot(snapshot_id)}
+
+    def open_url(self, url: str):
+        """Open a link in the user's real browser."""
+        try:
+            import webbrowser
+            webbrowser.open(url)
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # ------------------------------------------------------- tracking
+
+    def mark_read(self, url: str, chapter_name: str, read: bool = True):
+        tracking.mark_read(url, chapter_name, read)
+        return {"ok": True}
+
+    def mark_many_read(self, url: str, names: list, read: bool = True):
+        tracking.mark_many(url, list(names or []), read)
+        return {"ok": True}
+
+    def get_progress(self, url: str, chapters: list = None):
+        return {"ok": True,
+                "progress": tracking.progress_for(url, chapters or []),
+                "read": sorted(tracking.read_chapters(url))}
+
+    def clear_progress(self, url: str = None):
+        tracking.clear_progress(url)
+        return {"ok": True}
+
+    def watch(self, url: str, title: str, chapter_count: int,
+              source: str = None, cover: str = None):
+        return {"ok": True,
+                "entry": tracking.watch(url, title, chapter_count, source, cover)}
+
+    def unwatch(self, url: str):
+        return {"ok": tracking.unwatch(url)}
+
+    def is_watched(self, url: str):
+        return {"ok": True, "watched": tracking.is_watched(url)}
+
+    def get_watchlist(self):
+        return {"ok": True, "items": tracking.get_watchlist()}
+
+    def check_updates(self):
+        try:
+            return {"ok": True, "updates": tracking.check_updates()}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def acknowledge_updates(self, url: str):
+        tracking.acknowledge(url)
+        return {"ok": True}
+
+    def set_note(self, url: str, note: str = "", rating: int = 0,
+                 tags: list = None):
+        return {"ok": True, "entry": tracking.set_note(url, note, rating, tags)}
+
+    def get_note(self, url: str):
+        return {"ok": True, "note": tracking.get_note(url)}
+
+    def get_rated(self, minimum: int = 1):
+        return {"ok": True, "items": tracking.rated(minimum)}
+
+    # --------------------------------------------------- disk tools
+
+    def disk_usage(self, root: str = None):
+        root = root or load_settings().get("output_dir")
+        return {"ok": True, "rows": tracking.disk_usage(root),
+                "root": root}
+
+    def scan_duplicates(self, root: str = None):
+        root = root or load_settings().get("output_dir")
+        groups = tracking.scan_duplicates(root)
+        return {"ok": True, "groups": groups,
+                "wasted": sum(g["wasted"] for g in groups)}
+
+    def find_orphans(self):
+        return {"ok": True, "orphans": tracking.find_orphans()}
+
+    def delete_files(self, paths: list):
+        """Delete chosen files (used by the duplicate cleaner)."""
+        removed, failed = [], []
+        for path in paths or []:
+            try:
+                os.remove(path)
+                removed.append(path)
+            except OSError as e:
+                failed.append({"path": path, "error": str(e)})
+        return {"ok": True, "removed": removed, "failed": failed}
+
     def get_sources(self):
         """Every supported site, for the source picker."""
         return {"ok": True, "sources": list_sources(),
@@ -144,11 +406,22 @@ class Api:
             )
             kwargs = {k: v for k, v in kwargs.items() if v not in (None, "", "Any")}
 
+            settings = load_settings()
             if source_id in ("", "all"):
-                enabled = load_settings().get("sources") or list(SOURCES)
-                results = search_all(query, source_ids=enabled, limit=16, **kwargs)
+                results = search_all(
+                    query, limit=16,
+                    interleave=bool(settings.get("interleave_results")),
+                    **kwargs)
             else:
                 results = self._source(source_id).search(query, **kwargs)
+
+            results = features.apply_filters(results)
+            if settings.get("dedupe_results", True) and source_id in ("", "all"):
+                ranks = {row["id"]: row.get("rank", 100)
+                         for row in appconfig.describe()}
+                results = features.dedupe(results, ranks)
+
+            features.add_history(query, source_id or "all", len(results))
             return {"ok": True, "results": results}
         except Exception as e:
             logger.exception("Search failed")
@@ -167,6 +440,10 @@ class Api:
                 "source_name": source.name,
                 "downloaded": sorted(library.downloaded_chapters(url)),
                 "bookmarked": library.is_bookmarked(url),
+                "watched": tracking.is_watched(url),
+                "read": sorted(tracking.read_chapters(url)),
+                "progress": tracking.progress_for(url, chapters),
+                "note": tracking.get_note(url),
             }
         except Exception as e:
             logger.exception("get_manga failed")

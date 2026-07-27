@@ -65,6 +65,12 @@ class MangaDLTUI(App):
     TabPane { padding: 1 2; }
 
     /* ------------------------------------------------------- search tab */
+    #src-help { color: $text-muted; margin-bottom: 1; height: auto; }
+    #src-rank-list { height: 1fr; border: round $primary 30%; }
+    #src-rank-list:focus { border: round $primary; }
+    #src-actions { height: 3; margin-top: 1; }
+    #src-actions Button { margin-right: 1; min-width: 12; }
+
     #search-bar { height: 3; margin-bottom: 1; }
     #source-select { width: 22; margin-right: 1; }
     #search-input { width: 1fr; }
@@ -83,6 +89,7 @@ class MangaDLTUI(App):
         border: round $primary 30%; padding: 1 2;
     }
     #manga-title { text-style: bold; color: $primary; }
+    #manga-source { color: $text-muted; text-style: italic; }
     #manga-meta { color: $text-muted; margin-top: 1; }
     #manga-tags { color: $secondary; margin-top: 1; }
     #manga-desc { margin-top: 1; color: $text 80%; }
@@ -140,7 +147,8 @@ class MangaDLTUI(App):
         Binding("f1", "switch_tab('tab-search')", "Search tab", show=False),
         Binding("f2", "switch_tab('tab-manga')", "Manga tab", show=False),
         Binding("f3", "switch_tab('tab-downloads')", "Downloads tab", show=False),
-        Binding("f4", "switch_tab('tab-settings')", "Settings tab", show=False),
+        Binding("f4", "switch_tab('tab-sources')", "Sources tab", show=False),
+        Binding("f5", "switch_tab('tab-settings')", "Settings tab", show=False),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -185,6 +193,7 @@ class MangaDLTUI(App):
                 with Horizontal(id="manga-body", classes="hidden"):
                     with VerticalScroll(id="manga-info"):
                         yield Static("", id="manga-title")
+                        yield Static("", id="manga-source")
                         yield Static("", id="manga-meta")
                         yield Static("", id="manga-tags")
                         yield Static("", id="manga-desc")
@@ -233,6 +242,18 @@ class MangaDLTUI(App):
                     with Horizontal(id="dl-actions"):
                         yield Button("Stop", variant="error", id="stop-btn")
 
+            with TabPane("Sources", id="tab-sources"):
+                yield Static(
+                    "Rank sources with the buttons; higher sources win when the "
+                    "same series appears on several sites. Space toggles a source "
+                    "on or off.", id="src-help")
+                yield ListView(id="src-rank-list")
+                with Horizontal(id="src-actions"):
+                    yield Button("Move up", id="src-up")
+                    yield Button("Move down", id="src-down")
+                    yield Button("Toggle", id="src-toggle")
+                    yield Button("Reset", id="src-reset")
+
             with TabPane("Settings", id="tab-settings"):
                 with Vertical(id="settings-box"):
                     yield Static("Changes apply to new downloads. Saved to "
@@ -270,11 +291,85 @@ class MangaDLTUI(App):
 
         yield Footer()
 
+    # ------------------------------------------------------------ sources
+
+    def _refresh_source_list(self):
+        from . import config as appconfig
+
+        listview = self.query_one("#src-rank-list", ListView)
+        index = listview.index or 0
+        listview.clear()
+        self._source_rows = appconfig.describe()
+        for position, row in enumerate(self._source_rows, 1):
+            enabled = row.get("enabled", True)
+            mark = f"[{ACCENT}]on[/]" if enabled else "[red]off[/]"
+            caps = []
+            if row.get("supports_language"):
+                caps.append("languages")
+            if row.get("needs_flaresolverr"):
+                caps.append("cloudflare")
+            suffix = f"  [dim]{', '.join(caps)}[/]" if caps else ""
+            listview.append(ListItem(Static(
+                f"[dim]{position}.[/] [bold]{row.get('name', row['id'])}[/]  "
+                f"{mark}{suffix}\n[dim]{row.get('base_url', '')}[/]"
+            )))
+        if self._source_rows:
+            listview.index = min(index, len(self._source_rows) - 1)
+
+    def _selected_source(self):
+        rows = getattr(self, "_source_rows", [])
+        listview = self.query_one("#src-rank-list", ListView)
+        index = listview.index
+        if index is None or not rows or index >= len(rows):
+            return None
+        return rows[index]["id"]
+
+    @on(Button.Pressed, "#src-up")
+    def handle_src_up(self):
+        from . import config as appconfig
+        source_id = self._selected_source()
+        if source_id:
+            appconfig.move(source_id, -1)
+            listview = self.query_one("#src-rank-list", ListView)
+            target = max(0, (listview.index or 0) - 1)
+            self._refresh_source_list()
+            listview.index = target
+
+    @on(Button.Pressed, "#src-down")
+    def handle_src_down(self):
+        from . import config as appconfig
+        source_id = self._selected_source()
+        if source_id:
+            appconfig.move(source_id, 1)
+            listview = self.query_one("#src-rank-list", ListView)
+            target = min(len(self._source_rows) - 1, (listview.index or 0) + 1)
+            self._refresh_source_list()
+            listview.index = target
+
+    @on(Button.Pressed, "#src-toggle")
+    def handle_src_toggle(self):
+        from . import config as appconfig
+        source_id = self._selected_source()
+        if source_id:
+            appconfig.set_enabled(source_id, not appconfig.is_enabled(source_id))
+            self._refresh_source_list()
+
+    @on(Button.Pressed, "#src-reset")
+    def handle_src_reset(self):
+        from . import config as appconfig
+        appconfig.reset_config()
+        self._refresh_source_list()
+
     def on_mount(self):
         self.query_one("#search-input").focus()
         fmt = self.settings.get("format", "cbz")
         try:
             self.query_one("#fmt-select", Select).value = fmt
+        except Exception:
+            pass
+        self._source_rows = []
+        try:
+            self._refresh_source_list()
         except Exception:
             pass
 
@@ -403,6 +498,10 @@ class MangaDLTUI(App):
         self.query_one("#manga-body").remove_class("hidden")
 
         self.query_one("#manga-title", Static).update(info["title"])
+        provider = info.get("source_name") or (
+            self.source.name if self.source else info.get("source") or "")
+        self.query_one("#manga-source", Static).update(
+            f"[dim]from[/] [{ACCENT}]{provider}[/]" if provider else "")
         meta = []
         if info.get("authors"):
             meta.append("by " + ", ".join(info["authors"]))
