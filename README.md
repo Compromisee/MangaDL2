@@ -4,8 +4,6 @@
 
 **Download manga from [weebcentral.com](https://weebcentral.com) as CBZ, PDF or EPUB — from a modern CLI or a minimalist desktop GUI.**
 
-[Project landing page](https://yui007.github.io/weebcentral_downloader/) (GitHub Pages, served from `docs/`)
-
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![pywebview](https://img.shields.io/badge/pywebview-GUI-2962FF?style=for-the-badge)](https://pywebview.flowrl.com)
 [![License](https://img.shields.io/badge/License-MIT-00875A?style=for-the-badge)](LICENSE)
@@ -358,5 +356,10 @@ This tool is for personal archival of content you have the right to access.
 Support the official releases of the manga you enjoy.
 
 ## License
+MIT 
+
+
+
+# Based on: https://github.com/Yui007/weebcentral_downloader
 
 [MIT](LICENSE)
