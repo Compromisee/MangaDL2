@@ -57,6 +57,7 @@ class DownloadEngine:
         self.opt = options
         self.on_event = on_event or (lambda event: None)
         self.source = self._make_source()
+        self._image_pool = None
         # kept as `scraper` too so older integrations keep working
         self.scraper = self.source
         self._stop = False
@@ -166,6 +167,14 @@ class DownloadEngine:
         })
 
         # ------------------------------------------------------- download
+        # Total in-flight requests are bounded by this single pool, sized so
+        # concurrent chapters cannot multiply it.
+        total_image_workers = max(1, min(16, opt.chapter_workers * opt.image_workers))
+        self._image_pool = ThreadPoolExecutor(
+            max_workers=total_image_workers,
+            thread_name_prefix="mangadl-img",
+        )
+
         chapter_dirs = {}  # chapter name -> images dir
         completed = 0
         checkpoint_lock = Lock()
@@ -197,27 +206,35 @@ class DownloadEngine:
                 return chapter, 0, None
 
             got = 0
-            with ThreadPoolExecutor(max_workers=self.opt.image_workers) as pool:
-                futures = {}
-                referer = chapter.get("referer") or chapter.get("url")
-                extra_headers = chapter.get("headers")
-                for i, url in enumerate(urls, 1):
-                    ext = self.source.guess_extension(url)
-                    path = os.path.join(target, f"{i:03d}{ext}")
-                    if os.path.exists(path) and os.path.getsize(path) > 0:
-                        got += 1
-                        self.emit("chapter_progress", chapter=name, done=got, total=len(urls))
-                        continue
-                    futures[pool.submit(
-                        self.source.download_file, url, path, referer,
-                        self.opt.retries, extra_headers,
-                    )] = url
-                for future in as_completed(futures):
-                    if self._stop:
-                        break
-                    if future.result():
-                        got += 1
-                        self.emit("chapter_progress", chapter=name, done=got, total=len(urls))
+            # One shared image pool for the whole job. Previously a new pool
+            # was created per chapter on top of the chapter pool, so live
+            # thread count churned and peaked at chapter_workers x
+            # image_workers.
+            pool = self._image_pool
+            futures = {}
+            referer = chapter.get("referer") or chapter.get("url")
+            extra_headers = chapter.get("headers")
+
+            for i, url in enumerate(urls, 1):
+                ext = self.source.guess_extension(url)
+                path = os.path.join(target, f"{i:03d}{ext}")
+                if os.path.exists(path) and os.path.getsize(path) > 0:
+                    got += 1
+                    self.emit("chapter_progress", chapter=name,
+                              done=got, total=len(urls))
+                    continue
+                futures[pool.submit(
+                    self.source.download_file, url, path, referer,
+                    self.opt.retries, extra_headers,
+                )] = url
+
+            for future in as_completed(futures):
+                if self._stop:
+                    break
+                if future.result():
+                    got += 1
+                    self.emit("chapter_progress", chapter=name,
+                              done=got, total=len(urls))
 
             # Only a COMPLETE chapter counts; partial ones will be resumed
             # next run (existing images are skipped, missing ones refetched).
@@ -259,6 +276,8 @@ class DownloadEngine:
                     self.failed.append(chapter)
                     self.emit("chapter_failed", chapter=name)
                 time.sleep(opt.delay)
+
+        self._image_pool.shutdown(wait=True)
 
         if self._stop:
             self.emit("stopped")

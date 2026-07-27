@@ -1496,3 +1496,82 @@ body.locked .bm-card img { filter: blur(16px); }
   .dd-panel.dd-open { animation: none; }
   .dd-caret { transition: none; }
 }
+
+/* =================================================== polish: cards & load */
+
+/* Reserve the cover's aspect ratio up front so the grid does not reflow as
+   each image decodes -- that reflow was a visible jank on every search. */
+.result-card img {
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  background: var(--surface-2);
+  opacity: 0;
+  transition: opacity .28s ease;
+}
+.result-card img.loaded { opacity: 1; }
+
+/* Cover failed entirely: show the title on a tinted tile instead of a gap. */
+.result-card.no-cover img { display: none; }
+.result-card .rc-fallback {
+  display: none;
+  aspect-ratio: 2 / 3;
+  place-items: center;
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--text-2);
+  background:
+    linear-gradient(145deg,
+      color-mix(in srgb, var(--accent) 12%, var(--surface-2)),
+      var(--surface-2));
+}
+.result-card.no-cover .rc-fallback { display: grid; }
+
+/* Skeleton placeholders while a search is in flight */
+.skeleton-card {
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.skeleton-card .sk-img { aspect-ratio: 2 / 3; }
+.skeleton-card .sk-line { height: 11px; margin: 9px 10px; border-radius: 6px; }
+
+.sk-img, .sk-line {
+  background: linear-gradient(
+    100deg,
+    var(--surface-2) 30%,
+    color-mix(in srgb, var(--text) 8%, var(--surface-2)) 50%,
+    var(--surface-2) 70%);
+  background-size: 220% 100%;
+  animation: skShimmer 1.15s ease-in-out infinite;
+}
+@keyframes skShimmer {
+  from { background-position: 180% 0; }
+  to   { background-position: -40% 0; }
+}
+
+/* Friendly empty / error states */
+.state-box {
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--text-2);
+}
+.state-box .material-symbols-rounded {
+  font-size: 40px;
+  opacity: .55;
+  color: var(--accent);
+}
+.state-box .state-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.state-box .state-hint { font-size: 13px; max-width: 380px; line-height: 1.5; }
+.state-box .state-actions { display: flex; gap: 8px; margin-top: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .sk-img, .sk-line { animation: none; }
+  .result-card img { transition: none; }
+}

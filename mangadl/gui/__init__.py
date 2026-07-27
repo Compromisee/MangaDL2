@@ -95,6 +95,10 @@ class Api:
         self.engine = None
         self._thread = None
         self._sources = {}
+        self._push_lock = threading.Lock()
+        self._pending_events = []
+        self._pending_progress = {}
+        self._flush_timer = None
 
     # ----------------------------------------------------------- sources
 
@@ -379,13 +383,56 @@ class Api:
 
     # ------------------------------------------------------------- push
 
+    # Progress events fire once per downloaded image. A 700-chapter job at
+    # ~60 pages each is >43,000 evaluate_js calls, every one of them a JSON
+    # dump interpolated into a JS string and marshalled across the native
+    # bridge. That is what pins a CPU core and takes WebView2 down with
+    # 0xCFFFFFFF. High-frequency events are therefore coalesced and flushed
+    # on a timer as a single batch; lifecycle events still go out at once.
+    _FLUSH_INTERVAL = 0.12          # seconds between batches
+    _COALESCE = {"chapter_progress"}
+
     def _push(self, event: dict):
-        if self.window is not None:
-            payload = json.dumps(event)
-            try:
-                self.window.evaluate_js(f"window.onEngineEvent({payload})")
-            except Exception:
-                pass
+        """Queue an engine event for delivery to the web UI."""
+        if self.window is None:
+            return
+
+        etype = event.get("type")
+        with self._push_lock:
+            if etype in self._COALESCE:
+                # keep only the newest progress per chapter
+                self._pending_progress[event.get("chapter")] = event
+            else:
+                self._pending_events.append(event)
+
+            if self._flush_timer is None:
+                self._flush_timer = threading.Timer(self._FLUSH_INTERVAL,
+                                                    self._flush)
+                self._flush_timer.daemon = True
+                self._flush_timer.start()
+
+        # deliver terminal events immediately so the UI never lags at the end
+        if etype in ("finished", "done", "stopped", "error"):
+            self._flush()
+
+    def _flush(self):
+        """Send everything queued as one batched call."""
+        with self._push_lock:
+            if self._flush_timer is not None:
+                self._flush_timer.cancel()
+                self._flush_timer = None
+            batch = self._pending_events
+            batch += list(self._pending_progress.values())
+            self._pending_events = []
+            self._pending_progress = {}
+
+        if not batch or self.window is None:
+            return
+        try:
+            payload = json.dumps(batch)
+            self.window.evaluate_js(f"window.onEngineEvents({payload})")
+        except Exception:
+            logger.debug("Failed to push events to the UI", exc_info=True)
 
     # ------------------------------------------------------------ pages
 
@@ -764,6 +811,21 @@ class Api:
     def stop_download(self):
         if self.engine:
             self.engine.stop()
+        self._flush()          # deliver whatever is queued before stopping
+        return {"ok": True}
+
+    def shutdown(self):
+        """Cancel the pending flush timer so it cannot outlive the window."""
+        with self._push_lock:
+            if self._flush_timer is not None:
+                self._flush_timer.cancel()
+                self._flush_timer = None
+        for source in list(self._sources.values()):
+            try:
+                source.close()
+            except Exception:
+                pass
+        self._sources.clear()
         return {"ok": True}
 
 
@@ -845,6 +907,13 @@ def run_gui():
 
     try:
         window.events.loaded += _on_loaded
+    except Exception:
+        pass
+
+    # Release the flush timer, cached sessions and sockets on close, so a
+    # closing window cannot leave background threads alive.
+    try:
+        window.events.closed += api.shutdown
     except Exception:
         pass
 

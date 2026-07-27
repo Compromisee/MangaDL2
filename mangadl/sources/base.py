@@ -212,7 +212,8 @@ class Source:
         for attempt in range(max_retries):
             try:
                 response = self.session.get(
-                    url, headers=request_headers, timeout=30, allow_redirects=True
+                    url, headers=request_headers, timeout=30,
+                    allow_redirects=True, stream=True
                 )
                 if response.status_code == 429:
                     time.sleep(self._retry_after(response)
@@ -220,13 +221,24 @@ class Source:
                     continue
                 response.raise_for_status()
 
-                content = response.content
-                if not self._is_image(response, content):
+                # Stream to disk instead of holding the whole image in RAM.
+                # With chapter_workers x image_workers in flight, buffering
+                # every response meant tens of multi-MB blobs resident at once.
+                head = b""
+                with open(tmp_path, "wb") as f:
+                    for block in response.iter_content(chunk_size=65536):
+                        if not block:
+                            continue
+                        if len(head) < 16:
+                            head += block[:16 - len(head)]
+                        f.write(block)
+
+                if not self._is_image(response, head):
                     ctype = response.headers.get("content-type", "?")
                     raise ValueError(f"Not an image (content-type: {ctype})")
+                if os.path.getsize(tmp_path) == 0:
+                    raise ValueError("Empty response")
 
-                with open(tmp_path, "wb") as f:
-                    f.write(content)
                 os.replace(tmp_path, filepath)
                 return True
             except Exception as e:

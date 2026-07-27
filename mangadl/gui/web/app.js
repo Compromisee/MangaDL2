@@ -63,49 +63,97 @@ $("modalOk").addEventListener("click", () => {
 
 const matrix = (() => {
   const canvas = $("matrix");
-  const ctx = canvas.getContext("2d");
-  let dots = [], raf = null, enabled = true;
+  const ctx = canvas.getContext("2d", { alpha: true });
+  let dots = [], raf = null, enabled = true, rgb = "255,255,255";
+  let lastDraw = 0;
+
+  // Redrawing 600 dots at 60fps is ~36,000 canvas arcs per second for a
+  // decorative background. It is capped to 30fps, pauses when the window is
+  // hidden or the app is locked, and scales the dot count down on large
+  // viewports so the cost does not grow with screen size.
+  const TARGET_FPS = 30;
+  const FRAME_MS = 1000 / TARGET_FPS;
+  const MAX_DOTS = 420;
+
+  function readColour() {
+    rgb = getComputedStyle(document.documentElement)
+      .getPropertyValue("--matrix-dot").trim() || "255,255,255";
+  }
 
   function resize() {
-    canvas.width = window.innerWidth;
-    canvas.height = window.innerHeight;
-    const gap = 46;
+    // cap the backing store on hi-dpi screens; this is a background texture
+    const dpr = Math.min(window.devicePixelRatio || 1, 1.5);
+    canvas.width = Math.floor(window.innerWidth * dpr);
+    canvas.height = Math.floor(window.innerHeight * dpr);
+    canvas.style.width = window.innerWidth + "px";
+    canvas.style.height = window.innerHeight + "px";
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+    let gap = 46;
+    const estimate = () =>
+      Math.ceil(window.innerWidth / gap) * Math.ceil(window.innerHeight / gap);
+    while (estimate() > MAX_DOTS) gap += 6;      // widen spacing, not density
+
     dots = [];
-    for (let x = gap / 2; x < canvas.width; x += gap) {
-      for (let y = gap / 2; y < canvas.height; y += gap) {
-        dots.push({ x, y, phase: Math.random() * Math.PI * 2, speed: 0.4 + Math.random() * 0.8 });
+    for (let x = gap / 2; x < window.innerWidth; x += gap) {
+      for (let y = gap / 2; y < window.innerHeight; y += gap) {
+        dots.push({
+          x, y,
+          phase: Math.random() * Math.PI * 2,
+          speed: 0.4 + Math.random() * 0.8,
+        });
       }
     }
+    readColour();
   }
 
   function frame(t) {
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const rgb = getComputedStyle(document.documentElement)
-      .getPropertyValue("--matrix-dot").trim() || "255,255,255";
-    for (const d of dots) {
+    raf = requestAnimationFrame(frame);
+    if (t - lastDraw < FRAME_MS) return;         // throttle to TARGET_FPS
+    lastDraw = t;
+
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    // colour is read on resize/theme change, not every single frame --
+    // getComputedStyle in a raf loop forces a style recalc each time
+    for (let i = 0; i < dots.length; i++) {
+      const d = dots[i];
       const a = 0.025 + 0.05 * (0.5 + 0.5 * Math.sin(d.phase + t * 0.0006 * d.speed));
       ctx.fillStyle = `rgba(${rgb},${a})`;
       ctx.beginPath();
       ctx.arc(d.x, d.y, 1.3, 0, Math.PI * 2);
       ctx.fill();
     }
-    raf = requestAnimationFrame(frame);
   }
 
   function start() {
-    if (!enabled || raf) return;
+    if (!enabled || raf || document.hidden) return;
     resize();
     raf = requestAnimationFrame(frame);
   }
   function stop() {
     if (raf) cancelAnimationFrame(raf);
     raf = null;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
   }
-  window.addEventListener("resize", () => { if (raf) resize(); });
+
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    if (!raf) return;
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(resize, 150);       // debounce layout thrash
+  });
+
+  // stop burning CPU while minimised or in the background
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) stop();
+    else if (enabled) start();
+  });
 
   return {
     set(on) { enabled = on; on ? start() : stop(); },
+    refreshColour: readColour,
+    pause: stop,
+    resume() { if (enabled) start(); },
   };
 })();
 
@@ -133,6 +181,7 @@ function applyAppearance(s) {
   document.documentElement.setAttribute("data-accent", s.accent || "blue");
   document.documentElement.setAttribute("data-anim", s.animations === false ? "off" : "on");
   matrix.set(s.matrix !== false);
+  matrix.refreshColour();   // cached per theme, not read every frame
   document.querySelectorAll(".theme-swatch").forEach((b) =>
     b.classList.toggle("active", b.dataset.theme === (s.theme || "midnight")));
   document.querySelectorAll(".accent-dot").forEach((b) =>
@@ -370,6 +419,36 @@ let browsePage = 1;
 let browseMode = false;
 let lastResultCount = 0;
 
+/* Placeholder tiles keep the grid stable while a request is in flight. */
+function showSkeletons(count) {
+  const grid = $("searchResults");
+  grid.innerHTML = "";
+  for (let i = 0; i < count; i++) {
+    const sk = document.createElement("div");
+    sk.className = "skeleton-card";
+    sk.innerHTML = '<div class="sk-img"></div><div class="sk-line"></div>';
+    grid.appendChild(sk);
+  }
+}
+
+function showState(icon, title, hint, actions) {
+  const buttons = (actions || [])
+    .map((a, i) => `<button class="btn" data-state-act="${i}">${escapeHtml(a.label)}</button>`)
+    .join("");
+  $("searchResults").innerHTML = "";
+  $("searchState").innerHTML = `
+    <div class="state-box">
+      <span class="material-symbols-rounded">${icon}</span>
+      <div class="state-title">${escapeHtml(title)}</div>
+      <div class="state-hint">${escapeHtml(hint || "")}</div>
+      ${buttons ? `<div class="state-actions">${buttons}</div>` : ""}
+    </div>`;
+  (actions || []).forEach((a, i) => {
+    const btn = $("searchState").querySelector(`[data-state-act="${i}"]`);
+    if (btn) btn.addEventListener("click", a.onClick);
+  });
+}
+
 function renderCards(results, append = false) {
   const grid = $("searchResults");
   if (!append) grid.innerHTML = "";
@@ -388,10 +467,24 @@ function renderCards(results, append = false) {
       ? `<span class="rc-also" title="Also on ${r.also_on.map((a) => escapeHtml(a.source_name || a.source)).join(", ")}">+${r.also_on.length}</span>`
       : "";
 
+    const safeTitle = escapeHtml(r.title);
     card.innerHTML = `
       ${badge}${also}
-      <img loading="lazy" src="${r.cover || ""}" alt="" onerror="this.style.visibility='hidden'">
-      <div class="rc-title">${escapeHtml(r.title)}</div>`;
+      <img loading="lazy" decoding="async" alt="">
+      <div class="rc-fallback">${safeTitle}</div>
+      <div class="rc-title">${safeTitle}</div>`;
+
+    // Set src in JS so load/error can be handled without inline handlers,
+    // and fade in only once the bitmap is actually decoded.
+    const img = card.querySelector("img");
+    if (r.cover) {
+      img.addEventListener("load", () => img.classList.add("loaded"), { once: true });
+      img.addEventListener("error", () => card.classList.add("no-cover"), { once: true });
+      img.src = r.cover;
+    } else {
+      card.classList.add("no-cover");
+    }
+
     card.addEventListener("click", () => openManga(r.url, r.source));
     grid.appendChild(card);
   });
@@ -414,8 +507,8 @@ async function doSearch(rerun = false, append = false) {
   if (!append) {
     browsePage = 1;
     $("searchHero").classList.toggle("compact", true);
-    $("searchState").innerHTML = '<div class="spinner" style="margin:20px auto"></div>';
-    $("searchResults").innerHTML = "";
+    $("searchState").textContent = "";
+    showSkeletons(12);
     $("loadMoreBtn").classList.add("hidden");
   } else {
     $("loadMoreBtn").disabled = true;
@@ -455,9 +548,9 @@ async function doSearch(rerun = false, append = false) {
   $("searchState").textContent = "";
 
   if (!res.ok) {
-    $("searchState").innerHTML =
-      `<div class="source-down"><span class="material-symbols-rounded">error</span>
-       ${escapeHtml(res.error || "Request failed")}</div>`;
+    showState("cloud_off", "Could not reach the sources",
+              res.error || "Request failed. Check your connection and try again.",
+              [{ label: "Retry", onClick: () => doSearch(true) }]);
     return;
   }
 
@@ -466,9 +559,25 @@ async function doSearch(rerun = false, append = false) {
 
   const results = res.results || [];
   if (!results.length && !append) {
-    $("searchState").textContent = browseMode
-      ? "Nothing to show. Try another genre, or enable more sources in Settings."
-      : "No results found.";
+    if (browseMode) {
+      showState("travel_explore", "Nothing to show here",
+                "Try a different genre, or enable more sources in Settings.",
+                [{ label: "Clear genre", onClick: () => {
+                    $("fGenre").value = ""; renderGenreChips();
+                    updateFilterDot(); doSearch(true);
+                  } },
+                 { label: "Retry", onClick: () => doSearch(true) }]);
+    } else {
+      showState("search_off", `No results for "${query}"`,
+                "Check the spelling, try a shorter query, or search a different source.",
+                [{ label: "Show trending", onClick: () => {
+                    $("searchInput").value = ""; doSearch();
+                  } }]);
+    }
+    $("loadMoreBtn").classList.add("hidden");
+    return;
+  }
+  if (!results.length && append) {
     $("loadMoreBtn").classList.add("hidden");
     return;
   }
@@ -878,6 +987,14 @@ function markChapterDownloaded(name) {
   dlPill.classList.remove("hidden");
 }
 
+/* The Python side batches high-frequency progress events and delivers them
+   through onEngineEvents(). DOM writes are deferred to one animation frame so
+   a burst of updates repaints once instead of once per event. */
+window.onEngineEvents = function (events) {
+  if (!Array.isArray(events)) { events = [events]; }
+  events.forEach((e) => { try { window.onEngineEvent(e); } catch (err) {} });
+};
+
 window.onEngineEvent = function (event) {
   switch (event.type) {
     case "status":
@@ -1241,10 +1358,27 @@ $("resumeNoBtn").addEventListener("click", async () => {
 
 /* ------------------------------------------------------------------ init */
 
+/* Boot steps are isolated. Previously every step was an unguarded `await`,
+   so a single failing bridge call (a Python exception on one endpoint) threw
+   out of the whole handler and everything after it silently never ran --
+   including the initial trending load, which is why search appeared dead. */
+async function bootStep(label, fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    console.warn("startup step failed:", label, err);
+    bootFailures.push(label);
+    return null;
+  }
+}
+
+let bootFailures = [];
+
 whenReady(async () => {
-  state.settings = await api().get_settings();
-  fillSettings(state.settings);
-  await loadSources();
+  state.settings = (await bootStep("settings", () => api().get_settings())) || {};
+  bootStep("fillSettings", () => fillSettings(state.settings));
+  await bootStep("sources", loadSources);
+
   if (state.settings.default_source && $("fSource")) {
     const want = state.settings.default_source;
     if ([...$("fSource").options].some((o) => o.value === want)) {
@@ -1255,18 +1389,25 @@ whenReady(async () => {
   }
   $("setDedupe").checked = state.settings.dedupe_results !== false;
   $("setInterleave").checked = !!state.settings.interleave_results;
-  await loadSourceConfig();
-  await loadGenres();
-  await loadSecurity();
-  await loadFilters();
-  await loadStats();
-  await checkLock();
+
+  await bootStep("sourceConfig", loadSourceConfig);
+  await bootStep("genres", loadGenres);
+  await bootStep("security", loadSecurity);
+  await bootStep("filters", loadFilters);
+  await bootStep("stats", loadStats);
+  await bootStep("lock", checkLock);
   resetIdleTimer();
-  const lib = await api().get_library();
+
+  const lib = await bootStep("library", () => api().get_library());
   if (lib && lib.path) $("dataLibPath").textContent = lib.path;
-  refreshLogInfo();
-  checkPendingJob();
+  bootStep("logInfo", refreshLogInfo);
+  bootStep("pendingJob", checkPendingJob);
+
   if (!document.body.classList.contains("locked")) $("searchInput").focus();
+
+  if (bootFailures.length) {
+    console.warn("startup completed with failures:", bootFailures);
+  }
   // greet with a trending feed rather than a blank page
   doSearch(true);
 });
@@ -1278,6 +1419,8 @@ let lockIdleTimer = null;
 function showLock(show) {
   $("lockOverlay").classList.toggle("hidden", !show);
   document.body.classList.toggle("locked", !!show);
+  // nothing is visible behind the lock screen, so stop animating
+  if (show) matrix.pause(); else matrix.resume();
   if (show) {
     $("lockError").textContent = "";
     $("lockInput").value = "";

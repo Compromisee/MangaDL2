@@ -2,6 +2,11 @@
 <html lang="en" data-theme="midnight" data-accent="blue">
 <head>
 <meta charset="UTF-8">
+<!-- Image CDNs (MangaDex especially) return a "read this at MangaDex"
+     placeholder when the Referer is a file:// URL, which is exactly what
+     the packaged GUI loads from. Verified: 59,480-byte placeholder vs the
+     143,403-byte real cover. Sending no referrer restores the artwork. -->
+<meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MangaDL</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">

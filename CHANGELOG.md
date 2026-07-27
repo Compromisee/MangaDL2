@@ -7,6 +7,68 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.1.0 — Cover, crash, search and performance fixes
+
+### Fixed — MangaDex covers showed a placeholder
+
+MangaDex serves a "You can read this at MangaDex" graphic instead of the real
+artwork when the `Referer` is a `file://` URL, which is exactly what the
+packaged GUI loads from. Measured against the live CDN: a 59,480-byte
+placeholder (600x642) in place of the 143,403-byte cover (512x728). The page
+now sends `<meta name="referrer" content="no-referrer">`, which restores the
+real artwork. The URLs were never wrong — every one returned HTTP 200.
+
+### Fixed — freeze and crash 0xCFFFFFFF during downloads
+
+The engine emitted one progress event per downloaded image, and each event
+became its own `evaluate_js` call: a JSON dump interpolated into a JS string
+and marshalled across the native bridge. A 700-chapter job at ~60 pages each
+is over 43,000 bridge crossings, which pins a core and takes WebView2 down
+with `0xCFFFFFFF`.
+
+Progress events are now coalesced per chapter and flushed on a 120 ms timer as
+a single batch, while lifecycle events (start, done, packaged, finished) are
+never dropped and terminal events flush immediately. Measured on the crash
+scenario: 2,480 events became **one** bridge call.
+
+### Fixed — search results not loading
+
+Startup was a chain of unguarded `await` calls. A single rejecting bridge call
+threw out of the whole handler, so everything after it silently never ran —
+including the initial trending load. Reproduced: one failing endpoint left
+**zero** results rendered. Each startup step is now isolated, so a failure is
+logged and the rest still runs; the same scenario now renders results
+normally.
+
+### Changed — lower resource usage
+
+- Images stream to disk in 64 KB chunks instead of being buffered whole in
+  memory, which previously meant dozens of multi-MB blobs resident at once
+- One shared image thread pool per job, replacing a new pool per chapter on
+  top of the chapter pool; in-flight requests are capped at 16
+- Background dot matrix: capped to 30 fps, dot count bounded, device pixel
+  ratio clamped, resize debounced, and it now pauses when the window is
+  hidden or the lock screen is up
+- The dot colour is cached per theme rather than read via `getComputedStyle`
+  on every animation frame, which was forcing a style recalc 60 times a second
+- Flush timer, cached sessions and sockets are released when the window closes
+
+### Added — interface polish
+
+- Skeleton placeholder tiles while a search is in flight, replacing a bare
+  spinner
+- Covers reserve their aspect ratio up front, so the grid no longer reflows as
+  each image decodes, and fade in once decoded
+- Series with a missing or broken cover get a titled fallback tile instead of
+  an empty gap
+- Empty and error states now explain what happened and offer recovery actions
+  (Retry, Clear genre, Show trending)
+- Reduced-motion preferences are respected throughout
+
+### Testing
+
+- 211 offline tests plus 14 live-site tests
+
 ## v1.0.0 — Multi-source MangaDL
 
 The first release of the fork under its own name. MangaDL downloads manga from
