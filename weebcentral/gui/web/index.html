@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="midnight" data-accent="blue">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WeebCentral Downloader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- ambient background: solid pastel-dark base + circular gradients + dot matrix -->
+<div class="bg">
+  <div class="bg-orb orb-1"></div>
+  <div class="bg-orb orb-2"></div>
+  <div class="bg-orb orb-3"></div>
+  <canvas id="matrix"></canvas>
+</div>
+
+<nav class="rail">
+  <div class="rail-logo"><span class="material-symbols-rounded">auto_stories</span></div>
+  <button class="rail-btn active" data-view="search" title="Search">
+    <span class="material-symbols-rounded">search</span><span class="rail-label">Search</span>
+  </button>
+  <button class="rail-btn" data-view="manga" title="Manga" id="railManga" disabled>
+    <span class="material-symbols-rounded">menu_book</span><span class="rail-label">Manga</span>
+  </button>
+  <button class="rail-btn" data-view="downloads" title="Downloads">
+    <span class="material-symbols-rounded">download</span><span class="rail-label">Queue</span>
+    <span class="rail-dot" id="railDot"></span>
+  </button>
+  <button class="rail-btn" data-view="bookmarks" title="Bookmarks">
+    <span class="material-symbols-rounded">bookmarks</span><span class="rail-label">Marks</span>
+  </button>
+  <button class="rail-btn" data-view="library" title="Library">
+    <span class="material-symbols-rounded">shelves</span><span class="rail-label">Library</span>
+  </button>
+  <div class="rail-spacer"></div>
+  <button class="rail-btn" data-view="settings" title="Settings">
+    <span class="material-symbols-rounded">settings</span><span class="rail-label">Settings</span>
+  </button>
+</nav>
+
+<main class="content">
+
+  <!-- ================================================== SEARCH VIEW -->
+  <section class="view active" id="view-search">
+    <div class="search-hero" id="searchHero">
+      <div class="hero-title" id="heroTitle">
+        <div class="hero-icon"><span class="material-symbols-rounded">auto_stories</span></div>
+        <h1><span class="t-word w1">Weeb</span><span class="t-word w2">Central</span> <span class="t-word w3 t-outline">Downloader</span></h1>
+        <p class="subtitle">Search thousands of manga. Download beautifully.</p>
+      </div>
+      <div class="searchbar">
+        <span class="material-symbols-rounded">search</span>
+        <input id="searchInput" type="text" placeholder="Search manga or paste weebcentral.com URL" autocomplete="off" spellcheck="false">
+        <button class="icon-btn filter-toggle" id="filterToggle" title="Filters">
+          <span class="material-symbols-rounded">tune</span>
+          <span class="filter-dot hidden" id="filterDot"></span>
+        </button>
+        <button class="btn btn-filled" id="searchBtn">Search</button>
+      </div>
+      <div class="filters hidden" id="filtersRow">
+        <div class="filter-group">
+          <span class="filter-label">Sort</span>
+          <select id="fSort">
+            <option>Best Match</option>
+            <option>Popularity</option>
+            <option>Subscribers</option>
+            <option>Recently Added</option>
+            <option>Latest Updates</option>
+            <option>Alphabet</option>
+          </select>
+          <button class="icon-btn order-btn" id="fOrder" title="Order" data-order="Ascending">
+            <span class="material-symbols-rounded">arrow_upward</span>
+          </button>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">Status</span>
+          <select id="fStatus">
+            <option>Any</option>
+            <option>Ongoing</option>
+            <option>Complete</option>
+            <option>Hiatus</option>
+            <option>Canceled</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">Type</span>
+          <select id="fType">
+            <option>Any</option>
+            <option>Manga</option>
+            <option>Manhwa</option>
+            <option>Manhua</option>
+            <option>OEL</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <span class="filter-label">Official</span>
+          <select id="fOfficial">
+            <option>Any</option>
+            <option value="True">Only official</option>
+            <option value="False">Unofficial</option>
+          </select>
+        </div>
+        <button class="text-btn" id="fReset">Reset</button>
+      </div>
+    </div>
+    <div class="results-state" id="searchState"></div>
+    <div class="results-grid" id="searchResults"></div>
+  </section>
+
+  <!-- =================================================== MANGA VIEW -->
+  <section class="view" id="view-manga">
+    <div class="manga-loading" id="mangaLoading">
+      <div class="spinner"></div>
+      <p>Loading manga…</p>
+    </div>
+
+    <div class="manga-layout hidden" id="mangaLayout">
+      <div class="manga-left">
+        <div class="manga-cover-wrap"><img id="mangaCover" alt="cover"></div>
+        <div class="manga-meta">
+          <div class="title-row">
+            <h2 id="mangaTitle"></h2>
+            <button class="icon-btn bookmark-btn" id="bookmarkBtn" title="Bookmark">
+              <span class="material-symbols-rounded" id="bookmarkIcon">bookmark_add</span>
+            </button>
+          </div>
+          <div class="meta-row" id="mangaAuthors"></div>
+          <div class="chips" id="mangaTags"></div>
+          <p class="manga-desc" id="mangaDesc"></p>
+        </div>
+      </div>
+
+      <div class="manga-right">
+        <div class="card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">tune</span>
+            Download options
+          </div>
+
+          <div class="opt-group">
+            <label class="opt-label">Format</label>
+            <div class="segmented" id="fmtSeg">
+              <button data-value="cbz" class="active">CBZ</button>
+              <button data-value="pdf">PDF</button>
+              <button data-value="epub">EPUB</button>
+              <button data-value="images">Images</button>
+            </div>
+          </div>
+
+          <div class="opt-group" id="bundleGroup">
+            <label class="opt-label">Bundling</label>
+            <div class="segmented" id="bundleSeg">
+              <button data-value="0" class="active">Single file</button>
+              <button data-value="1">Per chapter</button>
+              <button data-value="n">Every N chapters</button>
+            </div>
+            <div class="bundle-n hidden" id="bundleNWrap">
+              <span class="material-symbols-rounded">library_books</span>
+              <input type="number" id="bundleN" min="2" max="500" value="10">
+              <span class="hint">chapters per file</span>
+            </div>
+          </div>
+
+          <div class="opt-group">
+            <label class="opt-label">Save to</label>
+            <div class="path-row">
+              <span class="material-symbols-rounded">folder</span>
+              <input type="text" id="outputDir" spellcheck="false">
+              <button class="icon-btn" id="browseBtn" title="Browse">
+                <span class="material-symbols-rounded">folder_open</span>
+              </button>
+            </div>
+          </div>
+
+          <button class="btn btn-filled btn-big" id="downloadBtn">
+            <span class="material-symbols-rounded">download</span>
+            <span id="downloadBtnLabel">Download all chapters</span>
+          </button>
+        </div>
+
+        <div class="card">
+          <div class="card-title">
+            <span class="material-symbols-rounded">format_list_numbered</span>
+            Chapters
+            <span class="count-pill" id="chapterCount"></span>
+            <span class="count-pill downloaded-pill hidden" id="downloadedCount"></span>
+            <span class="flex-spacer"></span>
+            <button class="text-btn" id="selectAllBtn">All</button>
+            <button class="text-btn" id="selectNoneBtn">None</button>
+            <button class="text-btn" id="selectNewBtn">New only</button>
+            <button class="text-btn" id="selectLatestBtn">Latest</button>
+          </div>
+          <div class="range-row">
+            <span class="material-symbols-rounded">tag</span>
+            <input type="text" id="rangeInput" placeholder="Quick select: 1-20, 25, 30-40" spellcheck="false">
+            <button class="btn btn-tonal" id="rangeApplyBtn">Apply</button>
+          </div>
+          <div class="legend">
+            <span class="legend-item"><span class="legend-dot dot-downloaded"></span>downloaded</span>
+            <span class="legend-item"><span class="legend-dot dot-selected"></span>selected</span>
+          </div>
+          <div class="chapter-list" id="chapterList"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================================== DOWNLOADS VIEW -->
+  <section class="view" id="view-downloads">
+    <div class="dl-empty" id="dlEmpty">
+      <span class="material-symbols-rounded">cloud_download</span>
+      <p>No active downloads</p>
+      <p class="hint">Pick a manga from Search to get started</p>
+    </div>
+
+    <div class="dl-active hidden" id="dlActive">
+      <div class="card dl-header-card">
+        <div class="dl-header">
+          <div>
+            <h2 id="dlTitle">–</h2>
+            <p class="hint" id="dlStatus">Preparing…</p>
+          </div>
+          <div class="dl-actions">
+            <button class="btn btn-tonal hidden" id="openFolderBtn">
+              <span class="material-symbols-rounded">folder_open</span> Open folder
+            </button>
+            <button class="btn btn-danger" id="stopBtn">
+              <span class="material-symbols-rounded">stop_circle</span> Stop
+            </button>
+          </div>
+        </div>
+        <div class="overall">
+          <div class="overall-bar"><div class="overall-fill" id="overallFill"></div></div>
+          <span class="overall-text" id="overallText">0 / 0</span>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span class="material-symbols-rounded">sync</span> Active chapters
+        </div>
+        <div class="active-chapters" id="activeChapters"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">
+          <span class="material-symbols-rounded">receipt_long</span> Activity
+        </div>
+        <div class="log" id="dlLog"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- =============================================== BOOKMARKS VIEW -->
+  <section class="view" id="view-bookmarks">
+    <h1 class="view-heading"><span class="material-symbols-rounded heading-icon">bookmarks</span>Bookmarks</h1>
+    <div class="dl-empty short hidden" id="bmEmpty">
+      <span class="material-symbols-rounded">bookmark</span>
+      <p>No bookmarks yet</p>
+      <p class="hint">Open a manga and press the bookmark button</p>
+    </div>
+    <div class="results-grid wide" id="bmGrid"></div>
+  </section>
+
+  <!-- ================================================= LIBRARY VIEW -->
+  <section class="view" id="view-library">
+    <h1 class="view-heading"><span class="material-symbols-rounded heading-icon">shelves</span>Library
+      <span class="hint lib-path" id="libPath"></span>
+    </h1>
+    <div class="dl-empty short hidden" id="libEmpty">
+      <span class="material-symbols-rounded">auto_stories</span>
+      <p>Nothing downloaded yet</p>
+      <p class="hint">Downloaded manga and chapters are tracked here</p>
+    </div>
+    <div class="lib-list" id="libList"></div>
+  </section>
+
+  <!-- ================================================ SETTINGS VIEW -->
+  <section class="view" id="view-settings">
+    <h1 class="view-heading"><span class="material-symbols-rounded heading-icon">settings</span>Settings</h1>
+
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">palette</span> Appearance</div>
+      <div class="setting-row">
+        <div><label>Theme</label><p class="hint">Pastel dark bases and a light option</p></div>
+        <div class="theme-grid" id="themeGrid">
+          <button class="theme-swatch" data-theme="midnight" title="Midnight"><span class="sw" style="background:#16161e"></span>Midnight</button>
+          <button class="theme-swatch" data-theme="mocha" title="Mocha"><span class="sw" style="background:#1e1e2e"></span>Mocha</button>
+          <button class="theme-swatch" data-theme="forest" title="Forest"><span class="sw" style="background:#151b17"></span>Forest</button>
+          <button class="theme-swatch" data-theme="plum" title="Plum"><span class="sw" style="background:#1d1520"></span>Plum</button>
+          <button class="theme-swatch" data-theme="ocean" title="Ocean"><span class="sw" style="background:#0f1a20"></span>Ocean</button>
+          <button class="theme-swatch" data-theme="light" title="Light"><span class="sw" style="background:#fafafa;border:1px solid #ddd"></span>Light</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div><label>Accent</label><p class="hint">Highlight color</p></div>
+        <div class="accent-grid" id="accentGrid">
+          <button class="accent-dot" data-accent="blue" style="background:#7aa2f7"></button>
+          <button class="accent-dot" data-accent="violet" style="background:#bb9af7"></button>
+          <button class="accent-dot" data-accent="teal" style="background:#73daca"></button>
+          <button class="accent-dot" data-accent="rose" style="background:#f7768e"></button>
+          <button class="accent-dot" data-accent="amber" style="background:#e0af68"></button>
+          <button class="accent-dot" data-accent="mint" style="background:#9ece6a"></button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div><label>Animations</label><p class="hint">Transitions, hover motion and glow</p></div>
+        <label class="switch"><input type="checkbox" id="setAnimations"><span class="track"></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Dot matrix background</label><p class="hint">Animated ambient dots behind the UI</p></div>
+        <label class="switch"><input type="checkbox" id="setMatrix"><span class="track"></span></label>
+      </div>
+    </div>
+
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">folder</span> Downloads</div>
+      <div class="setting-row">
+        <div><label>Output directory</label><p class="hint">Where manga folders are created</p></div>
+        <div class="path-row slim">
+          <input type="text" id="setOutputDir" spellcheck="false">
+          <button class="icon-btn" id="setBrowseBtn"><span class="material-symbols-rounded">folder_open</span></button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div><label>Default format</label><p class="hint">Used for new downloads</p></div>
+        <div class="segmented small" id="setFmtSeg">
+          <button data-value="cbz">CBZ</button>
+          <button data-value="pdf">PDF</button>
+          <button data-value="epub">EPUB</button>
+          <button data-value="images">Images</button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div><label>Keep raw images</label><p class="hint">Keep page images after packaging</p></div>
+        <label class="switch"><input type="checkbox" id="setKeepImages"><span class="track"></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Open folder when done</label><p class="hint">Open the manga folder after a download finishes</p></div>
+        <label class="switch"><input type="checkbox" id="setOpenWhenDone"><span class="track"></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Confirm large downloads</label><p class="hint">Ask before downloading many chapters</p></div>
+        <label class="switch"><input type="checkbox" id="setConfirmLarge"><span class="track"></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Large download threshold</label><p class="hint">Chapters that count as "large"</p></div>
+        <div class="stepper" data-target="setLargeThreshold" data-step="25">
+          <button class="icon-btn step-down"><span class="material-symbols-rounded">remove</span></button>
+          <input type="number" id="setLargeThreshold" min="25" max="1000" step="25" value="100">
+          <button class="icon-btn step-up"><span class="material-symbols-rounded">add</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">badge</span> File naming</div>
+      <p class="hint naming-hint">Placeholders: <code>{title}</code>, <code>{chapter}</code>, <code>{start}</code>, <code>{end}</code>. Extension is added automatically.</p>
+      <div class="setting-row">
+        <div><label>Single file</label><p class="hint">Everything bundled into one file</p></div>
+        <div class="path-row slim"><input type="text" id="setNameSingle" spellcheck="false" placeholder="{title}"></div>
+      </div>
+      <div class="setting-row">
+        <div><label>Per chapter</label><p class="hint">One file per chapter</p></div>
+        <div class="path-row slim"><input type="text" id="setNameChapter" spellcheck="false" placeholder="{title} - Chapter {chapter}"></div>
+      </div>
+      <div class="setting-row">
+        <div><label>Chapter range</label><p class="hint">Bundles of N chapters</p></div>
+        <div class="path-row slim"><input type="text" id="setNameRange" spellcheck="false" placeholder="{title} - Chapters {start}-{end}"></div>
+      </div>
+      <div class="setting-row">
+        <div><label>Preview</label><p class="hint" id="namingPreview"></p></div>
+      </div>
+    </div>
+
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">import_contacts</span> Reader</div>
+      <div class="setting-row">
+        <div><label>Reader executable</label><p class="hint">Path to Readest (or any reader). Used by the "open in reader" button in Library. Empty = system default app.</p></div>
+        <div class="path-row slim">
+          <input type="text" id="setReaderPath" spellcheck="false" placeholder="e.g. C:\Program Files\Readest\Readest.exe">
+          <button class="icon-btn" id="setReaderBrowseBtn"><span class="material-symbols-rounded">file_open</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">speed</span> Performance</div>
+      <div class="setting-row">
+        <div><label>Concurrent chapters</label><p class="hint">Chapters downloaded in parallel (1–8)</p></div>
+        <div class="stepper" data-target="setChapterWorkers">
+          <button class="icon-btn step-down"><span class="material-symbols-rounded">remove</span></button>
+          <input type="number" id="setChapterWorkers" min="1" max="8" value="3">
+          <button class="icon-btn step-up"><span class="material-symbols-rounded">add</span></button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div><label>Images per chapter</label><p class="hint">Parallel image downloads (1–10)</p></div>
+        <div class="stepper" data-target="setImageWorkers">
+          <button class="icon-btn step-down"><span class="material-symbols-rounded">remove</span></button>
+          <input type="number" id="setImageWorkers" min="1" max="10" value="6">
+          <button class="icon-btn step-up"><span class="material-symbols-rounded">add</span></button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div><label>Delay between chapters</label><p class="hint">Seconds; increase if rate limited</p></div>
+        <div class="stepper" data-target="setDelay">
+          <button class="icon-btn step-down"><span class="material-symbols-rounded">remove</span></button>
+          <input type="number" id="setDelay" min="0" max="10" step="0.5" value="0.5">
+          <button class="icon-btn step-up"><span class="material-symbols-rounded">add</span></button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div><label>Retries per image</label><p class="hint">Attempts before a page is marked failed (1–10)</p></div>
+        <div class="stepper" data-target="setRetries">
+          <button class="icon-btn step-down"><span class="material-symbols-rounded">remove</span></button>
+          <input type="number" id="setRetries" min="1" max="10" value="5">
+          <button class="icon-btn step-up"><span class="material-symbols-rounded">add</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">description</span> Logs</div>
+      <div class="setting-row">
+        <div><label>Log file</label><p class="hint" id="logInfo">~/.weebcentral/logs/weebcentral.log</p></div>
+        <div class="log-actions">
+          <button class="btn btn-tonal" id="exportLogBtn"><span class="material-symbols-rounded">download</span> Export log</button>
+          <button class="icon-btn" id="clearLogBtn" title="Clear log"><span class="material-symbols-rounded">delete</span></button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card settings-card">
+      <div class="card-title"><span class="material-symbols-rounded">database</span> Data</div>
+      <div class="setting-row">
+        <div><label>Library file</label><p class="hint" id="dataLibPath">~/.weebcentral/library.json</p></div>
+        <button class="btn btn-tonal" id="clearLibBtn"><span class="material-symbols-rounded">delete</span> Clear library</button>
+      </div>
+      <div class="setting-row">
+        <div><label>Bookmarks file</label><p class="hint">~/.weebcentral/bookmarks.json</p></div>
+        <button class="btn btn-tonal" id="clearBmBtn"><span class="material-symbols-rounded">delete</span> Clear bookmarks</button>
+      </div>
+    </div>
+
+    <div class="settings-save">
+      <button class="btn btn-filled" id="saveSettingsBtn">
+        <span class="material-symbols-rounded">save</span> Save settings
+      </button>
+      <span class="hint saved-flash hidden" id="savedFlash">Saved</span>
+    </div>
+  </section>
+
+</main>
+
+<div class="toast hidden" id="toast"></div>
+
+<!-- crash-resume banner -->
+<div class="resume-banner hidden" id="resumeBanner">
+  <span class="material-symbols-rounded rb-icon">history</span>
+  <div class="rb-text">
+    <strong>Interrupted download found</strong>
+    <span id="resumeInfo"></span>
+  </div>
+  <button class="btn btn-filled btn-mini" id="resumeYesBtn">
+    <span class="material-symbols-rounded">resume</span> Resume
+  </button>
+  <button class="btn btn-tonal btn-mini" id="resumeNoBtn">Dismiss</button>
+</div>
+
+<div class="modal-backdrop hidden" id="modalBackdrop">
+  <div class="modal">
+    <div class="modal-title" id="modalTitle">Confirm</div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-actions">
+      <button class="btn btn-tonal" id="modalCancel">Cancel</button>
+      <button class="btn btn-filled" id="modalOk">Continue</button>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
