@@ -1553,6 +1553,8 @@ function renderSourceRanks(rows) {
     if (row.supports_language) caps.push("languages");
     if (row.supports_scanlator) caps.push("scanlators");
     if (row.needs_flaresolverr) caps.push("cloudflare");
+    const adultCap = row.adult_only
+      ? '<span class="cap adult">18+</span>' : "";
 
     li.innerHTML = `
       <span class="drag-handle material-symbols-rounded">drag_indicator</span>
@@ -1560,7 +1562,7 @@ function renderSourceRanks(rows) {
       <span class="src-name">${escapeHtml(row.name)}
         <span class="src-host">${escapeHtml((row.base_url || "").replace(/^https?:\/\//, ""))}</span>
       </span>
-      <span class="src-caps">${caps.map((c) => `<span class="cap">${c}</span>`).join("")}</span>
+      <span class="src-caps">${adultCap}${caps.map((c) => `<span class="cap">${c}</span>`).join("")}</span>
       <span class="move-btns">
         <button data-move="-1" title="Move up"><span class="material-symbols-rounded">expand_less</span></button>
         <button data-move="1" title="Move down"><span class="material-symbols-rounded">expand_more</span></button>

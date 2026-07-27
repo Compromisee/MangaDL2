@@ -937,13 +937,18 @@ body {
 
 .switch { position: relative; display: inline-block; width: 46px; height: 26px; cursor: pointer; flex-shrink: 0; }
 .switch input { opacity: 0; width: 0; height: 0; }
+/* The markup emits a bare <span> with no class, so the original
+   ".switch .track" selector never matched and every toggle in the app
+   rendered as a zero-width invisible element. Target the span directly. */
+.switch > span,
 .switch .track {
   position: absolute; inset: 0;
-  background: var(--surface-2);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--text) 12%, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--text) 22%, var(--border));
   border-radius: 999px;
   transition: background .18s;
 }
+.switch > span::after,
 .switch .track::after {
   content: "";
   position: absolute;
@@ -953,7 +958,9 @@ body {
   background: var(--text-2);
   transition: transform .18s, background .18s;
 }
+.switch input:checked + span,
 .switch input:checked + .track { background: var(--accent); border-color: var(--accent); }
+.switch input:checked + span::after,
 .switch input:checked + .track::after { transform: translateX(20px); background: var(--accent-text); }
 
 .settings-save { display: flex; align-items: center; gap: 14px; max-width: 760px; padding-bottom: 40px; }
@@ -1218,7 +1225,17 @@ body.locked .bm-card img { filter: blur(16px); }
 .source-rank li:hover { border-color: rgba(255, 255, 255, .16); }
 .source-rank li.dragging { opacity: .45; cursor: grabbing; }
 .source-rank li.drag-over { border-color: var(--accent, #7aa2f7); transform: translateY(1px); }
-.source-rank li.disabled { opacity: .45; }
+.source-rank li.disabled { opacity: .55; }
+/* keep the toggle fully legible on a dimmed row -- it is the control that
+   turns the source back on */
+.source-rank li.disabled .switch { opacity: 1; }
+.source-rank li.disabled .src-name { text-decoration: line-through; }
+
+.source-rank .cap.adult {
+  background: color-mix(in srgb, var(--danger) 22%, transparent);
+  color: var(--danger);
+  font-weight: 700;
+}
 
 .source-rank .drag-handle { color: var(--text-3, #6b7280); cursor: grab; display: flex; }
 .source-rank .rank-num {
@@ -1789,4 +1806,65 @@ body.locked .bm-card img { filter: blur(16px); }
 
 @media (prefers-reduced-motion: reduce) {
   .bar-row .b-fill, .spark .sp-bar, .tool-panel.active { transition: none; animation: none; }
+}
+
+/* ============================== settings inputs (text / number / search)
+
+   These were unstyled: no rule matched them, so they fell back to the
+   browser default -- white background, black text, inset border, Arial --
+   which is unreadable on every dark theme. */
+
+.settings-card input[type="text"],
+.settings-card input[type="number"],
+.settings-card input[type="password"],
+.settings-card input[type="search"],
+.setting-row input[type="text"],
+.setting-row input[type="number"],
+.setting-row input[type="password"] {
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--dur), box-shadow var(--dur);
+}
+
+.settings-card input[type="text"]::placeholder,
+.settings-card input[type="number"]::placeholder,
+.settings-card input[type="password"]::placeholder,
+.setting-row input[type="text"]::placeholder {
+  color: var(--text-2);
+  opacity: .8;
+}
+
+.settings-card input[type="text"]:hover,
+.settings-card input[type="number"]:hover,
+.setting-row input[type="text"]:hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+
+.settings-card input[type="text"]:focus,
+.settings-card input[type="number"]:focus,
+.settings-card input[type="password"]:focus,
+.setting-row input[type="text"]:focus,
+.setting-row input[type="number"]:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+/* strip the spinner on number fields so they match the text fields */
+.settings-card input[type="number"]::-webkit-outer-spin-button,
+.settings-card input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.settings-card input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+/* comma-separated filter fields read better in a monospace-ish stack */
+#setBlockedTags, #setBlockedTitles, #setLockHint {
+  min-width: 230px;
+  letter-spacing: .1px;
 }

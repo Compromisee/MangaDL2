@@ -309,6 +309,24 @@ A complete feature reference for MangaDL.
 249. Language breakdown bar computed from the real repository
 250. No fabricated star/fork counts — only verifiable numbers shown
 
+## Added sources and UI fixes
+
+251. Omega Scans source via its JSON API
+252. Omega Scans coin-locked chapters detected and skipped
+253. ManhwaRead source, decoding base64 page data
+254. ManhwaRead per-chapter Referer so its CDN serves images
+255. Manhwa18 source, flagged adult-only
+256. Adult sources tagged so Safe mode removes them automatically
+257. `18+` chip on adult sources in the ranking list
+258. Toggle switches render correctly (CSS selector matched no markup)
+259. Both switch markup variants supported, markup normalised
+260. Disabled source rows keep their toggle legible and clickable
+261. Off-state switch has real contrast against the row
+262. Settings text, number and password inputs themed
+263. Focus ring on settings inputs
+264. Number spinners removed for visual consistency
+265. Struck-through name on excluded sources
+
 ## Core engine
 
 - Download any series from a supported site by URL

@@ -7,6 +7,59 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.3.0 — Three new sources, and the source toggles actually work
+
+### Fixed — no way to turn a source off
+
+The toggle existed but was invisible. The CSS targeted `.switch .track`
+while most of the markup emits a bare `<span>` with no class, so **no rule
+matched** and every switch in the app rendered zero-width. Measured before
+the fix: `width: 0`, `matchesTrackRule: false`.
+
+The markup was also inconsistent — 5 switches used `class="track"`, 7 did
+not — so the CSS now matches both variants and the markup is normalised to
+one shape. All 12 switches verified at 46x26.
+
+Two related contrast problems went with it: the off-state track was almost
+the same colour as the row behind it, and dimming a disabled row also dimmed
+the control needed to re-enable it.
+
+### Fixed — content filter inputs unstyled
+
+The blocked-tags and blocked-titles fields matched no CSS rule at all, so
+they fell back to the browser default: white background, black text, inset
+border, Arial. Unreadable on every dark theme. Settings text, number and
+password inputs are now themed, with a focus ring.
+
+### Added — three sources
+
+- **Omega Scans** (`omegascans`) — JSON API. Chapters come from
+  `/chapter/query?series_id=`, not the series record, whose `seasons` array
+  is always empty. Coin-locked chapters (`price > 0`) serve no images, so
+  they are skipped rather than "downloaded" empty.
+- **ManhwaRead** (`manhwaread`) — the reader renders pages as `blob:` URLs,
+  so scraping `<img src>` yields nothing. The real list is base64 JSON in a
+  `var chapterData` block. Its CDN also answers **403** without a Referer,
+  so chapters carry one explicitly.
+- **Manhwa18** (`manhwa18`) — **adult only.** Results are tagged
+  `pornographic` so the existing Safe mode filter removes them, and the
+  source shows an `18+` chip in Settings.
+
+Verified end-to-end: all three search, list chapters and download real CBZ
+files with zero empty pages.
+
+### Cover art research
+
+Unlike MangaDex, all three new CDNs return identical bytes with or without a
+Referer, so no placeholder-swap workaround is needed for them. ManhwaRead's
+page CDN is the exception and is handled per-chapter.
+
+### Testing
+
+- 254 offline tests plus 17 live-site tests
+- Tests that hardcoded "4 sources" now count the registry, so adding a
+  source no longer breaks them
+
 ## v1.2.0 — New GUI tabs and a GitHub-style landing page
 
 ### Added — three new GUI tabs

@@ -338,3 +338,47 @@ def test_states_offer_recovery_actions():
 def test_reduced_motion_is_respected():
     css = open(os.path.join(WEB, "style.css"), encoding="utf-8").read()
     assert css.count("prefers-reduced-motion") >= 2
+
+
+# ========================= reported: unstyled inputs / invisible toggles
+
+
+def test_toggle_switch_selector_matches_the_markup():
+    """The CSS targeted `.switch .track`, but the markup emits a bare
+    <span> with no class -- so no rule matched and every toggle in the app
+    rendered as a zero-width invisible element."""
+    css = open(os.path.join(WEB, "style.css"), encoding="utf-8").read()
+    html = open(os.path.join(WEB, "index.html"), encoding="utf-8").read()
+
+    # the sized element must be selectable as a direct child span
+    assert ".switch > span" in css
+    assert ".switch input:checked + span" in css
+    # markup is normalised to the classless form
+    assert '<label class="switch"><input type="checkbox"' in html
+    assert '<span class="track">' not in html
+    # ...but the CSS still tolerates the legacy .track variant
+    assert ".switch .track" in css
+
+
+def test_settings_text_inputs_are_styled():
+    """They previously fell back to the browser default: white background,
+    black text and an inset border, unreadable on every dark theme."""
+    css = open(os.path.join(WEB, "style.css"), encoding="utf-8").read()
+    assert '.settings-card input[type="text"]' in css
+    assert '.setting-row input[type="text"]' in css
+    block = css[css.index('.settings-card input[type="text"],'):]
+    block = block[:block.index("}")]
+    assert "var(--surface-2)" in block and "var(--text)" in block
+
+
+def test_disabled_source_row_keeps_its_toggle_legible():
+    """Dimming the row must not dim the control that re-enables it."""
+    css = open(os.path.join(WEB, "style.css"), encoding="utf-8").read()
+    assert ".source-rank li.disabled .switch { opacity: 1; }" in css
+
+
+def test_adult_sources_are_flagged_in_the_ui():
+    js = open(os.path.join(WEB, "app.js"), encoding="utf-8").read()
+    css = open(os.path.join(WEB, "style.css"), encoding="utf-8").read()
+    assert "adult_only" in js
+    assert ".cap.adult" in css

@@ -52,18 +52,21 @@ def test_ranks_are_unique_and_ordered():
 def test_reorder_persists():
     from mangadl.config import ranked_ids, reorder
 
+    # only the listed sources are pinned; any others keep a stable tail
     wanted = ["natomanga", "weebcentral", "mangadex", "mangakatana"]
     reorder(wanted)
-    assert ranked_ids(include_disabled=True) == wanted
+    assert ranked_ids(include_disabled=True)[:len(wanted)] == wanted
 
 
 def test_reorder_keeps_unmentioned_sources():
     from mangadl.config import ranked_ids, reorder
 
+    from mangadl.sources import SOURCES
+
     reorder(["natomanga"])
     order = ranked_ids(include_disabled=True)
     assert order[0] == "natomanga"
-    assert len(order) == 4
+    assert len(order) == len(SOURCES)
 
 
 def test_move_up_and_down():
@@ -106,16 +109,20 @@ def test_search_only_exclusion_keeps_the_source_enabled():
 def test_reset_restores_defaults():
     from mangadl.config import ranked_ids, reset_config, set_enabled
 
+    from mangadl.sources import SOURCES
+
     set_enabled("mangadex", False)
     reset_config()
-    assert len(ranked_ids()) == 4
+    assert len(ranked_ids()) == len(SOURCES)
 
 
 def test_describe_merges_metadata_and_config():
     from mangadl.config import describe
 
+    from mangadl.sources import SOURCES
+
     rows = describe()
-    assert len(rows) == 4
+    assert len(rows) == len(SOURCES)
     assert {"id", "name", "base_url", "rank", "enabled"} <= set(rows[0])
     assert [r["rank"] for r in rows] == sorted(r["rank"] for r in rows)
 
@@ -574,7 +581,8 @@ def test_search_all_orders_by_rank(monkeypatch):
     from mangadl import config
     from mangadl.sources import search_all
 
-    config.reorder(["weebcentral", "natomanga", "mangakatana", "mangadex"])
+    pinned = ["weebcentral", "natomanga", "mangakatana", "mangadex"]
+    config.reorder(pinned)
 
     class FakeSource:
         def __init__(self, source_id):
@@ -589,7 +597,7 @@ def test_search_all_orders_by_rank(monkeypatch):
     monkeypatch.setattr("mangadl.sources.get_source",
                         lambda sid, **kw: FakeSource(sid))
     order = [r["source"] for r in search_all("anything")]
-    assert order == ["weebcentral", "natomanga", "mangakatana", "mangadex"]
+    assert order[:len(pinned)] == pinned
 
 
 def test_search_all_interleaves_when_asked(monkeypatch):

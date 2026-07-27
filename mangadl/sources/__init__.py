@@ -14,7 +14,10 @@ import logging
 from .base import BASE_HEADERS, DEFAULT_UA, ScrapeError, Source
 from .mangadex import MangaDexSource
 from .mangakatana import MangakatanaSource
+from .manhwa18 import Manhwa18Source
+from .manhwaread import ManhwaReadSource
 from .natomanga import NatomangaSource
+from .omegascans import OmegaScansSource
 from .weebcentral import WeebCentralSource
 
 logger = logging.getLogger(__name__)
@@ -26,6 +29,9 @@ SOURCE_CLASSES = [
     MangakatanaSource,
     NatomangaSource,
     WeebCentralSource,
+    OmegaScansSource,
+    ManhwaReadSource,
+    Manhwa18Source,
 ]
 
 SOURCES = {cls.id: cls for cls in SOURCE_CLASSES}
@@ -35,7 +41,8 @@ DEFAULT_SOURCE = MangaDexSource.id
 __all__ = [
     "BASE_HEADERS", "DEFAULT_SOURCE", "DEFAULT_UA", "SOURCES", "SOURCE_CLASSES",
     "ScrapeError", "Source", "MangaDexSource", "MangakatanaSource",
-    "NatomangaSource", "WeebCentralSource",
+    "NatomangaSource", "WeebCentralSource", "OmegaScansSource",
+    "ManhwaReadSource", "Manhwa18Source",
     "get_source", "source_for_url", "detect_source", "list_sources",
     "search_all", "browse_all", "genres_all",
 ]
@@ -56,6 +63,7 @@ def list_sources() -> list:
             "supports_language": cls.supports_language,
             "supports_scanlator": cls.supports_scanlator,
             "needs_flaresolverr": cls.needs_flaresolverr,
+            "adult_only": getattr(cls, "adult_only", False),
             "sorts": list(cls.search_sorts),
             "languages": list(cls.languages),
         }

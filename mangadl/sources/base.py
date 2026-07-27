@@ -69,6 +69,7 @@ class Source:
     supports_language = False   # exposes a language filter
     supports_scanlator = False  # multiple releases per chapter number
     needs_flaresolverr = False  # site sits behind Cloudflare
+    adult_only = False          # site hosts adult content exclusively
     search_sorts = ()           # sort options offered by the site
     languages = ()              # available translation languages
 

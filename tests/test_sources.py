@@ -36,7 +36,10 @@ NETWORK = pytest.mark.skipif(
 
 
 def test_every_source_registered():
-    assert set(SOURCES) == {"mangadex", "mangakatana", "natomanga", "weebcentral"}
+    assert set(SOURCES) == {
+        "mangadex", "mangakatana", "natomanga", "weebcentral",
+        "omegascans", "manhwaread", "manhwa18",
+    }
 
 
 def test_sources_implement_the_interface():
@@ -370,5 +373,105 @@ def test_live_mangadex_cover_sizes_all_resolve():
             assert response.status_code == 200, f"{key} -> {response.status_code}"
             assert response.headers["content-type"].startswith("image/")
             response.close()
+    finally:
+        source.close()
+
+
+# ===================================== newly added sources (v1.3)
+
+
+def test_new_sources_are_registered():
+    assert {"omegascans", "manhwaread", "manhwa18"} <= set(SOURCES)
+
+
+def test_manhwa18_is_flagged_adult():
+    """The site hosts adult content exclusively, so safe_mode must catch it."""
+    assert SOURCES["manhwa18"].adult_only is True
+    assert SOURCES["mangadex"].adult_only is False
+
+
+def test_manhwa18_results_carry_an_adult_rating(monkeypatch):
+    """Tagging results lets the existing safe_mode filter drop them without
+    any special-casing in the filter code."""
+    from mangadl.features import apply_filters
+    from mangadl.sources.manhwa18 import Manhwa18Source
+
+    source = Manhwa18Source()
+    row = source._result("Some Title", "https://manhwa18.cc/webtoon/x",
+                         content_rating="pornographic", tags=["Adult"])
+    assert apply_filters([row], {"safe_mode": True}) == []
+    assert len(apply_filters([row], {"safe_mode": False})) == 1
+
+
+@pytest.mark.parametrize("url,expected", [
+    ("https://omegascans.org/series/affair-agency", "omegascans"),
+    ("https://manhwaread.com/manhwa/3xlove/", "manhwaread"),
+    ("https://manhwa18.cc/webtoon/some-slug", "manhwa18"),
+])
+def test_new_sources_detect_their_urls(url, expected):
+    assert detect_source(url) == expected
+
+
+def test_omegascans_slug_extraction():
+    from mangadl.sources.omegascans import OmegaScansSource
+
+    assert OmegaScansSource.slug_of(
+        "https://omegascans.org/series/affair-agency") == "affair-agency"
+    with pytest.raises(ScrapeError):
+        OmegaScansSource.slug_of("https://omegascans.org/browse")
+
+
+def test_manhwaread_decodes_base64_chapter_data():
+    """Pages are blob: URLs at runtime; the real list is base64 JSON in a
+    `var chapterData = {...}` block."""
+    import base64
+    import json
+
+    from mangadl.sources.manhwaread import _CHAPTER_DATA
+
+    pages = [{"src": "126682/mr_001.jpg"}, {"src": "126682/mr_002.jpg"}]
+    encoded = base64.b64encode(json.dumps(pages).encode()).decode()
+    html = ('<script>var chapterData = {"base":"https://manread.xyz/7077",'
+            f'"data":"{encoded}"}};</script>')
+
+    match = _CHAPTER_DATA.search(html)
+    assert match
+    payload = json.loads(match.group(1))
+    decoded = json.loads(base64.b64decode(payload["data"]).decode())
+    built = [f"{payload['base'].rstrip('/')}/{p['src']}" for p in decoded]
+    assert built[0] == "https://manread.xyz/7077/126682/mr_001.jpg"
+
+
+def test_manhwaread_sends_a_referer():
+    """manread.xyz answers 403 without one and 200 with the site origin."""
+    source = open(os.path.join(os.path.dirname(os.path.dirname(
+        os.path.abspath(__file__))), "mangadl", "sources",
+        "manhwaread.py"), encoding="utf-8").read()
+    assert "def download_file" in source
+    assert "manhwaread.com" in source
+
+
+@NETWORK
+@pytest.mark.parametrize("source_id,query", [
+    ("omegascans", "affair"),
+    ("manhwaread", "love"),
+    ("manhwa18", "secret"),
+])
+def test_live_new_sources(source_id, query):
+    source = get_source(source_id)
+    try:
+        results = source.search(query, limit=3)
+        assert results, f"{source_id} returned nothing"
+        assert all(r["title"] and r["url"] for r in results)
+        # a title of "Read" means the hover-button text leaked through
+        assert all(r["title"].strip().lower() != "read" for r in results)
+
+        info = source.get_manga_info(results[0]["url"])
+        assert info["title"] and info["cover"]
+
+        chapters = source.get_chapters(results[0]["url"])
+        assert chapters, "no chapters found"
+        images = source.get_chapter_images(chapters[0])
+        assert images and all(u.startswith("http") for u in images)
     finally:
         source.close()

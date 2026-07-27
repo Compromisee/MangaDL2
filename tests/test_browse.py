@@ -181,10 +181,10 @@ def test_browse_all_respects_rank(monkeypatch):
     from mangadl.config import reorder
     from mangadl.sources import browse_all
 
-    reorder(["weebcentral", "natomanga", "mangakatana", "mangadex"])
+    pinned = ["weebcentral", "natomanga", "mangakatana", "mangadex"]
+    reorder(pinned)
     patch_sources(monkeypatch, lambda sid: FakeSource(sid, rows=1))
-    assert [r["source"] for r in browse_all(limit=1)] == [
-        "weebcentral", "natomanga", "mangakatana", "mangadex"]
+    assert [r["source"] for r in browse_all(limit=1)][:len(pinned)] == pinned
 
 
 def test_browse_all_skips_excluded_sources(monkeypatch):
@@ -263,8 +263,10 @@ def test_genres_all_merges_across_sources(monkeypatch):
     rows = genres_all()
     names = {r["name"].lower() for r in rows}
     assert "action" in names and "romance" in names and "horror" in names
+    from mangadl.sources import SOURCES
+
     action = next(r for r in rows if r["name"].lower() == "action")
-    assert len(action["sources"]) == 4      # every source offers it
+    assert len(action["sources"]) == len(SOURCES)   # every source offers it
 
 
 def test_genres_all_sorts_widely_supported_first(monkeypatch):
