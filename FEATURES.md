@@ -1,10 +1,22 @@
 # Features
 
-A complete feature reference for WeebCentral Downloader.
+A complete feature reference for MangaDL.
+
+## Sources
+
+- **MangaDex** — official JSON API: languages, scanlation groups, data-saver
+  mode, correct cover art in three sizes, per-volume covers
+- **Mangakatana** — HTML scraping, including its obfuscated JS page arrays
+- **Natomanga** — Manganato / Mangakakalot successor, JSON chapter endpoint
+- **Weeb Central** — the original source, with FlareSolverr fallback
+- Source auto-detected from any pasted URL; `-s/--source` to force one
+- `mangadl sources` lists every site and what it supports
+- Cross-source search runs every site in parallel and merges results
+- Adding a site is one file in `mangadl/sources/` plus one registry line
 
 ## Core engine
 
-- Download any series from weebcentral.com by URL
+- Download any series from a supported site by URL
 - Chapter selection syntax: `all`, `5`, `23.5`, `1-20`, `1,5,10-20`, `50-`, `-10`, `latest`, `first`
 - Output formats: **CBZ**, **PDF** (pages sized exactly to each image), **EPUB** (chapter TOC), raw **images**
 - Produce multiple formats in one run (`--also`)
@@ -16,24 +28,24 @@ A complete feature reference for WeebCentral Downloader.
 - Adaptive rate-limit handling (429-aware delays)
 - **Crash-safe resume**: page-count-verified checkpoints, atomic `.part` image
   writes, and a job journal — resume an interrupted download from the GUI
-  banner or `weebcentral resume`; completed chapters skipped, partial chapters
+  banner or `mangadl resume`; completed chapters skipped, partial chapters
   continue from the exact page they stopped at
-- Rotating `.log` file (`~/.weebcentral/logs/`) shared by GUI/TUI/CLI, with
+- Rotating `.log` file (`~/.mangadl/logs/`) shared by GUI/TUI/CLI, with
   export and clear actions in GUI Settings
 - Automatic **FlareSolverr** fallback when Cloudflare challenges appear
 - Structured event stream consumed by all three front ends
 
 ## Library & bookmarks (JSON, in the user folder)
 
-- `~/.weebcentral/library.json` records every downloaded chapter per manga:
+- `~/.mangadl/library.json` records every downloaded chapter per manga:
   chapter name, page count, date, output files, book title, folder
-- `~/.weebcentral/bookmarks.json` stores bookmarked manga
+- `~/.mangadl/bookmarks.json` stores bookmarked manga
 - Downloaded chapters are **highlighted green** in the GUI chapter list
 - "New only" selection shortcut for incremental updates
 - Multi-part downloads are tracked and each part is listed with its file size
 - Missing output files are detected and flagged
 
-## CLI (`weebcentral`)
+## CLI (`mangadl`)
 
 - Default action: download **all chapters as one CBZ**
 - `search "query"` with results table, `info <url>` with details panel
@@ -41,7 +53,7 @@ A complete feature reference for WeebCentral Downloader.
 - `--per N` bundling, `--name-*` templates, `--plain` mode for scripts/CI
 - `gui` and `tui` launcher subcommands
 
-## TUI (`weebcentral tui`)
+## TUI (`mangadl tui`)
 
 - Full-screen Textual app, works over SSH
 - Tabs: Search / Manga / Downloads / Settings (`F1`-`F4`)
@@ -49,7 +61,7 @@ A complete feature reference for WeebCentral Downloader.
 - Format and bundling selectors, live overall + per-chapter progress, colored log
 - Shares settings and library with the GUI
 
-## GUI (`weebcentral gui`)
+## GUI (`mangadl gui`)
 
 ### Search
 - Animated hero title with gradient shine, floating icon and staggered word entrance
@@ -57,7 +69,7 @@ A complete feature reference for WeebCentral Downloader.
 - **Filters**: sort (Best Match / Popularity / Subscribers / Recently Added / Latest Updates / Alphabet), ascending/descending order, status (Ongoing / Complete / Hiatus / Canceled), type (Manga / Manhwa / Manhua / OEL), official-only
 - Filter changes re-run the search automatically; active-filter indicator dot
 - Cover-art result grid with staggered entrance animations
-- Paste a weebcentral URL to skip straight to the manga page
+- Paste a mangadl URL to skip straight to the manga page
 
 ### Manga page
 - Cover, title, author, status, tags, description, bookmark toggle
@@ -100,13 +112,13 @@ A complete feature reference for WeebCentral Downloader.
 
 ## Packaging
 
-- `WeebCentral.spec` + `launcher.py`: build a standalone executable with
+- `MangaDL.spec` + `launcher.py`: build a standalone executable with
   PyInstaller — GUI on double-click, TUI/CLI/search/resume via arguments
 - One-folder and one-file modes; per-platform guide in `PACKAGING.md`
 
 ## Python API
 
 ```python
-from weebcentral.downloader import DownloadEngine, DownloadOptions
+from mangadl.downloader import DownloadEngine, DownloadOptions
 result = DownloadEngine(DownloadOptions(url="...", bundle=10)).run()
 ```

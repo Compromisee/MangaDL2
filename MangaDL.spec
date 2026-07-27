@@ -1,12 +1,12 @@
 # -*- mode: python ; coding: utf-8 -*-
-"""PyInstaller spec for WeebCentral Downloader — all-inclusive executable.
+"""PyInstaller spec for MangaDL — all-inclusive executable.
 
 Build (from the repo root, inside your venv):
 
-    pyinstaller WeebCentral.spec              # one-folder build (recommended)
-    pyinstaller WeebCentral.spec -- --onefile # single-file build
+    pyinstaller MangaDL.spec              # one-folder build (recommended)
+    pyinstaller MangaDL.spec -- --onefile # single-file build
 
-Output lands in dist/WeebCentral/ (or dist/WeebCentral.exe for onefile).
+Output lands in dist/MangaDL/ (or dist/MangaDL.exe for onefile).
 See PACKAGING.md for full instructions per platform.
 """
 
@@ -16,12 +16,12 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 # "--onefile" after "--" switches to a single-file build
 ONEFILE = "--onefile" in sys.argv
 
-APP_NAME = "WeebCentral"
+APP_NAME = "MangaDL"
 
 # ----------------------------------------------------------------- data files
 # The GUI's web assets must ship inside the bundle.
 datas = [
-    ("weebcentral/gui/web", "weebcentral/gui/web"),
+    ("mangadl/gui/web", "mangadl/gui/web"),
 ]
 # Textual ships css/tcss data files
 datas += collect_data_files("textual")
@@ -37,7 +37,7 @@ hiddenimports = [
     # stdlib/log bits PyInstaller sometimes misses
     "logging.handlers",
 ]
-hiddenimports += collect_submodules("weebcentral")
+hiddenimports += collect_submodules("mangadl")
 hiddenimports += collect_submodules("textual.widgets")
 
 # ------------------------------------------------------------------- analysis
@@ -108,7 +108,7 @@ if sys.platform == "darwin" and not ONEFILE:
         coll,
         name=f"{APP_NAME}.app",
         icon=None,
-        bundle_identifier="io.github.weebcentral.downloader",
+        bundle_identifier="io.github.mangadl.downloader",
         info_plist={
             "NSHighResolutionCapable": True,
             "NSRequiresAquaSystemAppearance": False,

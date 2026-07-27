@@ -1,13 +1,18 @@
-"""WeebCentral Downloader command line interface.
+"""MangaDL command line interface.
+
+Downloads manga from several sites (MangaDex, Mangakatana, Natomanga,
+Weeb Central). The source is detected automatically from the URL.
 
 Default behaviour: download every chapter and pack them into a single CBZ,
 sorted into a per-manga folder inside the output directory.
 
-    weebcentral <manga-url>                    one CBZ with all chapters
-    weebcentral <manga-url> --per 10           one CBZ per 10 chapters
-    weebcentral <manga-url> -c 1-50 -f pdf     chapters 1-50 as a single PDF
-    weebcentral search "one piece"             search WeebCentral
-    weebcentral info <manga-url>               show manga details and chapters
+    mangadl <manga-url>                    one CBZ with all chapters
+    mangadl <manga-url> --per 10           one CBZ per 10 chapters
+    mangadl <manga-url> -c 1-50 -f pdf     chapters 1-50 as a single PDF
+    mangadl search "one piece"             search every source
+    mangadl search "one piece" -s mangadex search one source
+    mangadl sources                        list supported sites
+    mangadl info <manga-url>               show manga details and chapters
 """
 
 import argparse
@@ -15,11 +20,11 @@ import os
 import sys
 import threading
 
-# Allow running this file directly (python weebcentral/cli.py)
+# Allow running this file directly (python mangadl/cli.py)
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    import weebcentral  # noqa: F401
-    __package__ = "weebcentral"
+    import mangadl  # noqa: F401
+    __package__ = "mangadl"
 
 from rich import box
 from rich.console import Console
@@ -35,7 +40,8 @@ from rich.progress import (
 from rich.table import Table
 
 from .downloader import DownloadEngine, DownloadOptions
-from .scraper import WeebCentralScraper
+from .sources import (DEFAULT_SOURCE, SOURCES, detect_source, get_source,
+                      list_sources, search_all, source_for_url)
 
 console = Console(highlight=False)
 
@@ -45,22 +51,25 @@ DIM = "grey58"
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        prog="weebcentral",
-        description="Download manga from weebcentral.com as CBZ, PDF or EPUB.",
+        prog="mangadl",
+        description="Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as CBZ, PDF or EPUB.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
-            "  weebcentral https://weebcentral.com/series/XXXX/name\n"
-            "  weebcentral <url> --per 10               one CBZ per 10 chapters\n"
-            "  weebcentral <url> -c 1-50 -f pdf         chapters 1-50 as one PDF\n"
-            "  weebcentral <url> -c latest              only the newest chapter\n"
-            "  weebcentral search \"one piece\"\n"
-            "  weebcentral info <url>\n"
-            "  weebcentral resume                       resume an interrupted download\n"
-            "  weebcentral tui                          full-screen terminal UI\n"
+            "  mangadl https://mangadex.org/title/<uuid>\n"
+            "  mangadl <url> --per 10               one CBZ per 10 chapters\n"
+            "  mangadl <url> -c 1-50 -f pdf         chapters 1-50 as one PDF\n"
+            "  mangadl <url> -c latest              only the newest chapter\n"
+            "  mangadl search \"one piece\"          search all sources\n"
+            "  mangadl search \"berserk\" -s mangadex\n"
+            "  mangadl sources                          list supported sites\n"
+            "  mangadl info <url>\n"
+            "  mangadl resume                       resume an interrupted download\n"
+            "  mangadl tui                          full-screen terminal UI\n"
         ),
     )
-    parser.add_argument("target", nargs="?", help="manga URL, or a command: search | info | gui | tui | resume")
+    parser.add_argument("target", nargs="?",
+                        help="manga URL, or a command: search | info | sources | gui | tui | resume")
     parser.add_argument("query", nargs="*", help="arguments for search / info")
     parser.add_argument("-c", "--chapters", default="all", metavar="SEL",
                         help="chapter selection: all | 5 | 1-20 | 1,5,10-20 | 50- | latest | first (default: all)")
@@ -86,6 +95,17 @@ def build_parser():
                         help="template for per-chapter files")
     parser.add_argument("--name-range", default="{title} - Chapters {start}-{end}", metavar="TPL",
                         help="template for chapter-range bundles")
+    source_group = parser.add_argument_group("sources")
+    source_group.add_argument("-s", "--source", default="", metavar="ID",
+                              choices=[""] + list(SOURCES),
+                              help="force a source: " + " | ".join(SOURCES)
+                                   + " (default: detect from the URL)")
+    source_group.add_argument("-l", "--language", default="en", metavar="LANG",
+                              help="translation language, MangaDex only (default: en)")
+    source_group.add_argument("--scanlator", default="", metavar="NAME",
+                              help="preferred scanlation group, MangaDex only")
+    source_group.add_argument("--data-saver", action="store_true",
+                              help="download compressed pages, MangaDex only")
     parser.add_argument("-y", "--yes", action="store_true", help="skip the confirmation prompt")
     parser.add_argument("--plain", action="store_true", help="plain log output (no fancy progress UI)")
     return parser
@@ -93,37 +113,82 @@ def build_parser():
 
 # ------------------------------------------------------------------ commands
 
-def cmd_search(query: str):
+def cmd_sources():
+    """List every supported site and what it can do."""
+    table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+    table.add_column("ID")
+    table.add_column("Site")
+    table.add_column("URL", style=DIM, overflow="fold")
+    table.add_column("Notes", style=DIM)
+    for meta in list_sources():
+        notes = []
+        if meta["supports_language"]:
+            notes.append("languages")
+        if meta["supports_scanlator"]:
+            notes.append("scanlators")
+        if meta["needs_flaresolverr"]:
+            notes.append("needs FlareSolverr")
+        table.add_row(meta["id"], meta["name"], meta["base_url"], ", ".join(notes) or "-")
+    console.print(table)
+    console.print(f"[{DIM}]Use with: mangadl search \"title\" -s <id>[/]")
+    return 0
+
+
+def cmd_search(query: str, source_id: str = "", language: str = "en"):
     if not query:
-        console.print("[red]Provide a search query, e.g.: weebcentral search \"one piece\"[/]")
+        console.print("[red]Provide a search query, e.g.: mangadl search \"one piece\"[/]")
         return 1
-    with console.status(f"Searching for [bold]{query}[/]..."):
-        results = WeebCentralScraper().search(query)
+
+    if source_id:
+        label = SOURCES[source_id].name
+        with console.status(f"Searching [bold]{label}[/] for [bold]{query}[/]..."):
+            source = get_source(source_id, language=language)
+            try:
+                results = source.search(query)
+            finally:
+                source.close()
+    else:
+        with console.status(f"Searching all sources for [bold]{query}[/]..."):
+            results = search_all(query, limit=10)
+
     if not results:
         console.print("[yellow]No results found.[/]")
         return 1
 
     table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
     table.add_column("#", style=DIM, justify="right")
+    table.add_column("Source", style=ACCENT)
     table.add_column("Title")
     table.add_column("URL", style=DIM, overflow="fold")
     for i, r in enumerate(results, 1):
-        table.add_row(str(i), r["title"], r["url"])
+        table.add_row(str(i), r.get("source_name") or r.get("source") or "?",
+                      r["title"], r["url"])
     console.print(table)
-    console.print(f"[{DIM}]Download with: weebcentral <url>[/]")
+    console.print(f"[{DIM}]Download with: mangadl <url>[/]")
     return 0
 
 
-def cmd_info(url: str):
+def cmd_info(url: str, source_id: str = "", language: str = "en"):
     if not url:
         console.print("[red]Provide a manga URL.[/]")
         return 1
-    scraper = WeebCentralScraper()
+    try:
+        source = (get_source(source_id, language=language) if source_id
+                  else source_for_url(url, language=language))
+    except Exception as e:
+        console.print(f"[red]Error:[/] {e}")
+        return 1
     with console.status("Fetching manga information..."):
-        info = scraper.get_manga_info(url)
-        chapters = scraper.get_chapters(url)
+        try:
+            info = source.get_manga_info(url)
+            chapters = source.get_chapters(url)
+        except Exception as e:
+            console.print(f"[red]Error:[/] {e}")
+            return 1
+        finally:
+            source.close()
 
-    body = []
+    body = [f"[{DIM}]Source[/]   {info.get('source_name') or source.name}"]
     if info.get("authors"):
         body.append(f"[{DIM}]Author[/]   {', '.join(info['authors'])}")
     if info.get("status"):
@@ -193,6 +258,10 @@ def cmd_download(args) -> int:
         name_single=args.name_single,
         name_chapter=args.name_chapter,
         name_range=args.name_range,
+        source=args.source,
+        language=args.language,
+        scanlator=args.scanlator,
+        data_saver=args.data_saver,
     )
 
     if args.plain:
@@ -221,14 +290,22 @@ def _run_plain(options) -> int:
 
 
 def _run_rich(options, skip_confirm=False) -> int:
-    scraper = WeebCentralScraper()
+    try:
+        source = (get_source(options.source, language=options.language)
+                  if options.source
+                  else source_for_url(options.url, language=options.language))
+    except Exception as e:
+        console.print(f"[red]Error:[/] {e}")
+        return 1
     with console.status("Fetching manga information..."):
         try:
-            info = scraper.get_manga_info(options.url)
-            chapters = scraper.get_chapters(options.url)
+            info = source.get_manga_info(options.url)
+            chapters = source.get_chapters(options.url)
         except Exception as e:
             console.print(f"[red]Error:[/] {e}")
             return 1
+        finally:
+            source.close()
 
     from .utils import parse_selection
     try:
@@ -254,6 +331,7 @@ def _run_rich(options, skip_confirm=False) -> int:
     summary = Table.grid(padding=(0, 2))
     summary.add_column(style=DIM)
     summary.add_column()
+    summary.add_row("Source", info.get("source_name") or source.name)
     summary.add_row("Manga", f"[bold]{info['title']}[/]")
     summary.add_row("Chapters", f"{len(selected)} of {len(chapters)}  ({selected[0]['name']} to {selected[-1]['name']})")
     summary.add_row("Format", fmt_desc)
@@ -351,10 +429,13 @@ def main(argv=None):
         return 0
 
     command = args.target.lower()
+    if command in ("sources", "source"):
+        return cmd_sources()
     if command == "search":
-        return cmd_search(" ".join(args.query))
+        return cmd_search(" ".join(args.query), args.source, args.language)
     if command == "info":
-        return cmd_info(args.query[0] if args.query else "")
+        return cmd_info(args.query[0] if args.query else "",
+                        args.source, args.language)
     if command == "gui":
         from .gui import run_gui
         return run_gui()
@@ -364,9 +445,12 @@ def main(argv=None):
     if command == "resume":
         return cmd_resume(args)
 
-    if "weebcentral" not in args.target:
-        console.print("[red]That does not look like a WeebCentral URL.[/]")
-        console.print(f"[{DIM}]Try: weebcentral search \"manga name\"[/]")
+    if not args.source and detect_source(args.target) is None:
+        console.print(f"[red]No source recognises that URL:[/] {args.target}")
+        console.print(f"[{DIM}]Supported sites:[/]")
+        for meta in list_sources():
+            console.print(f"  [{DIM}]{meta['name']:<14}{meta['base_url']}[/]")
+        console.print(f"[{DIM}]Or search: mangadl search \"manga name\"[/]")
         return 1
     return cmd_download(args)
 

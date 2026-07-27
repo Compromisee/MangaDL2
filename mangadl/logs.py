@@ -1,7 +1,7 @@
-"""File logging and crash-resume journal for WeebCentral Downloader.
+"""File logging and crash-resume journal for MangaDL.
 
-- Rotating log file:  ~/.weebcentral/logs/weebcentral.log
-- Job journal:        ~/.weebcentral/job.json   (present = interrupted job)
+- Rotating log file:  ~/.mangadl/logs/mangadl.log
+- Job journal:        ~/.mangadl/job.json   (present = interrupted job)
 """
 
 import json
@@ -10,9 +10,9 @@ import os
 import shutil
 from logging.handlers import RotatingFileHandler
 
-BASE_DIR = os.path.join(os.path.expanduser("~"), ".weebcentral")
+BASE_DIR = os.path.join(os.path.expanduser("~"), ".mangadl")
 LOG_DIR = os.path.join(BASE_DIR, "logs")
-LOG_FILE = os.path.join(LOG_DIR, "weebcentral.log")
+LOG_FILE = os.path.join(LOG_DIR, "mangadl.log")
 CRASH_FILE = os.path.join(LOG_DIR, "crash.log")
 JOURNAL_PATH = os.path.join(BASE_DIR, "job.json")
 

@@ -1,19 +1,19 @@
-"""WeebCentral Downloader - full-screen terminal UI (Textual).
+"""MangaDL - full-screen terminal UI (Textual).
 
-Launch with:  weebcentral tui
-         or:  python -m weebcentral tui
+Launch with:  mangadl tui
+         or:  python -m mangadl tui
 """
 
 import os
 import sys
 import threading
 
-# Allow running this file directly (python weebcentral/tui.py): register the
-# parent directory so the 'weebcentral' package resolves for relative imports.
+# Allow running this file directly (python mangadl/tui.py): register the
+# parent directory so the 'mangadl' package resolves for relative imports.
 if __package__ in (None, ""):
     sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-    import weebcentral  # noqa: F401
-    __package__ = "weebcentral"
+    import mangadl  # noqa: F401
+    __package__ = "mangadl"
 
 from textual import on, work
 from textual.app import App, ComposeResult
@@ -40,7 +40,8 @@ from textual.widgets.selection_list import Selection
 
 from .downloader import DownloadEngine, DownloadOptions
 from .gui import load_settings, save_settings
-from .scraper import WeebCentralScraper
+from .sources import (DEFAULT_SOURCE, SOURCES, detect_source, get_source,
+                      list_sources, search_all, source_for_url)
 from .utils import chapter_number
 
 ACCENT = "#7aa2f7"
@@ -49,10 +50,10 @@ ACCENT = "#7aa2f7"
 # --------------------------------------------------------------------- app
 
 
-class WeebCentralTUI(App):
+class MangaDLTUI(App):
     """Search, browse and download manga without leaving the terminal."""
 
-    TITLE = "WeebCentral Downloader"
+    TITLE = "MangaDL"
     SUB_TITLE = "terminal edition"
 
     CSS = """
@@ -65,6 +66,7 @@ class WeebCentralTUI(App):
 
     /* ------------------------------------------------------- search tab */
     #search-bar { height: 3; margin-bottom: 1; }
+    #source-select { width: 22; margin-right: 1; }
     #search-input { width: 1fr; }
     #search-btn { margin-left: 1; min-width: 12; }
     #search-status { color: $text-muted; height: 1; margin-bottom: 1; }
@@ -145,7 +147,8 @@ class WeebCentralTUI(App):
     def __init__(self):
         super().__init__()
         self.settings = load_settings()
-        self.scraper = WeebCentralScraper()
+        self.source_id = self.settings.get("default_source") or "all"
+        self.source = None           # active Source for the open manga
         self.manga = None            # {info, chapters}
         self.results = []
         self.engine = None
@@ -161,8 +164,16 @@ class WeebCentralTUI(App):
 
             with TabPane("Search", id="tab-search"):
                 with Horizontal(id="search-bar"):
+                    yield Select(
+                        [("All sources", "all")]
+                        + [(meta["name"], meta["id"]) for meta in list_sources()],
+                        value=self.source_id if self.source_id in
+                        ({"all"} | set(SOURCES)) else "all",
+                        allow_blank=False,
+                        id="source-select",
+                    )
                     yield Input(
-                        placeholder="Search manga or paste a weebcentral.com URL...",
+                        placeholder="Search manga or paste a manga URL...",
                         id="search-input",
                     )
                     yield Button("Search", variant="primary", id="search-btn")
@@ -225,7 +236,7 @@ class WeebCentralTUI(App):
             with TabPane("Settings", id="tab-settings"):
                 with Vertical(id="settings-box"):
                     yield Static("Changes apply to new downloads. Saved to "
-                                 "~/.weebcentral/settings.json", classes="set-hint")
+                                 "~/.mangadl/settings.json", classes="set-hint")
                     with Horizontal(classes="set-row"):
                         yield Label("Output directory")
                         yield Input(value=self.settings["output_dir"], id="set-output")
@@ -292,7 +303,7 @@ class WeebCentralTUI(App):
         query = self.query_one("#search-input", Input).value.strip()
         if not query:
             return
-        if "weebcentral.com/" in query:
+        if query.startswith(("http://", "https://")) or detect_source(query):
             self._load_manga(query)
             return
         self.query_one("#search-status", Static).update(
@@ -303,11 +314,33 @@ class WeebCentralTUI(App):
     @work(thread=True, exclusive=True, group="search")
     def _do_search(self, query: str):
         try:
-            results = self.scraper.search(query)
+            if self.source_id in ("all", None, ""):
+                results = search_all(query, limit=12)
+            else:
+                source = get_source(self.source_id,
+                                    language=self.settings.get("language", "en"))
+                try:
+                    results = source.search(query)
+                finally:
+                    source.close()
         except Exception as e:
             self.call_from_thread(self._search_done, [], str(e))
             return
         self.call_from_thread(self._search_done, results, None)
+
+    @on(Select.Changed, "#source-select")
+    def handle_source_changed(self, event: Select.Changed):
+        self.source_id = str(event.value)
+        self.settings["default_source"] = self.source_id
+        try:
+            save_settings(self.settings)
+        except Exception:
+            pass
+        query = self.query_one("#search-input", Input).value.strip()
+        if query:
+            self.query_one("#search-status", Static).update(
+                f"[dim]Searching[/] [bold]{query}[/] ...")
+            self._do_search(query)
 
     def _search_done(self, results, error):
         status = self.query_one("#search-status", Static)
@@ -322,8 +355,10 @@ class WeebCentralTUI(App):
         self.results = results
         status.update(f"[dim]{len(results)} results - press Enter to open[/]")
         for r in results:
+            label = r.get("source_name") or r.get("source") or ""
+            tag = f"[dim]\\[{label}][/] " if label else ""
             listview.append(ListItem(
-                Static(f"[bold {ACCENT}]{r['title']}[/]\n[dim]{r['url']}[/]")
+                Static(f"{tag}[bold {ACCENT}]{r['title']}[/]\n[dim]{r['url']}[/]")
             ))
         listview.focus()
 
@@ -331,22 +366,29 @@ class WeebCentralTUI(App):
     def handle_result_selected(self, event: ListView.Selected):
         index = event.list_view.index
         if index is not None and 0 <= index < len(self.results):
-            self._load_manga(self.results[index]["url"])
+            result = self.results[index]
+            self._load_manga(result["url"], result.get("source"))
 
     # ------------------------------------------------------------- manga
 
-    def _load_manga(self, url: str):
+    def _load_manga(self, url: str, source_id: str = None):
         self.query_one(TabbedContent).active = "tab-manga"
         self.query_one("#manga-empty", Static).update("Loading manga ...")
         self.query_one("#manga-empty").remove_class("hidden")
         self.query_one("#manga-body").add_class("hidden")
-        self._fetch_manga(url)
+        self._fetch_manga(url, source_id)
 
     @work(thread=True, exclusive=True, group="manga")
-    def _fetch_manga(self, url: str):
+    def _fetch_manga(self, url: str, source_id: str = None):
         try:
-            info = self.scraper.get_manga_info(url)
-            chapters = self.scraper.get_chapters(url)
+            language = self.settings.get("language", "en")
+            if not source_id and self.source_id not in ("all", None, ""):
+                source_id = self.source_id
+            source = (get_source(source_id, language=language) if source_id
+                      else source_for_url(url, language=language))
+            self.source = source
+            info = source.get_manga_info(url)
+            chapters = source.get_chapters(url)
         except Exception as e:
             self.call_from_thread(self._manga_failed, str(e))
             return
@@ -506,6 +548,8 @@ class WeebCentralTUI(App):
             image_workers=settings["image_workers"],
             delay=settings["delay"],
             keep_images=settings.get("keep_images", False) or fmt == "images",
+            source=(self.source.id if self.source else ""),
+            language=settings.get("language", "en"),
         )
 
         # reset downloads tab
@@ -667,7 +711,7 @@ def run_tui():
     except ImportError:
         print("Textual is not installed. Run: pip install textual")
         return 1
-    WeebCentralTUI().run()
+    MangaDLTUI().run()
     return 0
 
 

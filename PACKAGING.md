@@ -1,18 +1,18 @@
 # Packaging — building an all-inclusive executable
 
-This guide produces a standalone **WeebCentral** executable containing the
+This guide produces a standalone **MangaDL** executable containing the
 GUI, TUI and CLI in one binary — no Python installation needed on the target
 machine.
 
 | Command | Result |
 |---|---|
-| `WeebCentral.exe` (double-click) | Desktop GUI |
-| `WeebCentral.exe tui` | Terminal UI |
-| `WeebCentral.exe <manga-url> --per 10` | CLI download |
-| `WeebCentral.exe search "one piece"` | CLI search |
-| `WeebCentral.exe resume` | Resume interrupted download |
+| `MangaDL.exe` (double-click) | Desktop GUI |
+| `MangaDL.exe tui` | Terminal UI |
+| `MangaDL.exe <manga-url> --per 10` | CLI download |
+| `MangaDL.exe search "one piece"` | CLI search |
+| `MangaDL.exe resume` | Resume interrupted download |
 
-The build is driven by **[`WeebCentral.spec`](WeebCentral.spec)** and the
+The build is driven by **[`MangaDL.spec`](MangaDL.spec)** and the
 unified entry point **[`launcher.py`](launcher.py)**.
 
 ---
@@ -24,8 +24,8 @@ unified entry point **[`launcher.py`](launcher.py)**.
   everything importable, so a lean venv means a smaller exe)
 
 ```bash
-git clone https://github.com/Yui007/weebcentral_downloader.git
-cd weebcentral_downloader
+git clone https://github.com/Yui007/mangadl_downloader.git
+cd mangadl_downloader
 
 python -m venv .venv
 # Windows
@@ -49,34 +49,34 @@ pip install pyinstaller
 Fast startup, easy to debug, updates only changed files:
 
 ```bash
-pyinstaller WeebCentral.spec
+pyinstaller MangaDL.spec
 ```
 
-Output: `dist/WeebCentral/` — ship the whole folder. The executable is
-`dist/WeebCentral/WeebCentral(.exe)`.
+Output: `dist/MangaDL/` — ship the whole folder. The executable is
+`dist/MangaDL/MangaDL(.exe)`.
 
 ### One-file build
 
 A single portable executable (slower startup — it unpacks to a temp dir):
 
 ```bash
-pyinstaller WeebCentral.spec -- --onefile
+pyinstaller MangaDL.spec -- --onefile
 ```
 
-Output: `dist/WeebCentral.exe` (or `dist/WeebCentral` on macOS/Linux).
+Output: `dist/MangaDL.exe` (or `dist/MangaDL` on macOS/Linux).
 
 ### Clean rebuild
 
 ```bash
-pyinstaller WeebCentral.spec --clean --noconfirm
+pyinstaller MangaDL.spec --clean --noconfirm
 ```
 
 ---
 
 ## 3. What the spec bundles
 
-- The whole `weebcentral` package (CLI + TUI + GUI + engine)
-- `weebcentral/gui/web/` — the GUI's HTML/CSS/JS (the code auto-detects the
+- The whole `mangadl` package (CLI + TUI + GUI + engine)
+- `mangadl/gui/web/` — the GUI's HTML/CSS/JS (the code auto-detects the
   PyInstaller location via `sys._MEIPASS`)
 - Textual's data files (TUI styling)
 - pywebview's platform backends as hidden imports (WinForms/EdgeChromium on
@@ -99,7 +99,7 @@ Typical sizes: roughly 80–140 MB one-folder, 40–80 MB one-file (varies by OS
 - The spec sets `console=True` so `tui` / CLI subcommands work. Double-click
   still opens the GUI, but with a console window behind it. If you want a
   console-free GUI exe, build a second binary: copy the spec, set
-  `console=False`, name it `WeebCentralGUI`, and ship both.
+  `console=False`, name it `MangaDLGUI`, and ship both.
 - An icon is used automatically if `docs/icon.ico` exists.
 - SmartScreen may warn on unsigned exes — sign the binary
   (`signtool sign /fd SHA256 ...`) or tell users to click "More info → Run
@@ -107,11 +107,11 @@ Typical sizes: roughly 80–140 MB one-folder, 40–80 MB one-file (varies by OS
 
 ### macOS
 
-- The one-folder build also produces **`dist/WeebCentral.app`** for
+- The one-folder build also produces **`dist/MangaDL.app`** for
   double-click launching; the CLI/TUI binary is inside
-  `WeebCentral.app/Contents/MacOS/`.
+  `MangaDL.app/Contents/MacOS/`.
 - Gatekeeper blocks unsigned apps: either
-  `codesign --deep -s "Developer ID Application: ..." dist/WeebCentral.app`
+  `codesign --deep -s "Developer ID Application: ..." dist/MangaDL.app`
   and notarize, or instruct users to right-click → Open the first time.
 - Build separate x86_64 / arm64 binaries on the corresponding Macs (or use
   `target_arch='universal2'` in the EXE section if all deps provide
@@ -124,7 +124,7 @@ Typical sizes: roughly 80–140 MB one-folder, 40–80 MB one-file (varies by OS
   equivalent. Alternatively `pip install pywebview[qt]` **before building**
   so the Qt backend is bundled.
 - Build on the **oldest** distro you want to support (glibc compatibility).
-- Mark the binary executable: `chmod +x dist/WeebCentral/WeebCentral`.
+- Mark the binary executable: `chmod +x dist/MangaDL/MangaDL`.
 
 ---
 
@@ -132,14 +132,14 @@ Typical sizes: roughly 80–140 MB one-folder, 40–80 MB one-file (varies by OS
 
 ```bash
 # GUI
-dist/WeebCentral/WeebCentral
+dist/MangaDL/MangaDL
 
 # CLI
-dist/WeebCentral/WeebCentral --help
-dist/WeebCentral/WeebCentral search "vinland saga"
+dist/MangaDL/MangaDL --help
+dist/MangaDL/MangaDL search "vinland saga"
 
 # TUI (run from a real terminal)
-dist/WeebCentral/WeebCentral tui
+dist/MangaDL/MangaDL tui
 ```
 
 Smoke checklist:
@@ -147,12 +147,12 @@ Smoke checklist:
 - [ ] GUI opens, themes/orbs/dot-matrix render
 - [ ] Search returns covers; manga page loads
 - [ ] A 1-chapter download completes and packs a CBZ
-- [ ] Library/bookmarks persist (`~/.weebcentral/`)
+- [ ] Library/bookmarks persist (`~/.mangadl/`)
 - [ ] `search`, `info`, `resume`, `tui` subcommands work
-- [ ] Log file appears in `~/.weebcentral/logs/`
+- [ ] Log file appears in `~/.mangadl/logs/`
 
 User data (settings, library, bookmarks, logs, job journal) always lives in
-`~/.weebcentral/`, never next to the exe — so upgrading is just replacing
+`~/.mangadl/`, never next to the exe — so upgrading is just replacing
 the binary/folder.
 
 ---
@@ -162,13 +162,13 @@ the binary/folder.
 ```bash
 # tag and build per platform, then:
 gh release create v2.5.0 \
-    dist/WeebCentral-windows-x64.zip \
-    dist/WeebCentral-macos-arm64.zip \
-    dist/WeebCentral-linux-x64.tar.gz \
+    dist/MangaDL-windows-x64.zip \
+    dist/MangaDL-macos-arm64.zip \
+    dist/MangaDL-linux-x64.tar.gz \
     --title "v2.5.0" --notes-file CHANGELOG.md
 ```
 
-Suggested archive naming: `WeebCentral-<os>-<arch>.<zip|tar.gz>` with the
+Suggested archive naming: `MangaDL-<os>-<arch>.<zip|tar.gz>` with the
 one-folder build zipped inside.
 
 ### CI (GitHub Actions) sketch
@@ -187,10 +187,10 @@ jobs:
       - uses: actions/setup-python@v5
         with: { python-version: "3.12" }
       - run: pip install -r requirements.txt pyinstaller
-      - run: pyinstaller WeebCentral.spec --noconfirm
+      - run: pyinstaller MangaDL.spec --noconfirm
       - uses: actions/upload-artifact@v4
         with:
-          name: WeebCentral-${{ matrix.os }}
+          name: MangaDL-${{ matrix.os }}
           path: dist/
 ```
 

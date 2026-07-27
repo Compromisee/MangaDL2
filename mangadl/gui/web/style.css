@@ -1,4 +1,4 @@
-/* WeebCentral Downloader - pastel dark UI with ambient gradients */
+/* MangaDL - pastel dark UI with ambient gradients */
 
 :root {
   --radius: 16px;
@@ -1038,4 +1038,51 @@ body {
   .manga-layout { grid-template-columns: 1fr; }
   .manga-left { display: flex; gap: 20px; }
   .manga-cover-wrap { width: 180px; flex-shrink: 0; }
+}
+
+
+/* ------------------------------------------------------- source badges */
+
+.rc-source {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .2px;
+  color: #fff;
+  background: rgba(0, 0, 0, .66);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.rc-source[data-source="mangadex"]   { background: rgba(255, 103, 64, .92); }
+.rc-source[data-source="mangakatana"]{ background: rgba(56, 142, 60, .92); }
+.rc-source[data-source="natomanga"]  { background: rgba(2, 136, 209, .92); }
+.rc-source[data-source="weebcentral"]{ background: rgba(123, 97, 255, .92); }
+
+.result-card { position: relative; }
+
+.source-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: var(--surface-3, rgba(255, 255, 255, .08));
+  color: var(--text-2, #cfd3dc);
+}
+
+.source-pill .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
 }

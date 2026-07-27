@@ -13,7 +13,7 @@ from dataclasses import asdict, dataclass, field
 from threading import Lock
 
 from .packager import EXTENSIONS, PACKAGERS
-from .scraper import WeebCentralScraper
+from .sources import get_source, source_for_url
 from . import library
 from .utils import (
     chapter_number,
@@ -43,6 +43,11 @@ class DownloadOptions:
     name_single: str = "{title}"
     name_chapter: str = "{title} - Chapter {chapter}"
     name_range: str = "{title} - Chapters {start}-{end}"
+    # multi-source options
+    source: str = ""                # source id; "" = auto-detect from the URL
+    language: str = "en"            # translation language (MangaDex)
+    scanlator: str = ""             # preferred scanlation group (MangaDex)
+    data_saver: bool = False        # smaller compressed pages (MangaDex)
 
 
 class DownloadEngine:
@@ -51,9 +56,25 @@ class DownloadEngine:
     def __init__(self, options: DownloadOptions, on_event=None):
         self.opt = options
         self.on_event = on_event or (lambda event: None)
-        self.scraper = WeebCentralScraper(delay=options.delay)
+        self.source = self._make_source()
+        # kept as `scraper` too so older integrations keep working
+        self.scraper = self.source
         self._stop = False
         self.failed = []
+
+    # -------------------------------------------------------------- source
+
+    def _make_source(self):
+        """Build the source for this job, auto-detecting from the URL."""
+        kwargs = {
+            "delay": self.opt.delay,
+            "language": self.opt.language or "en",
+            "scanlator": self.opt.scanlator or None,
+            "data_saver": bool(self.opt.data_saver),
+        }
+        if self.opt.source:
+            return get_source(self.opt.source, **kwargs)
+        return source_for_url(self.opt.url, **kwargs)
 
     # ----------------------------------------------------------------- api
 
@@ -73,11 +94,11 @@ class DownloadEngine:
         opt = self.opt
         self.emit("status", message="Fetching manga information")
 
-        info = self.scraper.get_manga_info(opt.url)
+        info = self.source.get_manga_info(opt.url)
         title = sanitize(info["title"])
         self.emit("manga", info=info)
 
-        chapters = self.scraper.get_chapters(opt.url)
+        chapters = self.source.get_chapters(opt.url)
         if not chapters:
             self.emit("error", message="No chapters found")
             return {"ok": False, "error": "No chapters found"}
@@ -97,14 +118,15 @@ class DownloadEngine:
         os.makedirs(manga_dir, exist_ok=True)
 
         self.emit("plan", title=title, total=len(selected),
-                  chapters=[c["name"] for c in selected], directory=manga_dir)
+                  chapters=[c["name"] for c in selected], directory=manga_dir,
+                  source=self.source.id, source_name=self.source.name)
 
         # Cover
         if info.get("cover"):
-            ext = os.path.splitext(info["cover"].split("?")[0])[1] or ".jpg"
+            ext = self.source.guess_extension(info["cover"])
             cover_path = os.path.join(manga_dir, f"cover{ext}")
             if not os.path.exists(cover_path):
-                self.scraper.download_file(info["cover"], cover_path, referer=opt.url)
+                self.source.download_file(info["cover"], cover_path, referer=opt.url)
 
         # Checkpoint of completed chapters (crash-safe resume).
         # v2 format: "name<TAB>pages"; legacy lines (name only) still accepted.
@@ -164,25 +186,30 @@ class DownloadEngine:
             os.makedirs(target, exist_ok=True)
             self.emit("chapter_start", chapter=name)
 
-            urls = self.scraper.get_chapter_images(chapter["url"])
+            try:
+                urls = self.source.get_chapter_images(chapter)
+            except Exception as e:
+                logger.error("Could not list pages for '%s': %s", name, e)
+                return chapter, 0, None
             if not urls:
+                logger.warning("Chapter '%s' has no pages", name)
                 return chapter, 0, None
 
             got = 0
             with ThreadPoolExecutor(max_workers=self.opt.image_workers) as pool:
                 futures = {}
+                referer = chapter.get("referer") or chapter.get("url")
+                extra_headers = chapter.get("headers")
                 for i, url in enumerate(urls, 1):
-                    ext = os.path.splitext(url.split("?")[0])[1].lower()
-                    if ext not in (".jpg", ".jpeg", ".png", ".webp", ".gif"):
-                        ext = ".jpg"
+                    ext = self.source.guess_extension(url)
                     path = os.path.join(target, f"{i:03d}{ext}")
                     if os.path.exists(path) and os.path.getsize(path) > 0:
                         got += 1
                         self.emit("chapter_progress", chapter=name, done=got, total=len(urls))
                         continue
                     futures[pool.submit(
-                        self.scraper.download_file, url, path, chapter["url"],
-                        self.opt.retries,
+                        self.source.download_file, url, path, referer,
+                        self.opt.retries, extra_headers,
                     )] = url
                 for future in as_completed(futures):
                     if self._stop:
@@ -221,6 +248,7 @@ class DownloadEngine:
                         library.record_chapter(
                             opt.url, info["title"], name, pages=got,
                             cover=info.get("cover"), directory=manga_dir,
+                            source=self.source.id,
                         )
                     except Exception:
                         logger.debug("Failed to record chapter in library", exc_info=True)
@@ -272,6 +300,7 @@ class DownloadEngine:
                   outputs=outputs, directory=manga_dir)
         return {
             "ok": True,
+            "source": self.source.id,
             "title": title,
             "directory": manga_dir,
             "downloaded": completed,

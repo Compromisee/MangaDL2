@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>WeebDL — WeebCenteral manga downloader</title>
-<meta name="description" content="Download manga from weebcentral.com as CBZ, PDF or EPUB.">
+<meta name="description" content="Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as CBZ, PDF or EPUB.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
@@ -223,7 +223,7 @@
 
 <header class="hero wrap">
   <h1>Your manga library,<br>beautifully downloaded.</h1>
-  <p class="tagline">Download any series from weebcentral.com as CBZ, PDF or EPUB — with a gorgeous desktop app, a full terminal UI, and a scriptable CLI.</p>
+  <p class="tagline">Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as CBZ, PDF or EPUB — with a gorgeous desktop app, a full terminal UI, and a scriptable CLI.</p>
   <div class="hero-ctas">
     <a class="btn btn-primary" href="https://github.com/Compromisee/WeebDL/realeases">
       <span class="material-symbols-rounded">download</span>Get started
@@ -232,7 +232,7 @@
       <span class="material-symbols-rounded">visibility</span>See it in action
     </a>
   </div>
-  <div class="hero-shot"><img src="gui-manga.png" alt="WeebCentral Downloader GUI - manga view with green downloaded chapters"></div>
+  <div class="hero-shot"><img src="gui-manga.png" alt="MangaDL GUI - manga view with green downloaded chapters"></div>
 </header>
 
 <div class="install wrap reveal">
@@ -300,16 +300,16 @@
     <div class="term-bar"><span></span><span></span><span></span></div>
     <div class="term-body">
 <span class="c"># everything as one CBZ</span><br>
-<span class="p">$</span> <span class="w">weebcentral https://weebcentral.com/series/XXXX/one-piece</span><br><br>
+<span class="p">$</span> <span class="w">mangadl https://mangadex.org/title/&lt;uuid&gt;</span><br><br>
 <span class="c"># one CBZ per 10 chapters, custom naming</span><br>
-<span class="p">$</span> <span class="w">weebcentral &lt;url&gt; --per 10 --name-range "{title} Vol {start}-{end}"</span><br><br>
+<span class="p">$</span> <span class="w">mangadl &lt;url&gt; --per 10 --name-range "{title} Vol {start}-{end}"</span><br><br>
 <span class="c"># chapters 1-50 as a single PDF + EPUB</span><br>
-<span class="p">$</span> <span class="w">weebcentral &lt;url&gt; -c 1-50 -f pdf --also epub</span><br><br>
+<span class="p">$</span> <span class="w">mangadl &lt;url&gt; -c 1-50 -f pdf --also epub</span><br><br>
 <span class="c"># find something new</span><br>
-<span class="p">$</span> <span class="w">weebcentral search "vinland saga"</span><br>
-<span class="g">  1  Vinland Saga   https://weebcentral.com/series/…</span><br><br>
+<span class="p">$</span> <span class="w">mangadl search "vinland saga"</span><br>
+<span class="g">  1  Vinland Saga   https://mangadex.org/title/…</span><br><br>
 <span class="c"># full-screen terminal app</span><br>
-<span class="p">$</span> <span class="w">weebcentral tui</span>
+<span class="p">$</span> <span class="w">mangadl tui</span>
     </div>
   </div>
 </section>

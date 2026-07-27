@@ -1,4 +1,4 @@
-"""python -m weebcentral"""
+"""python -m mangadl"""
 
 import sys
 

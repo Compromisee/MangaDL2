@@ -1,7 +1,7 @@
 """Persistent library and bookmarks stored as JSON in the user folder.
 
-~/.weebcentral/library.json    - every downloaded chapter, per manga
-~/.weebcentral/bookmarks.json  - bookmarked manga
+~/.mangadl/library.json    - every downloaded chapter, per manga
+~/.mangadl/bookmarks.json  - bookmarked manga
 
 The download engine records chapters here so any UI (GUI / TUI / CLI)
 can highlight what has already been downloaded.
@@ -12,7 +12,7 @@ import os
 import threading
 import time
 
-DIR = os.path.join(os.path.expanduser("~"), ".weebcentral")
+DIR = os.path.join(os.path.expanduser("~"), ".mangadl")
 LIBRARY_PATH = os.path.join(DIR, "library.json")
 BOOKMARKS_PATH = os.path.join(DIR, "bookmarks.json")
 
@@ -52,18 +52,21 @@ def load_library() -> dict:
         return _load(LIBRARY_PATH, {})
 
 
-def record_chapter(url, title, chapter_name, pages=0, cover=None, directory=None):
+def record_chapter(url, title, chapter_name, pages=0, cover=None, directory=None,
+                   source=None):
     """Remember that a chapter of a manga has been downloaded."""
     with _lock:
         lib = _load(LIBRARY_PATH, {})
         key = _key(url)
         entry = lib.setdefault(key, {
-            "title": title, "url": key, "cover": cover,
+            "title": title, "url": key, "cover": cover, "source": source,
             "directory": directory, "chapters": {}, "added": _now(),
         })
         entry["title"] = title or entry.get("title")
         if cover:
             entry["cover"] = cover
+        if source:
+            entry["source"] = source
         if directory:
             entry["directory"] = directory
         entry["chapters"][chapter_name] = {"pages": pages, "date": _now()}
@@ -131,6 +134,8 @@ def toggle_bookmark(info: dict) -> bool:
                 "title": info.get("title", "Unknown"),
                 "cover": info.get("cover"),
                 "status": info.get("status"),
+                "source": info.get("source"),
+                "source_name": info.get("source_name"),
                 "added": _now(),
             })
             _save(BOOKMARKS_PATH, kept)

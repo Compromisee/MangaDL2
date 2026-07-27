@@ -1,10 +1,10 @@
 <div align="center">
 
-# WeebCentral Downloader
+# MangaDL
 
-**Download manga from [weebcentral.com](https://weebcentral.com) as CBZ, PDF or EPUB — from a modern CLI or a minimalist desktop GUI.**
+**Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as CBZ, PDF or EPUB — from a modern CLI, a full-screen TUI or a minimalist desktop GUI.**
 
-[Project landing page](https://yui007.github.io/weebcentral_downloader/) (GitHub Pages, served from `docs/`)
+[Project landing page](https://compromisee.github.io/WeebDL/) (GitHub Pages, served from `docs/`)
 
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![pywebview](https://img.shields.io/badge/pywebview-GUI-2962FF?style=for-the-badge)](https://pywebview.flowrl.com)
@@ -20,21 +20,24 @@
 
 ## Highlights
 
+- **Four sources, one tool.** MangaDex (official JSON API), Mangakatana, Natomanga and Weeb Central. The right source is detected from the URL you paste — no flags required. See [Sources](#sources).
+- **Search everything at once.** One query fans out across every site in parallel and merges the results, each tagged with where it came from.
 - **One command, one CBZ.** By default the CLI downloads *every* chapter and packs them into a single `.cbz` — no flags needed.
 - **Flexible bundling.** Choose one file for everything, one file per chapter, or one file per every N chapters (`--per 10`).
 - **Organized output.** Everything is sorted into a per-manga folder inside your output directory. Raw page images live in a `raw/` subfolder and are cleaned up automatically after packaging (unless you keep them).
 - **Three formats.** CBZ, PDF (pages sized exactly to each image), and EPUB (chapter table of contents included). Produce several at once with `--also`.
 - **Three interfaces.** A rich-powered CLI, a full-screen **terminal UI (TUI)** built with Textual, and a minimalist pywebview desktop GUI.
 - **Minimalist GUI.** A pywebview desktop app with a pastel-dark ambient interface: circular gradient orbs, an animated dot-matrix backdrop, 6 themes and 6 accent colors, smooth animations. Google Material Symbols only — zero emojis.
-- **Library and bookmarks.** Every downloaded chapter is recorded in `~/.weebcentral/library.json`; already-downloaded chapters are highlighted green in the chapter list, with a "New only" selector for incremental updates. Bookmark manga you want to come back to.
+- **Library and bookmarks.** Every downloaded chapter is recorded in `~/.mangadl/library.json`; already-downloaded chapters are highlighted green in the chapter list, with a "New only" selector for incremental updates. Bookmark manga you want to come back to.
 - **Open in Readest.** Point Settings at your reader executable (Readest or any other) and open finished books straight from the Library — multi-part downloads list every part with its size and a Read button.
 - **Custom file naming.** Templates with `{title}`, `{chapter}`, `{start}`, `{end}` placeholders control output filenames, in Settings and via CLI flags.
 - **Full-featured TUI.** Search, manga details, chapter multi-select with quick ranges, format/bundling pickers, live per-chapter progress and settings — entirely in your terminal (works over SSH).
 - **Modern CLI.** Built on [rich](https://github.com/Textualize/rich): download plan summary, live progress bars per chapter, search and info commands.
 - **Fast and polite.** Parallel chapter and image downloads with configurable workers, adaptive backoff on rate limits.
-- **Crash-proof resume.** Verified checkpoints, atomic image writes and a job journal: after a crash or outage, hit **Resume** in the GUI (or run `weebcentral resume`) and it continues exactly where it left off — completed chapters skipped, partial chapters finish their missing pages only.
-- **File logging.** Rotating log at `~/.weebcentral/logs/weebcentral.log`, exportable from Settings.
-- **Cloudflare-ready.** Falls back to [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) automatically if the site puts up a challenge.
+- **Crash-proof resume.** Verified checkpoints, atomic image writes and a job journal: after a crash or outage, hit **Resume** in the GUI (or run `mangadl resume`) and it continues exactly where it left off — completed chapters skipped, partial chapters finish their missing pages only.
+- **File logging.** Rotating log at `~/.mangadl/logs/mangadl.log`, exportable from Settings.
+- **Cloudflare-ready.** Falls back to [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) automatically if a site puts up a challenge.
+- **Pluggable by design.** A new site is one file in `mangadl/sources/` plus one line in the registry; CLI, GUI and TUI pick it up automatically.
 
 See **[FEATURES.md](FEATURES.md)** for the complete feature reference and
 **[CHANGELOG.md](CHANGELOG.md)** for the history of every update.
@@ -46,8 +49,8 @@ See **[FEATURES.md](FEATURES.md)** for the complete feature reference and
 Requires **Python 3.9+**.
 
 ```bash
-git clone https://github.com/Yui007/weebcentral_downloader.git
-cd weebcentral_downloader
+git clone https://github.com/Compromisee/WeebDL.git
+cd WeebDL
 
 # install with the GUI and TUI
 pip install -e ".[all]"
@@ -72,28 +75,28 @@ pip install -r requirements.txt
 
 ## CLI usage
 
-If installed with pip you get a `weebcentral` command; otherwise use `python -m weebcentral`.
+If installed with pip you get a `mangadl` command; otherwise use `python -m mangadl`.
 
 ### Download (the default action)
 
 ```bash
 # Default: ALL chapters -> ONE .cbz, sorted into downloads/<Manga Title>/
-weebcentral https://weebcentral.com/series/XXXX/some-manga
+mangadl https://mangadex.org/title/<uuid>
 
 # One CBZ per 10 chapters
-weebcentral <url> --per 10
+mangadl <url> --per 10
 
 # One CBZ per chapter
-weebcentral <url> --per 1
+mangadl <url> --per 1
 
 # Chapters 1-50 as a single PDF
-weebcentral <url> -c 1-50 -f pdf
+mangadl <url> -c 1-50 -f pdf
 
 # Latest chapter only, EPUB, custom output dir
-weebcentral <url> -c latest -f epub -o ~/Manga
+mangadl <url> -c latest -f epub -o ~/Manga
 
 # CBZ volumes of 25 chapters AND a PDF of everything, keep raw images
-weebcentral <url> --per 25 --also pdf --keep-images
+mangadl <url> --per 25 --also pdf --keep-images
 ```
 
 ### Chapter selection (`-c / --chapters`)
@@ -112,11 +115,13 @@ weebcentral <url> --per 25 --also pdf --keep-images
 ### Search and info
 
 ```bash
-weebcentral search "one piece"     # find series and their URLs
-weebcentral info <url>             # title, author, status, tags, chapter count
-weebcentral resume                 # resume an interrupted/crashed download
-weebcentral tui                    # launch the full-screen terminal UI
-weebcentral gui                    # launch the desktop GUI
+mangadl search "one piece"                # search every source at once
+mangadl search "one piece" -s mangadex    # search a single source
+mangadl sources                           # list supported sites
+mangadl info <url>                        # title, author, status, tags, chapter count
+mangadl resume                 # resume an interrupted/crashed download
+mangadl tui                    # launch the full-screen terminal UI
+mangadl gui                    # launch the desktop GUI
 ```
 
 ### All options
@@ -137,6 +142,13 @@ weebcentral gui                    # launch the desktop GUI
     --name-range TPL   template for range bundles (default: {title} - Chapters {start}-{end})
 -y, --yes              skip the confirmation prompt
     --plain            plain log output (for scripts / CI)
+
+sources:
+-s, --source ID        force a source: mangadex | mangakatana | natomanga | weebcentral
+                       (default: detected from the URL)
+-l, --language LANG    translation language, MangaDex only (default: en)
+    --scanlator NAME   preferred scanlation group, MangaDex only
+    --data-saver       download compressed pages, MangaDex only
 ```
 
 ### Output structure
@@ -163,7 +175,7 @@ A full-screen terminal app built with [Textual](https://textual.textualize.io) �
 all the GUI's features without leaving the terminal. Works over SSH.
 
 ```bash
-weebcentral tui        # or: weebcentral-tui / python -m weebcentral tui
+mangadl tui        # or: mangadl-tui / python -m mangadl tui
 ```
 
 | | |
@@ -176,12 +188,12 @@ weebcentral tui        # or: weebcentral-tui / python -m weebcentral tui
 **TUI features**
 
 - Four tabs: **Search / Manga / Downloads / Settings** (`F1`–`F4` to jump)
-- Search WeebCentral by name or paste a URL straight into the search box
+- Search MangaDL by name or paste a URL straight into the search box
 - Manga panel with title, author, status, tags and description
 - Chapter list with checkbox multi-select (`space` toggles), All / None / Latest buttons and a quick-range box (`1-20, 25, 30-40`)
 - Format (CBZ / PDF / EPUB / images) and bundling (single file / per chapter / every N) selectors
 - Live download queue: overall progress bar, per-chapter image counters, colored activity log, stop button
-- Settings shared with the GUI (`~/.weebcentral/settings.json`)
+- Settings shared with the GUI (`~/.mangadl/settings.json`)
 
 **Keyboard shortcuts**
 
@@ -199,7 +211,7 @@ weebcentral tui        # or: weebcentral-tui / python -m weebcentral tui
 ## GUI
 
 ```bash
-weebcentral gui        # or: python gui.py
+mangadl gui        # or: python gui.py
 ```
 
 | | |
@@ -215,12 +227,12 @@ weebcentral gui        # or: python gui.py
 
 - Animated hero: stylized title (gradient shine + outline), floating icon, search bar centered on screen that glides to the top when you search
 - **Search filters**: sort (Best Match / Popularity / Subscribers / Recently Added / Latest Updates / Alphabet) with asc/desc order, status, type (Manga / Manhwa / Manhua / OEL) and official-only — changes re-run the search live
-- Search WeebCentral with cover thumbnails, or paste a series URL directly
+- Search MangaDL with cover thumbnails, or paste a series URL directly
 - Full manga page: cover, author, status, tags, description, bookmark button
 - Chapter list with click-to-select, **downloaded chapters highlighted green**, All / None / **New only** / Latest shortcuts and a quick-range box (`1-20, 25, 30-40`)
 - Format picker (CBZ / PDF / EPUB / raw images) and bundling picker (single file / per chapter / every N chapters)
 - Live download queue: overall progress, per-chapter image counters, activity log, stop button, "open folder" when done
-- **Bookmarks tab** — save manga for later (`~/.weebcentral/bookmarks.json`)
+- **Bookmarks tab** — save manga for later (`~/.mangadl/bookmarks.json`)
 - **Library tab** — every downloaded manga with chapter/page counts, last download time; multi-part downloads expand to show each part with its file size, a **Read** button (opens your configured reader, e.g. Readest) and missing-file detection
 - **Appearance settings** — 6 themes (Midnight, Mocha, Forest, Plum, Ocean, Light), 6 accent colors, animation and dot-matrix toggles
 - **Behavior settings** — output directory, default format, keep raw images, open-folder-when-done, confirm-large-downloads guard with threshold, worker counts, delays, retries per image
@@ -230,19 +242,124 @@ weebcentral gui        # or: python gui.py
 
 ---
 
+## Sources
+
+| Source | Site | How it works | Notes |
+|---|---|---|---|
+| `mangadex` | [mangadex.org](https://mangadex.org) | Official JSON API | Languages, scanlation groups, data-saver mode |
+| `mangakatana` | [mangakatana.com](https://mangakatana.com) | HTML scraping | Large back catalogue, no account needed |
+| `natomanga` | [natomanga.com](https://www.natomanga.com) | HTML + JSON chapter endpoint | Manganato / Mangakakalot successor |
+| `weebcentral` | [weebcentral.com](https://weebcentral.com) | HTML scraping | May need FlareSolverr |
+
+```bash
+mangadl sources                        # list them with their capabilities
+mangadl search "berserk"               # search all of them at once
+mangadl search "berserk" -s mangadex   # search just one
+mangadl <any-supported-url>            # source detected automatically
+```
+
+The source is inferred from the URL, so pasting a link is always enough.
+`-s/--source` only matters when searching or when you want to override detection.
+
+### MangaDex specifics
+
+MangaDex is the richest source, and a few of its API behaviours are worth
+knowing because they are easy to get wrong.
+
+**Covers.** A manga's cover is only a *reference* in the API response, so the
+cover filename has to be pulled in with reference expansion
+(`includes[]=cover_art`) or it comes back as a bare id you cannot build a URL
+from. The URL is:
+
+```
+https://uploads.mangadex.org/covers/{manga-id}/{filename}
+```
+
+Two thumbnails exist, and the size suffix is appended **after the complete
+filename, extension included**:
+
+```
+{filename}.256.jpg     # small,  grid thumbnails
+{filename}.512.jpg     # medium, detail view
+```
+
+So `abc.png` becomes `abc.png.512.jpg` — not `abc.512.jpg`. Stripping the
+original extension first returns a 404, which is the usual cause of missing
+MangaDex covers. MangaDL resolves all three sizes up front: thumbnails for the
+UI grid, the original for the `cover.jpg` saved next to your downloads.
+`get_covers()` additionally lists every per-volume and localised cover.
+
+**Externally hosted chapters.** Licensed series (One Piece and friends) list
+chapters that live on MangaPlus or Azuki: they carry an `externalUrl` and
+report `pages: 0`. They cannot be downloaded, so MangaDL filters them out
+rather than "succeeding" with zero pages. A title whose chapters are *all*
+external will correctly report that nothing is downloadable.
+
+**Multiple releases.** The same chapter number is often uploaded by several
+scanlation groups. MangaDL keeps one release per number — preferring
+`--scanlator` if you set one, otherwise the most complete upload — and records
+the rest as alternatives.
+
+**Language.** `-l/--language` picks the translation (default `en`).
+
+### Adding a new source
+
+Sources are plugins. Create `mangadl/sources/<name>.py`:
+
+```python
+from .base import Source
+
+class MySource(Source):
+    id = "mysite"
+    name = "My Site"
+    base_url = "https://mysite.com"
+    domains = ("mysite.com",)
+
+    def search(self, query, limit=32, **filters): ...
+    def get_manga_info(self, url): ...
+    def get_chapters(self, url): ...        # oldest first
+    def get_chapter_images(self, chapter): ...
+```
+
+Then add it to `SOURCE_CLASSES` in `mangadl/sources/__init__.py`. Retries,
+backoff, rate-limit handling, Cloudflare fallback and atomic image writes come
+from the base class. The CLI, GUI and TUI discover it automatically.
+
+---
+
+## Tests
+
+```bash
+pip install -e ".[dev]"
+python -m pytest tests/                        # offline unit tests
+MANGADL_NETWORK_TESTS=1 python -m pytest tests/ # also hit the live sites
+```
+
 ## Python API
 
 The engine is usable as a library:
 
 ```python
-from weebcentral.downloader import DownloadEngine, DownloadOptions
+from mangadl.downloader import DownloadEngine, DownloadOptions
+from mangadl.sources import get_source, search_all, source_for_url
+
+# search every site at once
+for hit in search_all("berserk", limit=5):
+    print(hit["source_name"], hit["title"], hit["url"])
+
+# or drive one source directly
+source = source_for_url("https://mangadex.org/title/<uuid>")
+chapters = source.get_chapters("https://mangadex.org/title/<uuid>")
 
 options = DownloadOptions(
-    url="https://weebcentral.com/series/XXXX/some-manga",
+    url="https://mangadex.org/title/<uuid>",
     selection="1-50",     # same syntax as the CLI
     output_dir="downloads",
     format="cbz",         # cbz | pdf | epub | images
     bundle=10,            # 0 = single file, N = N chapters per file
+    source="",            # "" = detect from the URL; or "mangadex", "mangakatana", ...
+    language="en",        # MangaDex translation language
+    data_saver=False,     # MangaDex: smaller compressed pages
 )
 
 def on_event(event):      # structured progress events
@@ -256,8 +373,8 @@ print(result["outputs"])
 
 ## Cloudflare / FlareSolverr
 
-Direct requests work most of the time. If WeebCentral raises a Cloudflare
-challenge, the downloader automatically falls back to a local
+Direct requests work most of the time. Weeb Central in particular sits behind
+Cloudflare; if a site raises a challenge, the downloader falls back to a local
 [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) instance.
 
 ```bash
@@ -272,23 +389,21 @@ You only need this if downloads start failing with Cloudflare errors.
 
 ---
 
-## Google Colab
-
-Run in the browser with no local setup — see [`colab/WeebCentral_Downloader.ipynb`](colab/WeebCentral_Downloader.ipynb).
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Yui007/weebcentral_downloader/blob/main/colab/WeebCentral_Downloader.ipynb)
-
----
-
 ## Project layout
 
 ```
-weebcentral/
+mangadl/
 ├── cli.py              # rich-powered CLI (download / search / info / gui / tui)
 ├── tui.py              # full-screen Textual terminal UI
 ├── downloader.py       # DownloadEngine: orchestration, bundling, events
-├── library.py          # JSON library + bookmarks (~/.weebcentral/*.json)
-├── scraper.py          # weebcentral.com scraping + search
+├── library.py          # JSON library + bookmarks (~/.mangadl/*.json)
+├── scraper.py          # thin backwards-compatible facade over sources/
+├── sources/            # one module per site — add a file to add a site
+│   ├── base.py         # Source ABC: retries, backoff, atomic image writes
+│   ├── mangadex.py     # official JSON API (covers, at-home page server)
+│   ├── mangakatana.py  # HTML + obfuscated JS page arrays
+│   ├── natomanga.py    # HTML + JSON chapter endpoint
+│   └── weebcentral.py  # the original scraper
 ├── packager.py         # CBZ / PDF / EPUB creation
 ├── flaresolverr.py     # optional Cloudflare bypass client
 ├── utils.py            # chapter parsing, natural sort, sanitising
@@ -300,16 +415,16 @@ weebcentral/
 ## Standalone executable
 
 Build an all-inclusive exe (GUI + TUI + CLI in one binary, no Python needed)
-with PyInstaller and the provided [`WeebCentral.spec`](WeebCentral.spec):
+with PyInstaller and the provided [`MangaDL.spec`](MangaDL.spec):
 
 ```bash
 pip install pyinstaller
-pyinstaller WeebCentral.spec            # one-folder -> dist/WeebCentral/
-pyinstaller WeebCentral.spec -- --onefile   # single file
+pyinstaller MangaDL.spec            # one-folder -> dist/MangaDL/
+pyinstaller MangaDL.spec -- --onefile   # single file
 ```
 
-Double-clicking the exe opens the GUI; `WeebCentral tui`, `WeebCentral <url>`,
-`WeebCentral search ...` and `WeebCentral resume` all work from a terminal.
+Double-clicking the exe opens the GUI; `MangaDL tui`, `MangaDL <url>`,
+`MangaDL search ...` and `MangaDL resume` all work from a terminal.
 Full per-platform instructions: **[PACKAGING.md](PACKAGING.md)**.
 
 ## Landing page (GitHub Pages)
@@ -320,11 +435,11 @@ demo terminal). To publish it:
 
 1. GitHub repo → **Settings → Pages**
 2. Source: **Deploy from a branch**, branch `main`, folder **`/docs`**
-3. Your page appears at `https://<user>.github.io/weebcentral_downloader/`
+3. Your page appears at `https://<user>.github.io/mangadl_downloader/`
 
 ## Data files
 
-Everything lives in `~/.weebcentral/`:
+Everything lives in `~/.mangadl/`:
 
 | File | Purpose |
 |---|---|
@@ -332,7 +447,7 @@ Everything lives in `~/.weebcentral/`:
 | `library.json` | every downloaded chapter per manga: name, pages, date, output files |
 | `bookmarks.json` | bookmarked manga (title, URL, cover) |
 | `job.json` | journal of the current download; enables crash resume |
-| `logs/weebcentral.log` | rotating application log (exportable from Settings) |
+| `logs/mangadl.log` | rotating application log (exportable from Settings) |
 
 The library is what powers the green "downloaded" highlighting in the GUI's
 chapter list and the **New only** selection shortcut — re-open a manga later
@@ -345,13 +460,13 @@ and instantly see what you're missing.
 | `429 Too Many Requests` | Raise `--delay`, lower `--workers`. The engine also backs off automatically. |
 | Cloudflare "Just a moment..." | Start FlareSolverr (see above). |
 | GUI window doesn't open on Linux | Install a webview backend: `sudo apt install gir1.2-webkit2-4.1` or `pip install pywebview[qt]`. |
-| GUI crashes or closes immediately on open | Since v2.6.3 the app retries alternative browser backends and shows the real error instead of dying. Check `~/.weebcentral/logs/weebcentral.log` and `crash.log`. On Windows, install/update the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) and make sure `pip install -U pywebview pythonnet` are current. |
+| GUI crashes or closes immediately on open | Since v2.6.3 the app retries alternative browser backends and shows the real error instead of dying. Check `~/.mangadl/logs/mangadl.log` and `crash.log`. On Windows, install/update the [WebView2 Runtime](https://developer.microsoft.com/microsoft-edge/webview2/) and make sure `pip install -U pywebview pythonnet` are current. |
 | Console spam: `Error while processing window.native...` / `maximum recursion depth exceeded` (Windows) | Harmless pywebview/WebView2 bridge noise — fixed in v2.6.1 (the `window.native` bridge is removed at load and the messages are filtered from logs). Seeing `E_NOINTERFACE` / `ICoreWebView2Controller4` too? Your **WebView2 Runtime is outdated** — update it from Microsoft or via Windows Update. |
 | Interrupted download | Re-run the same command — completed chapters are skipped via the verified `.checkpoint` and already-downloaded images are not re-fetched. |
-| Crash / power outage | Launch the GUI (a Resume banner appears) or run `weebcentral resume` — the job journal restarts the download where it left off. |
-| Diagnosing problems | Export the log from Settings → Logs, or read `~/.weebcentral/logs/weebcentral.log`. |
+| Crash / power outage | Launch the GUI (a Resume banner appears) or run `mangadl resume` — the job journal restarts the download where it left off. |
+| Diagnosing problems | Export the log from Settings → Logs, or read `~/.mangadl/logs/mangadl.log`. |
 | A few chapters failed | The summary lists them; re-run with `-c <numbers>` to fetch just those. |
-| `ImportError: attempted relative import with no known parent package` | You ran a package file directly (e.g. `python weebcentral/tui.py` or PyCharm's "Run file"). Fixed in v2.6.2 — files now self-bootstrap. Preferred launches: `weebcentral tui`, `python -m weebcentral tui`, or the root `python tui.py` / `python gui.py`. In PyCharm, set the run configuration to **module** `weebcentral` with parameter `tui`. |
+| `ImportError: attempted relative import with no known parent package` | You ran a package file directly (e.g. `python mangadl/tui.py` or PyCharm's "Run file"). Fixed in v2.6.2 — files now self-bootstrap. Preferred launches: `mangadl tui`, `python -m mangadl tui`, or the root `python tui.py` / `python gui.py`. In PyCharm, set the run configuration to **module** `mangadl` with parameter `tui`. |
 
 ## Legal
 

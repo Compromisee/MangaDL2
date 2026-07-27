@@ -1,4 +1,4 @@
-"""pywebview GUI for WeebCentral Downloader.
+"""pywebview GUI for MangaDL.
 
 A minimalist Material-style web UI served locally. The Python side exposes a
 small JSON API to JavaScript; download progress is pushed back with
@@ -15,16 +15,17 @@ import time
 import traceback
 
 from ..downloader import DownloadEngine, DownloadOptions
-from ..scraper import WeebCentralScraper
+from ..sources import (DEFAULT_SOURCE, SOURCES, detect_source, get_source,
+                       list_sources, search_all, source_for_url)
 from .. import library
 from .. import logs as wclogs
 
 logger = logging.getLogger(__name__)
 
-SETTINGS_PATH = os.path.join(os.path.expanduser("~"), ".weebcentral", "settings.json")
+SETTINGS_PATH = os.path.join(os.path.expanduser("~"), ".mangadl", "settings.json")
 
 DEFAULT_SETTINGS = {
-    "output_dir": os.path.join(os.path.expanduser("~"), "Downloads", "WeebCentral"),
+    "output_dir": os.path.join(os.path.expanduser("~"), "Downloads", "MangaDL"),
     "format": "cbz",
     "bundle": 0,
     "chapter_workers": 3,
@@ -38,6 +39,11 @@ DEFAULT_SETTINGS = {
     "matrix": True,
     "confirm_large": True,
     "large_threshold": 100,
+    "sources": [],                  # enabled source ids; [] = all of them
+    "default_source": DEFAULT_SOURCE,
+    "language": "en",               # MangaDex translation language
+    "scanlator": "",                # preferred MangaDex scanlation group
+    "data_saver": False,            # MangaDex compressed pages
     "reader_path": "",              # e.g. path to Readest executable
     "open_folder_when_done": False,
     "name_single": "{title}",
@@ -76,9 +82,36 @@ class Api:
 
     def __init__(self):
         self.window = None
-        self.scraper = WeebCentralScraper()
         self.engine = None
         self._thread = None
+        self._sources = {}
+
+    # ----------------------------------------------------------- sources
+
+    def _source(self, source_id=None, url=None):
+        """Get (and cache) a source instance by id, or detect it from a URL."""
+        settings = load_settings()
+        if not source_id and url:
+            source_id = detect_source(url)
+        source_id = source_id or settings.get("default_source") or DEFAULT_SOURCE
+        if source_id not in SOURCES:
+            raise ValueError(f"Unknown source: {source_id}")
+
+        key = (source_id, settings.get("language", "en"),
+               settings.get("scanlator", ""), bool(settings.get("data_saver")))
+        if key not in self._sources:
+            self._sources[key] = get_source(
+                source_id,
+                language=settings.get("language", "en"),
+                scanlator=settings.get("scanlator") or None,
+                data_saver=bool(settings.get("data_saver")),
+            )
+        return self._sources[key]
+
+    def get_sources(self):
+        """Every supported site, for the source picker."""
+        return {"ok": True, "sources": list_sources(),
+                "default": load_settings().get("default_source") or DEFAULT_SOURCE}
 
     # ------------------------------------------------------------- push
 
@@ -93,30 +126,59 @@ class Api:
     # ------------------------------------------------------------ pages
 
     def search(self, query: str, filters: dict = None):
+        """Search one source, or every enabled source when set to 'all'."""
         try:
             f = filters or {}
-            return {"ok": True, "results": self.scraper.search(
-                query,
-                sort=f.get("sort", "Best Match"),
-                order=f.get("order", "Ascending"),
-                official=f.get("official", "Any"),
+            source_id = (f.get("source") or "").strip()
+
+            # pasting a URL jumps straight to that manga
+            if query and detect_source(query) and "/" in query:
+                return {"ok": True, "results": [], "url": query}
+
+            kwargs = dict(
+                sort=f.get("sort") or None,
                 status=f.get("status"),
                 series_type=f.get("type"),
-            )}
+                order=f.get("order", "Ascending"),
+                official=f.get("official", "Any"),
+            )
+            kwargs = {k: v for k, v in kwargs.items() if v not in (None, "", "Any")}
+
+            if source_id in ("", "all"):
+                enabled = load_settings().get("sources") or list(SOURCES)
+                results = search_all(query, source_ids=enabled, limit=16, **kwargs)
+            else:
+                results = self._source(source_id).search(query, **kwargs)
+            return {"ok": True, "results": results}
         except Exception as e:
+            logger.exception("Search failed")
             return {"ok": False, "error": str(e)}
 
-    def get_manga(self, url: str):
+    def get_manga(self, url: str, source_id: str = None):
         try:
-            info = self.scraper.get_manga_info(url)
-            chapters = self.scraper.get_chapters(url)
+            source = self._source(source_id, url=url)
+            info = source.get_manga_info(url)
+            chapters = source.get_chapters(url)
             return {
                 "ok": True,
                 "info": info,
                 "chapters": chapters,
+                "source": source.id,
+                "source_name": source.name,
                 "downloaded": sorted(library.downloaded_chapters(url)),
                 "bookmarked": library.is_bookmarked(url),
             }
+        except Exception as e:
+            logger.exception("get_manga failed")
+            return {"ok": False, "error": str(e)}
+
+    def get_covers(self, url: str, source_id: str = None):
+        """Alternative covers (MangaDex volume art), if the source has any."""
+        try:
+            source = self._source(source_id, url=url)
+            if not hasattr(source, "get_covers"):
+                return {"ok": True, "covers": []}
+            return {"ok": True, "covers": source.get_covers(url)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -190,7 +252,7 @@ class Api:
             _, _, save_t = _dialog_types()
             dest = self.window.create_file_dialog(
                 save_t,
-                save_filename=f"weebcentral-{time.strftime('%Y%m%d-%H%M%S')}.log",
+                save_filename=f"mangadl-{time.strftime('%Y%m%d-%H%M%S')}.log",
             )
             if not dest:
                 return {"ok": False, "cancelled": True}
@@ -311,6 +373,8 @@ class Api:
         if self._thread and self._thread.is_alive():
             return {"ok": False, "error": "A download is already running"}
 
+        settings = load_settings()
+
         opt = DownloadOptions(
             url=options.get("url", ""),
             selection=options.get("selection", "all"),
@@ -326,6 +390,11 @@ class Api:
             name_single=options.get("name_single") or DEFAULT_SETTINGS["name_single"],
             name_chapter=options.get("name_chapter") or DEFAULT_SETTINGS["name_chapter"],
             name_range=options.get("name_range") or DEFAULT_SETTINGS["name_range"],
+            source=options.get("source") or "",
+            language=options.get("language") or settings.get("language", "en"),
+            scanlator=options.get("scanlator") or settings.get("scanlator", ""),
+            data_saver=bool(options.get("data_saver",
+                                        settings.get("data_saver", False))),
         )
         if opt.format == "images":
             opt.keep_images = True
@@ -355,7 +424,7 @@ def _web_asset_path():
     """Locate web/index.html both in source and in a PyInstaller bundle."""
     if getattr(sys, "frozen", False):
         base = os.path.join(getattr(sys, "_MEIPASS", os.path.dirname(sys.executable)),
-                            "weebcentral", "gui", "web")
+                            "mangadl", "gui", "web")
     else:
         base = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
     return os.path.join(base, "index.html")
@@ -363,7 +432,7 @@ def _web_asset_path():
 
 def _show_fatal(message: str):
     """Last-resort error reporting: console + native message box on Windows."""
-    print("\n[WeebCentral] GUI failed to start:\n" + message, file=sys.stderr)
+    print("\n[MangaDL] GUI failed to start:\n" + message, file=sys.stderr)
     print(f"\nLog file: {wclogs.LOG_FILE}\nCrash dumps: {wclogs.CRASH_FILE}",
           file=sys.stderr)
     if sys.platform == "win32":
@@ -372,7 +441,7 @@ def _show_fatal(message: str):
             ctypes.windll.user32.MessageBoxW(
                 None,
                 message + f"\n\nDetails were written to:\n{wclogs.LOG_FILE}",
-                "WeebCentral Downloader - startup error",
+                "MangaDL - startup error",
                 0x10,  # MB_ICONERROR
             )
         except Exception:
@@ -394,13 +463,13 @@ def run_gui():
     if not os.path.isfile(html_path):
         _show_fatal(f"GUI assets not found at:\n{html_path}\n\n"
                     "If this is a packaged exe, rebuild it with the provided "
-                    "WeebCentral.spec so web assets are bundled.")
+                    "MangaDL.spec so web assets are bundled.")
         return 1
 
     api = Api()
     try:
         window = webview.create_window(
-            "WeebCentral Downloader",
+            "MangaDL",
             html_path,
             js_api=api,
             width=1180,

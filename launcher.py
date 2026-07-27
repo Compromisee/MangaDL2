@@ -2,13 +2,13 @@
 """Unified entry point for the packaged executable.
 
 Behaviour:
-    WeebCentral.exe                 -> desktop GUI (default, no console needed)
-    WeebCentral.exe gui             -> desktop GUI
-    WeebCentral.exe tui             -> terminal UI
-    WeebCentral.exe <url> [...]     -> CLI download
-    WeebCentral.exe search "query"  -> CLI search
-    WeebCentral.exe resume          -> resume interrupted download
-    WeebCentral.exe --help          -> CLI help
+    MangaDL.exe                 -> desktop GUI (default, no console needed)
+    MangaDL.exe gui             -> desktop GUI
+    MangaDL.exe tui             -> terminal UI
+    MangaDL.exe <url> [...]     -> CLI download
+    MangaDL.exe search "query"  -> CLI search
+    MangaDL.exe resume          -> resume interrupted download
+    MangaDL.exe --help          -> CLI help
 """
 
 import multiprocessing
@@ -21,10 +21,10 @@ def main():
 
     args = sys.argv[1:]
     if not args or args[0] == "gui":
-        from weebcentral.gui import run_gui
+        from mangadl.gui import run_gui
         sys.exit(run_gui())
 
-    from weebcentral.cli import main as cli_main
+    from mangadl.cli import main as cli_main
     sys.exit(cli_main(args))
 
 

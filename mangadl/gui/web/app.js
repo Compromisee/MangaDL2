@@ -1,4 +1,4 @@
-/* WeebCentral Downloader GUI logic */
+/* MangaDL GUI logic */
 
 "use strict";
 
@@ -166,8 +166,68 @@ $("setMatrix").addEventListener("change", async (e) => {
 
 /* --------------------------------------------------------------- search */
 
+/* Sources are discovered from the backend, so adding a source in Python
+   automatically populates the picker with no JS changes. */
+let SOURCES = [];
+let sourceById = {};
+
+async function loadSources() {
+  if (!api() || !api().get_sources) return;
+  const res = await api().get_sources();
+  if (!res || !res.ok) return;
+  SOURCES = res.sources || [];
+  sourceById = {};
+  SOURCES.forEach((s) => { sourceById[s.id] = s; });
+
+  const sel = $("fSource");
+  const current = sel.value || "all";
+  sel.innerHTML = '<option value="all">All sources</option>';
+  SOURCES.forEach((s) => {
+    const opt = document.createElement("option");
+    opt.value = s.id;
+    opt.textContent = s.name;
+    sel.appendChild(opt);
+  });
+  sel.value = sourceById[current] ? current : "all";
+  syncSourceUI();
+}
+
+/* Show only the filters the selected source actually supports. */
+function syncSourceUI() {
+  const id = $("fSource").value;
+  const src = sourceById[id];
+
+  const langGroup = $("langGroup");
+  if (langGroup) langGroup.hidden = !(src && src.supports_language);
+
+  const sortSel = $("fSort");
+  const sorts = src && src.sorts && src.sorts.length ? src.sorts : null;
+  if (sorts) {
+    const prev = sortSel.value;
+    sortSel.innerHTML = "";
+    sorts.forEach((name) => {
+      const opt = document.createElement("option");
+      opt.textContent = name;
+      sortSel.appendChild(opt);
+    });
+    sortSel.value = sorts.includes(prev) ? prev : sorts[0];
+    sortSel.parentElement.hidden = false;
+  } else {
+    sortSel.parentElement.hidden = id !== "all" ? false : true;
+  }
+
+  // WeebCentral-only controls
+  const wcOnly = id === "weebcentral" || id === "all";
+  const typeGroup = $("fType") && $("fType").parentElement;
+  const offGroup = $("fOfficial") && $("fOfficial").parentElement;
+  if (typeGroup) typeGroup.hidden = !wcOnly;
+  if (offGroup) offGroup.hidden = !wcOnly;
+}
+
 function getFilters() {
   return {
+    source: $("fSource").value,
+    language: $("fLanguage") ? $("fLanguage").value : "en",
     sort: $("fSort").value,
     order: $("fOrder").dataset.order,
     status: $("fStatus").value,
@@ -180,7 +240,7 @@ function getFilters() {
 
 function filtersActive() {
   const f = getFilters();
-  return f.sort !== "Best Match" || f.order !== "Ascending"
+  return f.source !== "all" || f.sort !== "Best Match" || f.order !== "Ascending"
       || f.status !== "Any" || f.type !== "Any" || f.official !== "Any";
 }
 
@@ -203,13 +263,22 @@ $("fOrder").addEventListener("click", () => {
   if (lastQuery) doSearch(true);
 });
 
-["fSort", "fStatus", "fType", "fOfficial"].forEach((id) =>
-  $(id).addEventListener("change", () => {
+["fSort", "fStatus", "fType", "fOfficial", "fLanguage"].forEach((id) =>
+  $(id) && $(id).addEventListener("change", () => {
     updateFilterDot();
     if (lastQuery) doSearch(true);
   }));
 
+$("fSource").addEventListener("change", async () => {
+  syncSourceUI();
+  updateFilterDot();
+  if (api()) await api().set_settings({ default_source: $("fSource").value });
+  if (lastQuery) doSearch(true);
+});
+
 $("fReset").addEventListener("click", () => {
+  $("fSource").value = "all";
+  syncSourceUI();
   $("fSort").value = "Best Match";
   $("fStatus").value = "Any";
   $("fType").value = "Any";
@@ -228,7 +297,7 @@ async function doSearch(rerun = false) {
   const query = rerun ? lastQuery : $("searchInput").value.trim();
   if (!query) return;
 
-  if (!rerun && query.includes("weebcentral.com/")) {
+  if (!rerun && /^https?:\/\//i.test(query)) {
     openManga(query);
     return;
   }
@@ -251,10 +320,14 @@ async function doSearch(rerun = false) {
     const card = document.createElement("div");
     card.className = "result-card";
     card.style.setProperty("--i", Math.min(i, 17));
+    const badge = ($("fSource").value === "all" && r.source)
+      ? `<span class="rc-source" data-source="${escapeHtml(r.source)}">${escapeHtml(r.source_name || r.source)}</span>`
+      : "";
     card.innerHTML = `
+      ${badge}
       <img loading="lazy" src="${r.cover || ""}" alt="" onerror="this.style.visibility='hidden'">
       <div class="rc-title">${escapeHtml(r.title)}</div>`;
-    card.addEventListener("click", () => openManga(r.url));
+    card.addEventListener("click", () => openManga(r.url, r.source));
     grid.appendChild(card);
   });
 }
@@ -275,13 +348,13 @@ function escapeHtml(s) {
 
 /* ---------------------------------------------------------------- manga */
 
-async function openManga(url) {
+async function openManga(url, sourceId) {
   $("railManga").disabled = false;
   showView("manga");
   $("mangaLoading").classList.remove("hidden");
   $("mangaLayout").classList.add("hidden");
 
-  const res = await api().get_manga(url);
+  const res = await api().get_manga(url, sourceId || null);
   $("mangaLoading").classList.add("hidden");
 
   if (!res.ok) {
@@ -291,6 +364,7 @@ async function openManga(url) {
   }
 
   state.manga = res;
+  state.source = res.source || sourceId || null;
   state.downloaded = new Set(res.downloaded || []);
   // preselect only chapters that are NOT downloaded yet; if all downloaded, select all
   const fresh = res.chapters
@@ -310,6 +384,13 @@ async function openManga(url) {
 
   const chips = $("mangaTags");
   chips.innerHTML = "";
+  if (res.source_name || res.source) {
+    const src = document.createElement("span");
+    src.className = "chip source";
+    src.dataset.source = res.source || "";
+    src.textContent = res.source_name || res.source;
+    chips.appendChild(src);
+  }
   if (res.info.status) {
     const s = document.createElement("span");
     s.className = "chip status";
@@ -512,6 +593,8 @@ $("downloadBtn").addEventListener("click", async () => {
 
   const options = {
     url: state.manga.info.url,
+    source: state.source || "",
+    language: $("fLanguage") ? $("fLanguage").value : "en",
     selection,
     output_dir: $("outputDir").value.trim() || s.output_dir,
     format: state.format,
@@ -979,6 +1062,15 @@ $("resumeNoBtn").addEventListener("click", async () => {
 whenReady(async () => {
   state.settings = await api().get_settings();
   fillSettings(state.settings);
+  await loadSources();
+  if (state.settings.default_source && $("fSource")) {
+    const want = state.settings.default_source;
+    if ([...$("fSource").options].some((o) => o.value === want)) {
+      $("fSource").value = want;
+      syncSourceUI();
+      updateFilterDot();
+    }
+  }
   const lib = await api().get_library();
   if (lib && lib.path) $("dataLibPath").textContent = lib.path;
   refreshLogInfo();
