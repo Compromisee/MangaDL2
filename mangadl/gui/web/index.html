@@ -304,6 +304,21 @@
             <input type="text" id="rangeInput" placeholder="Quick select: 1-20, 25, 30-40" spellcheck="false">
             <button class="btn btn-tonal" id="rangeApplyBtn">Apply</button>
           </div>
+          <div class="range-row filter-row">
+            <span class="material-symbols-rounded">filter_list</span>
+            <input type="number" id="chMin" class="num-field" placeholder="Min" step="any">
+            <span class="range-dash">to</span>
+            <input type="number" id="chMax" class="num-field" placeholder="Max" step="any">
+            <input type="text" id="chSearch" placeholder="Filter by name…" spellcheck="false">
+            <select id="chSort" title="Sort order">
+              <option value="desc">Newest first</option>
+              <option value="asc">Oldest first</option>
+            </select>
+            <label class="mini-check" title="Hide chapters already downloaded">
+              <input type="checkbox" id="chHideDl"><span>Hide downloaded</span>
+            </label>
+            <button class="text-btn" id="chFilterReset">Reset</button>
+          </div>
           <div class="legend">
             <span class="legend-item"><span class="legend-dot dot-downloaded"></span>downloaded</span>
             <span class="legend-item"><span class="legend-dot dot-selected"></span>selected</span>
@@ -445,6 +460,7 @@
       <button class="tool-tab active" data-tool="disk">Disk usage</button>
       <button class="tool-tab" data-tool="dupes">Duplicates</button>
       <button class="tool-tab" data-tool="orphans">Orphans</button>
+      <button class="tool-tab" data-tool="moved">Moved files</button>
       <button class="tool-tab" data-tool="health">Source health</button>
       <button class="tool-tab" data-tool="history">History</button>
     </div>
@@ -477,6 +493,26 @@
         <span class="tool-note" id="orphanNote"></span>
       </div>
       <div class="rank-list" id="orphanList"></div>
+    </div>
+
+    <div class="tool-panel" id="tool-moved">
+      <div class="tool-bar">
+        <button class="btn" id="verifyLibBtn">
+          <span class="material-symbols-rounded">fact_check</span>Check library
+        </button>
+        <button class="btn" id="findMovedBtn">
+          <span class="material-symbols-rounded">travel_explore</span>Find moved folders
+        </button>
+        <button class="btn" id="rescanRootBtn">
+          <span class="material-symbols-rounded">drive_folder_upload</span>Pick new downloads folder
+        </button>
+      </div>
+      <p class="tool-note" style="margin:-6px 0 12px">
+        Moved your downloads somewhere else? Point MangaDL at the new folder and
+        it re-links the library instead of losing track of your files. Nothing
+        is changed until you confirm.
+      </p>
+      <div class="rank-list" id="movedList"></div>
     </div>
 
     <div class="tool-panel" id="tool-health">

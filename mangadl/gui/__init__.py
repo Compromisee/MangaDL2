@@ -54,11 +54,22 @@ DEFAULT_SETTINGS = {
     "language": "en",               # MangaDex translation language
     "scanlator": "",                # preferred MangaDex scanlation group
     "data_saver": False,            # MangaDex compressed pages
+    "library_search_roots": [],     # extra folders to look in when files move
     "reader_path": "",              # e.g. path to Readest executable
     "open_folder_when_done": False,
-    "name_single": "{title}",
+    "name_single": "{title} - Chapters {chapters}",
     "name_chapter": "{title} - Chapter {chapter}",
-    "name_range": "{title} - Chapters {start}-{end}",
+    "name_range": "{title} - Chapters {chapters}",
+}
+
+
+#: Naming templates that predate {chapters}. Anyone still carrying one of
+#: these saved from an older version is migrated forward, otherwise their
+#: stored value would keep overriding the improved default.
+_LEGACY_NAME_TEMPLATES = {
+    "name_single": ({"{title}"}, "{title} - Chapters {chapters}"),
+    "name_range": ({"{title} - Chapters {start}-{end}"},
+                   "{title} - Chapters {chapters}"),
 }
 
 
@@ -69,6 +80,10 @@ def load_settings() -> dict:
             settings.update(json.load(f))
     except (OSError, ValueError):
         pass
+
+    for key, (legacy, replacement) in _LEGACY_NAME_TEMPLATES.items():
+        if (settings.get(key) or "").strip() in legacy:
+            settings[key] = replacement
     return settings
 
 
@@ -375,6 +390,54 @@ class Api:
             except OSError as e:
                 failed.append({"path": path, "error": str(e)})
         return {"ok": True, "removed": removed, "failed": failed}
+
+    # ---------------------------------------------- moved folders
+
+    def verify_library(self):
+        """Which library entries still resolve on disk."""
+        return library.verify_entries()
+
+    def relocate_entry(self, url: str, new_dir: str = None):
+        """Point one entry at a folder the user moved it to."""
+        if not new_dir:
+            new_dir = self.choose_folder()
+            if not new_dir:
+                return {"ok": False, "cancelled": True}
+        return library.relocate_entry(url, new_dir)
+
+    def find_moved_entries(self, roots: list = None):
+        """Propose relocations by matching folder names under given roots.
+
+        Nothing is written: the UI shows the proposals and the user confirms.
+        """
+        if not roots:
+            settings = load_settings()
+            roots = [settings.get("output_dir")]
+            extra = settings.get("library_search_roots") or []
+            roots += [r for r in extra if r]
+        return {"ok": True, "proposals": library.find_moved_entries(roots)}
+
+    def apply_relocations(self, proposals: list):
+        return library.apply_relocations(proposals or [])
+
+    def rescan_output_dir(self, root: str = None):
+        """Adopt a new downloads folder and relocate everything under it."""
+        root = root or self.choose_folder()
+        if not root:
+            return {"ok": False, "cancelled": True}
+        if not os.path.isdir(root):
+            return {"ok": False, "error": f"Not a folder: {root}"}
+
+        # remember it as the download location going forward
+        settings = load_settings()
+        settings["output_dir"] = root
+        save_settings(settings)
+
+        proposals = library.find_moved_entries([root])
+        result = library.apply_relocations(proposals)
+        return {"ok": True, "output_dir": root,
+                "relocated": result.get("applied", 0),
+                "still_missing": len(library.verify_entries()["missing"])}
 
     def get_health(self):
         """Circuit-breaker state and cache hit rates, for the Tools tab."""

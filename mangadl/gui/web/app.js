@@ -191,6 +191,7 @@ function showView(name) {
     const tool = active ? active.dataset.tool : "disk";
     if (tool === "health") loadHealth();
     if (tool === "history") loadHistoryList();
+    if (tool === "moved") loadMoved();
   }
 }
 
@@ -765,11 +766,54 @@ $("watchBtn").addEventListener("click", async () => {
   loadUpdates();
 });
 
+/* Read the min/max, name filter and sort controls. Filtering only changes
+   what is *shown*: selections are keyed by the chapter's real index, so
+   hiding a row never silently drops it from an existing selection. */
+function chapterFilters() {
+  const num = (id) => {
+    const raw = ($(id) && $(id).value || "").trim();
+    if (!raw) return null;
+    const v = parseFloat(raw);
+    return Number.isFinite(v) ? v : null;
+  };
+  return {
+    min: num("chMin"),
+    max: num("chMax"),
+    text: (($("chSearch") && $("chSearch").value) || "").trim().toLowerCase(),
+    sort: ($("chSort") && $("chSort").value) || "desc",
+    hideDl: !!($("chHideDl") && $("chHideDl").checked),
+  };
+}
+
+function chapterMatches(chapter, index, f) {
+  const n = chapterNumber(chapter.name);
+  if (f.min !== null && n < f.min) return false;
+  if (f.max !== null && n > f.max) return false;
+  if (f.text && !chapter.name.toLowerCase().includes(f.text)) return false;
+  if (f.hideDl && state.downloaded.has(chapter.name)) return false;
+  return true;
+}
+
+/* Indices of the chapters currently visible, in display order. */
+function visibleChapterIndices() {
+  const chapters = (state.manga && state.manga.chapters) || [];
+  const f = chapterFilters();
+  const idx = [];
+  for (let i = 0; i < chapters.length; i++) {
+    if (chapterMatches(chapters[i], i, f)) idx.push(i);
+  }
+  // chapters arrive oldest-first
+  if (f.sort === "desc") idx.reverse();
+  return idx;
+}
+
 function renderChapterList() {
   const list = $("chapterList");
   list.innerHTML = "";
   const chapters = state.manga.chapters;
-  for (let i = chapters.length - 1; i >= 0; i--) {
+  const shown = visibleChapterIndices();
+
+  shown.forEach((i) => {
     const name = chapters[i].name;
     const isDl = state.downloaded.has(name);
     const item = document.createElement("div");
@@ -787,8 +831,20 @@ function renderChapterList() {
       updateDownloadButton();
     });
     list.appendChild(item);
+  });
+
+  const hidden = chapters.length - shown.length;
+  if (hidden > 0) {
+    const note = document.createElement("div");
+    note.className = "chapter-hidden-note";
+    note.textContent = `${hidden} chapter${hidden === 1 ? "" : "s"} hidden by filters`;
+    list.appendChild(note);
   }
-  $("chapterCount").textContent = chapters.length;
+
+  $("chapterCount").textContent = shown.length === chapters.length
+    ? chapters.length
+    : `${shown.length} / ${chapters.length}`;
+
   const dlPill = $("downloadedCount");
   if (state.downloaded.size) {
     dlPill.textContent = `${state.downloaded.size} downloaded`;
@@ -797,6 +853,22 @@ function renderChapterList() {
     dlPill.classList.add("hidden");
   }
 }
+
+/* Re-render as the filters change. */
+["chMin", "chMax", "chSearch", "chSort", "chHideDl"].forEach((id) => {
+  const el = $(id);
+  if (!el) return;
+  const evt = el.tagName === "SELECT" || el.type === "checkbox" ? "change" : "input";
+  el.addEventListener(evt, () => { if (state.manga) renderChapterList(); });
+});
+
+$("chFilterReset") && $("chFilterReset").addEventListener("click", () => {
+  ["chMin", "chMax", "chSearch"].forEach((id) => { if ($(id)) $(id).value = ""; });
+  if ($("chHideDl")) $("chHideDl").checked = false;
+  if ($("chSort")) $("chSort").value = "desc";
+  if (state.manga) renderChapterList();
+});
+
 
 function refreshChapterSelection() {
   document.querySelectorAll(".chapter-item").forEach((item) => {
@@ -815,24 +887,38 @@ function updateDownloadButton() {
   $("downloadBtn").disabled = n === 0 || state.downloading;
 }
 
+/* The bulk buttons act on what is *visible*. Selecting chapters you have
+   filtered out would be a nasty surprise -- you would download rows you
+   cannot see. With no filters active this is every chapter, unchanged. */
 $("selectAllBtn").addEventListener("click", () => {
-  state.selected = new Set(state.manga.chapters.map((_, i) => i));
+  const shown = visibleChapterIndices();
+  state.selected = new Set(shown);
   refreshChapterSelection();
+  const total = state.manga.chapters.length;
+  if (shown.length !== total) {
+    toast(`Selected ${shown.length} visible of ${total}`);
+  }
 });
 $("selectNoneBtn").addEventListener("click", () => {
   state.selected = new Set();
   refreshChapterSelection();
 });
 $("selectNewBtn").addEventListener("click", () => {
+  const chapters = state.manga.chapters;
   state.selected = new Set(
-    state.manga.chapters
-      .map((c, i) => (state.downloaded.has(c.name) ? -1 : i))
-      .filter((i) => i >= 0));
+    visibleChapterIndices().filter((i) => !state.downloaded.has(chapters[i].name)));
   refreshChapterSelection();
   toast(`Selected ${state.selected.size} new chapter${state.selected.size !== 1 ? "s" : ""}`);
 });
 $("selectLatestBtn").addEventListener("click", () => {
-  state.selected = new Set([state.manga.chapters.length - 1]);
+  // highest-numbered visible chapter, not simply the last array entry
+  const chapters = state.manga.chapters;
+  const shown = visibleChapterIndices();
+  if (!shown.length) return;
+  const latest = shown.reduce((best, i) =>
+    chapterNumber(chapters[i].name) > chapterNumber(chapters[best].name) ? i : best,
+    shown[0]);
+  state.selected = new Set([latest]);
   refreshChapterSelection();
 });
 
@@ -1267,9 +1353,9 @@ function fillSettings(s) {
   $("setDelay").value = s.delay;
   $("setRetries").value = s.retries || 5;
   $("setReaderPath").value = s.reader_path || "";
-  $("setNameSingle").value = s.name_single || "{title}";
+  $("setNameSingle").value = s.name_single || "{title} - Chapters {chapters}";
   $("setNameChapter").value = s.name_chapter || "{title} - Chapter {chapter}";
-  $("setNameRange").value = s.name_range || "{title} - Chapters {start}-{end}";
+  $("setNameRange").value = s.name_range || "{title} - Chapters {chapters}";
   $("setAnimations").checked = s.animations !== false;
   $("setMatrix").checked = s.matrix !== false;
   updateNamingPreview();
@@ -1337,9 +1423,9 @@ $("saveSettingsBtn").addEventListener("click", async () => {
     delay: parseFloat($("setDelay").value) || 0.5,
     retries: parseInt($("setRetries").value) || 5,
     reader_path: $("setReaderPath").value.trim(),
-    name_single: $("setNameSingle").value.trim() || "{title}",
+    name_single: $("setNameSingle").value.trim() || "{title} - Chapters {chapters}",
     name_chapter: $("setNameChapter").value.trim() || "{title} - Chapter {chapter}",
-    name_range: $("setNameRange").value.trim() || "{title} - Chapters {start}-{end}",
+    name_range: $("setNameRange").value.trim() || "{title} - Chapters {chapters}",
   };
   state.settings = await api().set_settings(updated);
   fillSettings(state.settings);
@@ -1917,6 +2003,7 @@ document.querySelectorAll(".tool-tab").forEach((tab) =>
     if (panel) panel.classList.add("active");
     if (tab.dataset.tool === "health") loadHealth();
     if (tab.dataset.tool === "history") loadHistoryList();
+    if (tab.dataset.tool === "moved") loadMoved();
   }));
 
 $("scanDiskBtn").addEventListener("click", async () => {
@@ -2025,3 +2112,114 @@ function humanSize(n) {
   while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
   return (i === 0 ? n.toFixed(0) : n.toFixed(1)) + " " + units[i];
 }
+
+/* ================================================= moved / relocated files */
+
+function relocRow(item, actions) {
+  const row = document.createElement("div");
+  row.className = "rank-row";
+  row.innerHTML = `
+    <div class="r-main">
+      <div class="r-title">${escapeHtml(item.title || "Unknown")}</div>
+      <div class="r-meta">${escapeHtml(item.old || item.directory || "")}${
+        item.new ? ` &rarr; ${escapeHtml(item.new)}` : ""}</div>
+    </div>`;
+  (actions || []).forEach((a) => {
+    const btn = document.createElement("button");
+    btn.className = "btn" + (a.primary ? " btn-filled" : "");
+    btn.textContent = a.label;
+    btn.addEventListener("click", a.onClick);
+    row.appendChild(btn);
+  });
+  return row;
+}
+
+async function loadMoved() {
+  const res = await callApi("verify_library");
+  const missing = (res && res.missing) || [];
+  const present = (res && res.present) || [];
+  const list = $("movedList");
+  list.innerHTML = "";
+
+  if (!missing.length) {
+    list.innerHTML = `
+      <div class="state-box">
+        <span class="material-symbols-rounded">check_circle</span>
+        <div class="state-title">Every library entry resolves</div>
+        <div class="state-hint">${present.length} series verified on disk.</div>
+      </div>`;
+    return;
+  }
+
+  const head = document.createElement("div");
+  head.className = "tool-note";
+  head.style.marginBottom = "8px";
+  head.textContent = `${missing.length} entr${missing.length === 1 ? "y" : "ies"} `
+    + `point at files that are no longer there.`;
+  list.appendChild(head);
+
+  missing.forEach((item) => {
+    list.appendChild(relocRow(item, [{
+      label: "Locate…",
+      primary: true,
+      onClick: async () => {
+        const res = await callApi("relocate_entry", item.url, null);
+        if (res && res.ok) { toast(`Re-linked ${res.title || "entry"}`); loadMoved(); }
+        else if (res && !res.cancelled) toast(res.error || "Could not relocate");
+      },
+    }]));
+  });
+}
+
+$("verifyLibBtn") && $("verifyLibBtn").addEventListener("click", loadMoved);
+
+$("findMovedBtn") && $("findMovedBtn").addEventListener("click", async () => {
+  const res = await callApi("find_moved_entries");
+  const proposals = (res && res.proposals) || [];
+  const list = $("movedList");
+  if (!proposals.length) {
+    toast("No moved folders found");
+    loadMoved();
+    return;
+  }
+  list.innerHTML = "";
+  const head = document.createElement("div");
+  head.className = "tool-note";
+  head.style.marginBottom = "8px";
+  head.textContent = `Found ${proposals.length} likely match${
+    proposals.length === 1 ? "" : "es"}. Review, then apply.`;
+  list.appendChild(head);
+
+  proposals.forEach((p) => list.appendChild(relocRow(p, [{
+    label: "Re-link",
+    primary: true,
+    onClick: async () => {
+      const r = await callApi("relocate_entry", p.url, p.new);
+      if (r && r.ok) { toast(`Re-linked ${r.title || "entry"}`); loadMoved(); }
+    },
+  }])));
+
+  const applyAll = document.createElement("button");
+  applyAll.className = "btn btn-filled";
+  applyAll.style.marginTop = "10px";
+  applyAll.textContent = `Apply all ${proposals.length}`;
+  applyAll.addEventListener("click", async () => {
+    const r = await callApi("apply_relocations", proposals);
+    toast(`Re-linked ${(r && r.applied) || 0} entries`);
+    loadMoved();
+  });
+  list.appendChild(applyAll);
+});
+
+$("rescanRootBtn") && $("rescanRootBtn").addEventListener("click", async () => {
+  const res = await callApi("rescan_output_dir", null);
+  if (!res || !res.ok) {
+    if (res && !res.cancelled) toast(res.error || "Could not rescan");
+    return;
+  }
+  toast(`Downloads folder set. Re-linked ${res.relocated} entr`
+        + `${res.relocated === 1 ? "y" : "ies"}.`);
+  if ($("outputDir")) $("outputDir").value = res.output_dir;
+  if ($("setOutputDir")) $("setOutputDir").value = res.output_dir;
+  loadMoved();
+});

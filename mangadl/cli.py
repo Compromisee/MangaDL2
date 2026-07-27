@@ -75,6 +75,8 @@ def build_parser():
             "  mangadl watch add <url>                  track a series for updates\n"
             "  mangadl watch check                      check every watched series\n"
             "  mangadl disk usage                       disk usage per series\n"
+            "  mangadl library verify                   check files still exist\n"
+            "  mangadl library scan ~/Manga             re-link moved folders\n"
             "  mangadl info <url>\n"
             "  mangadl resume                       resume an interrupted download\n"
             "  mangadl tui                          full-screen terminal UI\n"
@@ -83,7 +85,8 @@ def build_parser():
     parser.add_argument("target", nargs="?",
                         help="manga URL, or a command: search | info | sources | config | "
                              "stats | history | lock | export | watch | disk | "
-                             "trending | genres | health | gui | tui | resume")
+                             "trending | genres | health | library | gui | tui | "
+                             "resume")
     parser.add_argument("query", nargs="*", help="arguments for search / info")
     parser.add_argument("-c", "--chapters", default="all", metavar="SEL",
                         help="chapter selection: all | 5 | 1-20 | 1,5,10-20 | 50- | latest | first (default: all)")
@@ -103,11 +106,11 @@ def build_parser():
                         help="concurrent image downloads per chapter, 1-10 (default: 6)")
     parser.add_argument("--delay", type=float, default=0.5, metavar="S",
                         help="delay between chapters in seconds (default: 0.5)")
-    parser.add_argument("--name-single", default="{title}", metavar="TPL",
-                        help="filename template for single-file bundles (default: {title})")
+    parser.add_argument("--name-single", default="{title} - Chapters {chapters}", metavar="TPL",
+                        help="filename template for single-file bundles (default: {title} - Chapters {chapters})")
     parser.add_argument("--name-chapter", default="{title} - Chapter {chapter}", metavar="TPL",
                         help="template for per-chapter files")
-    parser.add_argument("--name-range", default="{title} - Chapters {start}-{end}", metavar="TPL",
+    parser.add_argument("--name-range", default="{title} - Chapters {chapters}", metavar="TPL",
                         help="template for chapter-range bundles")
     source_group = parser.add_argument_group("sources")
     source_group.add_argument("-s", "--source", default="", metavar="ID",
@@ -442,6 +445,83 @@ def cmd_health() -> int:
         console.print(f"[{DIM}]{label}: {stats['entries']} entries, "
                       f"{stats['hit_rate']}% hit rate[/]")
     return 0
+
+
+def cmd_library(args) -> int:
+    """Verify the library and re-link folders the user has moved."""
+    from . import library
+
+    rest = list(args.query)
+    action = (rest[0].lower() if rest else "verify")
+
+    if action in ("verify", "check"):
+        report = library.verify_entries()
+        missing = report["missing"]
+        if not missing:
+            console.print(f"[green]All {len(report['present'])} entries "
+                          f"resolve on disk.[/]")
+            return 0
+        table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+        table.add_column("Title")
+        table.add_column("Folder", style=DIM, overflow="fold")
+        table.add_column("Problem", style=DIM)
+        for row in missing:
+            problems = []
+            if not row["directory_ok"]:
+                problems.append("folder missing")
+            if row["missing_outputs"]:
+                problems.append(f"{len(row['missing_outputs'])} file(s) gone")
+            table.add_row(row.get("title") or "?", row.get("directory") or "-",
+                          ", ".join(problems))
+        console.print(table)
+        console.print(f"[{DIM}]Re-link with: mangadl library scan <folder>[/]")
+        return 0
+
+    if action in ("scan", "find"):
+        roots = rest[1:] or [args.output]
+        proposals = library.find_moved_entries(roots)
+        if not proposals:
+            console.print("[yellow]No moved folders found under: "
+                          + ", ".join(roots) + "[/]")
+            return 0
+        table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+        table.add_column("Title")
+        table.add_column("New location", style=DIM, overflow="fold")
+        for p in proposals:
+            table.add_row(p.get("title") or "?", p.get("new") or "")
+        console.print(table)
+
+        if not args.yes:
+            try:
+                answer = console.input(
+                    f"[{ACCENT}]Re-link these {len(proposals)}? \\[Y/n][/] "
+                ).strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                console.print()
+                return 130
+            if answer and answer not in ("y", "yes"):
+                console.print("Cancelled.")
+                return 0
+
+        result = library.apply_relocations(proposals)
+        console.print(f"Re-linked [bold]{result['applied']}[/] entries.")
+        return 0
+
+    if action in ("move", "relocate"):
+        if len(rest) < 3:
+            console.print("[red]Usage: mangadl library move <url> <new-folder>[/]")
+            return 1
+        result = library.relocate_entry(rest[1], rest[2])
+        if result.get("ok"):
+            console.print(f"Re-linked [bold]{result.get('title')}[/] -> "
+                          f"{result.get('new')}")
+            return 0
+        console.print(f"[red]{result.get('error')}[/]")
+        return 1
+
+    console.print(f"[{DIM}]Usage: mangadl library verify|scan [folder]|"
+                  f"move <url> <folder>[/]")
+    return 1
 
 
 def cmd_watch(args) -> int:
@@ -907,6 +987,8 @@ def main(argv=None):
         return cmd_watch(args)
     if command == "disk":
         return cmd_disk(args)
+    if command in ("library", "lib"):
+        return cmd_library(args)
     if command == "search":
         return cmd_search(" ".join(args.query), args.source, args.language,
                           args.genre)

@@ -7,6 +7,62 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.0 — Chapter-range filenames, moved-folder recovery, chapter filters
+
+### Changed — files are named by the chapters they contain
+
+A "download all" archive was previously just `Naruto.cbz`, which said nothing
+about what was inside. Output files now carry their chapter range:
+
+    Naruto - Chapters 001-050.cbz      one file for everything
+    Naruto - Chapters 011-020.cbz      bundled by 10
+    Naruto - Chapter 007.cbz           one file per chapter
+
+Non-contiguous selections collapse into runs (`001-003, 007-008, 020`), half
+chapters stay inside a run (10, 10.5, 11 -> `010-011`), and a heavily
+fragmented pick truncates to `001-013 (7 chapters)` so the filename cannot
+grow unbounded. Two new placeholders, `{chapters}` and `{count}`, are
+available in the naming templates.
+
+Anyone carrying the old `{title}` template from a previous version is
+migrated forward automatically — otherwise the stored value would keep
+overriding the new default. Custom templates are left alone.
+
+### Added — moved your downloads? nothing breaks
+
+Moving a downloads folder used to orphan every library entry silently. Now:
+
+- **Check library** reports entries whose folder or files have gone
+- **Find moved folders** proposes matches by folder name. Proposals are
+  inert until you confirm, so a wrong guess cannot rewrite anything
+- **Pick new downloads folder** adopts a new root, saves it to settings and
+  re-links everything under it in one step
+- Re-linking rewrites the directory *and* each output path, and preserves
+  download history, title and source
+- New **Moved files** panel in Tools, plus
+  `mangadl library verify|scan|move`
+
+### Added — chapter min/max and sorting
+
+The chapter list gained a minimum and maximum chapter number, a name filter,
+newest/oldest sorting, and a "hide downloaded" toggle. The count pill shows
+`visible / total` and a note reports how many rows a filter is hiding.
+
+Filtering only changes what is displayed — selections are keyed by the real
+chapter index, so hiding a row never silently drops it from a selection. The
+bulk buttons deliberately act on *visible* chapters only: selecting rows you
+have filtered out would mean downloading things you cannot see. "Latest" now
+picks the highest-numbered visible chapter rather than the last array entry.
+
+### Fixed
+
+- The Tools tab's new panel did not load when its tab was clicked: the loader
+  was wired into the view switcher but not the tool-tab handler.
+
+### Testing
+
+- 285 offline tests plus 17 live-site tests
+
 ## v1.3.0 — Three new sources, and the source toggles actually work
 
 ### Fixed — no way to turn a source off

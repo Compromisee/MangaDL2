@@ -327,6 +327,38 @@ A complete feature reference for MangaDL.
 264. Number spinners removed for visual consistency
 265. Struck-through name on excluded sources
 
+## Filenames, relocation and chapter filters
+
+266. Output files are named by the chapters they contain
+267. A single "download all" file reads e.g. "Naruto - Chapters 001-050"
+268. Bundled files name their own range, e.g. "Chapters 011-020"
+269. Non-contiguous selections collapse into runs: "001-003, 007-008, 020"
+270. Half chapters stay inside a run: 10, 10.5, 11 -> "010-011"
+271. Heavily fragmented picks truncate to "001-013 (7 chapters)"
+272. New {chapters} and {count} filename placeholders
+273. Legacy "{title}" templates migrated forward automatically
+274. Custom templates are never overwritten by the migration
+275. Bad templates fall back instead of crashing the download
+276. Library verification reports entries whose files have gone
+277. Moved folders detected by matching folder name under a root
+278. Proposals are inert until confirmed, so a wrong guess is harmless
+279. Re-linking rewrites both the directory and every output path
+280. Download history, title and source survive a re-link
+281. "Pick new downloads folder" adopts a new root and re-links in one step
+282. Moved files panel in the Tools tab
+283. `mangadl library verify|scan|move` from the terminal
+284. Extra library search roots remembered in settings
+285. Minimum and maximum chapter number filters
+286. Filter chapters by name text
+287. Sort chapters newest-first or oldest-first
+288. Hide already-downloaded chapters
+289. Count pill shows "visible / total" while filtering
+290. A note reports how many chapters a filter is hiding
+291. Bulk select buttons act only on visible chapters
+292. "Latest" picks the highest-numbered visible chapter
+293. Filters change only the display, never the selection keys
+294. One-click reset for all chapter filters
+
 ## Core engine
 
 - Download any series from a supported site by URL

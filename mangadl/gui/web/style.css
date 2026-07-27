@@ -1868,3 +1868,50 @@ body.locked .bm-card img { filter: blur(16px); }
   min-width: 230px;
   letter-spacing: .1px;
 }
+
+/* ------------------------------------------- chapter min/max + sort row */
+
+.range-row.filter-row { flex-wrap: wrap; gap: 8px; }
+.range-row.filter-row .num-field { width: 88px; flex: none; }
+.range-row.filter-row #chSearch { flex: 1; min-width: 140px; }
+.range-row .range-dash { color: var(--text-2); font-size: 12.5px; }
+
+.range-row input[type="text"],
+.range-row input[type="number"] {
+  padding: 7px 11px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  outline: none;
+  transition: border-color var(--dur), box-shadow var(--dur);
+}
+.range-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.range-row input[type="number"]::-webkit-outer-spin-button,
+.range-row input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.range-row input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+
+.mini-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+}
+.mini-check input { accent-color: var(--accent); cursor: pointer; }
+.mini-check:hover { color: var(--text); }
+
+.chapter-hidden-note {
+  padding: 8px 2px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}

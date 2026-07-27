@@ -16,7 +16,9 @@ from .packager import EXTENSIONS, PACKAGERS
 from .sources import get_source, source_for_url
 from . import library
 from .utils import (
+    chapter_bounds,
     chapter_number,
+    chapter_range_label,
     chunk,
     format_chapter_number,
     parse_selection,
@@ -40,9 +42,9 @@ class DownloadOptions:
     retries: int = 5                # retries per image download
     extra_formats: list = field(default_factory=list)  # additional formats to produce
     # naming templates; placeholders: {title} {chapter} {start} {end}
-    name_single: str = "{title}"
+    name_single: str = "{title} - Chapters {chapters}"
     name_chapter: str = "{title} - Chapter {chapter}"
-    name_range: str = "{title} - Chapters {start}-{end}"
+    name_range: str = "{title} - Chapters {chapters}"
     # multi-source options
     source: str = ""                # source id; "" = auto-detect from the URL
     language: str = "en"            # translation language (MangaDex)
@@ -365,17 +367,35 @@ class DownloadEngine:
 
         groups = chunk(ordered, self.opt.bundle)
         for group in groups:
+            names = [name for _dir, name in group]
+            # what this file actually contains, e.g. "001-050" or
+            # "001-003, 007-008, 020" for a non-contiguous selection
+            chapters_label = chapter_range_label(names)
+            lo, hi = chapter_bounds(names)
+            count = len(group)
+
+            fields = {
+                "title": title,
+                "chapters": chapters_label,
+                "start": lo,
+                "end": hi,
+                "count": count,
+                "chapter": lo,
+            }
+
             if len(groups) == 1:
-                label = render(self.opt.name_single, "{title}", title=title)
-            elif len(group) == 1:
-                num = format_chapter_number(chapter_number(group[0][1]))
-                label = render(self.opt.name_chapter, "{title} - Chapter {chapter}",
-                               title=title, chapter=num)
+                # A single file still says which chapters are inside it,
+                # rather than carrying only the series title.
+                label = render(self.opt.name_single,
+                               "{title} - Chapters {chapters}", **fields)
+            elif count == 1:
+                fields["chapter"] = format_chapter_number(
+                    chapter_number(group[0][1]))
+                label = render(self.opt.name_chapter,
+                               "{title} - Chapter {chapter}", **fields)
             else:
-                lo = format_chapter_number(chapter_number(group[0][1]))
-                hi = format_chapter_number(chapter_number(group[-1][1]))
-                label = render(self.opt.name_range, "{title} - Chapters {start}-{end}",
-                               title=title, start=lo, end=hi)
+                label = render(self.opt.name_range,
+                               "{title} - Chapters {chapters}", **fields)
 
             out_path = os.path.join(manga_dir, sanitize(label) + ext)
             self.emit("packaging", format=fmt, file=os.path.basename(out_path))

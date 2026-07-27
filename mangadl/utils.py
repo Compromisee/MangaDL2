@@ -106,3 +106,54 @@ def chunk(items: list, size: int) -> list:
     if size <= 0:
         return [list(items)] if items else []
     return [items[i:i + size] for i in range(0, len(items), size)]
+
+
+def chapter_range_label(names, max_list: int = 4) -> str:
+    """Human label describing the chapters a package contains.
+
+    Used to name output files so a CBZ/PDF/EPUB says what is inside it
+    rather than just carrying the series title.
+
+        ["Chapter 1"]                      -> "001"
+        ["Chapter 1", "Chapter 2"]         -> "001-002"
+        1..50 with no gaps                 -> "001-050"
+        1,2,3, 7,8, 20                     -> "001-003, 007-008, 020"
+
+    Non-contiguous selections are collapsed into runs, and a selection with
+    many separate runs is truncated so the filename stays a sane length.
+    """
+    numbers = sorted({chapter_number(n) for n in (names or [])})
+    if not numbers:
+        return ""
+    if len(numbers) == 1:
+        return format_chapter_number(numbers[0])
+
+    # Group into runs. A step of at most 1 continues the run, so half
+    # chapters (10 -> 10.5 -> 11) stay part of "010-011" instead of being
+    # spelled out individually.
+    runs, start, previous = [], numbers[0], numbers[0]
+    for value in numbers[1:]:
+        if value - previous > 1.0001:
+            runs.append((start, previous))
+            start = value
+        previous = value
+    runs.append((start, previous))
+
+    def render(lo, hi):
+        low, high = format_chapter_number(lo), format_chapter_number(hi)
+        return low if low == high else f"{low}-{high}"
+
+    if len(runs) <= max_list:
+        return ", ".join(render(lo, hi) for lo, hi in runs)
+
+    # too fragmented to spell out: show the span plus how many are included
+    return f"{format_chapter_number(numbers[0])}-" \
+           f"{format_chapter_number(numbers[-1])} ({len(numbers)} chapters)"
+
+
+def chapter_bounds(names):
+    """``(lowest, highest)`` chapter labels for a set of chapter names."""
+    numbers = sorted({chapter_number(n) for n in (names or [])})
+    if not numbers:
+        return "", ""
+    return format_chapter_number(numbers[0]), format_chapter_number(numbers[-1])
