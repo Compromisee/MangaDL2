@@ -142,7 +142,7 @@ a desktop GUI sharing the same engine.
   and real `change` events still fire.
 - Fixed: closed dropdown panels were painted over the page because
   `display:flex` in author CSS overrides the user-agent `[hidden]` rule.
-- Fixed: the GUI hero still read "WeebCentral Downloader"; it was split across
+- Fixed: the GUI hero still carried the old pre-fork product name; it was split across
   `<span>`s so the rename missed it.
 
 ### Testing

@@ -106,7 +106,11 @@ class MangaDexSource(Source):
         h = super().headers()
         h["Accept"] = "application/json"
         # MangaDex asks API clients to identify themselves
-        h["User-Agent"] = "MangaDL/3.0 (+https://github.com/Compromisee/WeebDL)"
+        from .. import __version__
+        h["User-Agent"] = (
+            f"MangaDL/{__version__} "
+            "(+https://github.com/Compromisee/WeebDL)"
+        )
         return h
 
     # ------------------------------------------------------------- ids
