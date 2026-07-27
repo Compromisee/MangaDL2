@@ -270,14 +270,6 @@ You only need this if downloads start failing with Cloudflare errors.
 
 ---
 
-## Google Colab
-
-Run in the browser with no local setup — see [`colab/WeebCentral_Downloader.ipynb`](colab/WeebCentral_Downloader.ipynb).
-
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/Yui007/weebcentral_downloader/blob/main/colab/WeebCentral_Downloader.ipynb)
-
----
-
 ## Project layout
 
 ```
@@ -309,16 +301,6 @@ pyinstaller WeebCentral.spec -- --onefile   # single file
 Double-clicking the exe opens the GUI; `WeebCentral tui`, `WeebCentral <url>`,
 `WeebCentral search ...` and `WeebCentral resume` all work from a terminal.
 Full per-platform instructions: **[PACKAGING.md](PACKAGING.md)**.
-
-## Landing page (GitHub Pages)
-
-`docs/index.html` is a ready-made landing page with the same ambient design as
-the app (gradient orbs, dot matrix, feature grid, GUI/TUI screenshot tabs, CLI
-demo terminal). To publish it:
-
-1. GitHub repo → **Settings → Pages**
-2. Source: **Deploy from a branch**, branch `main`, folder **`/docs`**
-3. Your page appears at `https://<user>.github.io/weebcentral_downloader/`
 
 ## Data files
 
@@ -356,10 +338,10 @@ This tool is for personal archival of content you have the right to access.
 Support the official releases of the manga you enjoy.
 
 ## License
-MIT 
-
-
-
-# Based on: https://github.com/Yui007/weebcentral_downloader
 
 [MIT](LICENSE)
+
+---
+
+
+Based on: https://github.com/Yui007/weebcentral_downloader
