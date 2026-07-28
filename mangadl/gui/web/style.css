@@ -152,8 +152,12 @@ body {
 /* ------------------------------------------------------------- nav rail */
 
 .rail {
-  width: 84px;
+  /* Narrow by default: the labels cost 24px of width on every screen.
+     Expanding widens it and reveals the labels inline. */
+  width: 60px;
   flex-shrink: 0;
+  transition: width .18s cubic-bezier(.2,.7,.3,1);
+  overflow: hidden;
   background: color-mix(in srgb, var(--surface) 72%, transparent);
   backdrop-filter: blur(14px);
   border-right: 1px solid var(--border);
@@ -168,7 +172,7 @@ body {
 .rail-logo .material-symbols-rounded { font-size: 30px; font-variation-settings: 'FILL' 1; }
 
 .rail-btn {
-  width: 64px;
+  width: 44px;
   padding: 9px 0 7px;
   border: none;
   background: transparent;
@@ -1921,4 +1925,178 @@ body.locked .bm-card img { filter: blur(16px); }
   padding: 8px 2px;
   font-size: 12.5px;
   color: var(--text-2);
+}
+
+/* The lock overlay is present and visible from the first painted frame, so a
+   protected app is never briefly readable while the bridge answers
+   lock_status. checkLock() removes .lock-pending once it knows. */
+.lock-overlay.lock-pending { display: flex !important; }
+.lock-overlay.lock-pending .lock-box { opacity: 0; }
+
+/* ------------------------------------------------- search suggestions */
+
+.suggest-box {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+.suggest-item {
+  padding: 9px 12px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  cursor: pointer;
+}
+.suggest-item:hover { background: var(--surface-2); }
+
+.searchbar { position: relative; }
+
+
+/* ------------------------------------------------- expandable side rail */
+
+body.rail-open .rail { width: 194px; align-items: stretch; padding-left: 10px; padding-right: 10px; }
+body.rail-open .rail-btn {
+  width: 100%;
+  flex-direction: row;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+}
+body.rail-open .rail-label { font-size: 13px; opacity: 1; }
+body.rail-open .rail-logo { align-self: flex-start; padding-left: 10px; }
+body.rail-open .rail-badge { position: static; margin-left: auto; }
+
+/* labels are hidden while collapsed, but stay in the DOM for screen readers */
+.rail:not(.is-open) .rail-label { font-size: 9.5px; }
+
+.rail-toggle {
+  width: 44px;
+  height: 34px;
+  margin-bottom: 6px;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  transition: background var(--dur), color var(--dur);
+}
+.rail-toggle:hover { background: var(--surface-2); color: var(--text); }
+.rail-toggle .material-symbols-rounded { font-size: 20px; transition: transform .2s; }
+body.rail-open .rail-toggle { width: 100%; justify-content: flex-start; padding-left: 12px; }
+body.rail-open .rail-toggle .material-symbols-rounded { transform: rotate(180deg); }
+
+/* =============================================== square / no-rounding mode
+
+   Some people simply dislike rounded corners. This flattens every radius in
+   one place, including pills, while leaving genuine circles (avatars, dots,
+   the switch knob) alone so controls stay recognisable. */
+
+[data-corners="square"] {
+  --radius-sm: 0px;
+  --radius-md: 0px;
+  --radius-lg: 0px;
+  --radius-xl: 0px;
+  --radius: 0px;
+}
+[data-corners="square"] .btn,
+[data-corners="square"] .topic,
+[data-corners="square"] .chip,
+[data-corners="square"] .cap,
+[data-corners="square"] .pill-new,
+[data-corners="square"] .count-pill,
+[data-corners="square"] .genre-chip,
+[data-corners="square"] .tool-tab,
+[data-corners="square"] .rc-source,
+[data-corners="square"] .rc-also,
+[data-corners="square"] .filter-group,
+[data-corners="square"] .range-row input,
+[data-corners="square"] .dd-btn,
+[data-corners="square"] .dd-panel,
+[data-corners="square"] .dd-item,
+[data-corners="square"] .lock-input,
+[data-corners="square"] .settings-card input,
+[data-corners="square"] .b-track,
+[data-corners="square"] .b-fill,
+[data-corners="square"] .sp-bar { border-radius: 0 !important; }
+
+/* the toggle is a switch, not a circle: square it too, knob included */
+[data-corners="square"] .switch > span,
+[data-corners="square"] .switch .track { border-radius: 0 !important; }
+[data-corners="square"] .switch > span::after,
+[data-corners="square"] .switch .track::after { border-radius: 0 !important; }
+
+/* covers and true circles keep their shape */
+[data-corners="square"] .legend-dot,
+[data-corners="square"] .src-dot,
+[data-corners="square"] .health-dot,
+[data-corners="square"] .lang-dot { border-radius: 0 !important; }
+[data-corners="square"] .lock-icon,
+[data-corners="square"] .spinner { border-radius: 50% !important; }
+
+/* --------------------------------------------------- lock screen polish */
+
+.lock-field { position: relative; display: flex; align-items: center; }
+.lock-field .lock-input { padding-right: 42px; margin-bottom: 0; }
+
+.lock-eye {
+  position: absolute;
+  right: 6px;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-2);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+}
+.lock-eye:hover { color: var(--text); background: var(--surface-2); }
+.lock-eye .material-symbols-rounded { font-size: 18px; }
+
+.lock-attempts {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+.lock-attempts.warn { color: #f9e2af; }
+.lock-attempts.danger { color: var(--danger); }
+
+.lock-box .lock-field { margin-bottom: 10px; }
+
+/* shake on a wrong passcode: immediate, physical feedback */
+@keyframes lockShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+.lock-box.shake { animation: lockShake .34s ease; }
+
+.lock-btn[disabled] { opacity: .6; cursor: not-allowed; }
+
+@media (prefers-reduced-motion: reduce) {
+  .lock-box.shake { animation: none; }
+  .rail { transition: none; }
 }

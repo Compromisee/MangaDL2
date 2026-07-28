@@ -18,15 +18,26 @@
 <body>
 
 <!-- =============================================== LOCK SCREEN -->
-<div class="lock-overlay hidden" id="lockOverlay">
+<div class="lock-overlay lock-pending" id="lockOverlay">
   <div class="lock-box">
     <div class="lock-icon"><span class="material-symbols-rounded">lock</span></div>
     <h2 id="lockTitle">MangaDL is locked</h2>
     <p class="lock-sub" id="lockSub">Enter your passcode to continue</p>
-    <input type="password" id="lockInput" class="lock-input" placeholder="Passcode"
-           autocomplete="off" spellcheck="false">
+
+    <div class="lock-field">
+      <input type="password" id="lockInput" class="lock-input" placeholder="Passcode"
+             autocomplete="off" spellcheck="false" autofocus>
+      <button class="lock-eye" id="lockEyeBtn" type="button"
+              title="Show passcode" aria-label="Show passcode">
+        <span class="material-symbols-rounded" id="lockEyeIcon">visibility</span>
+      </button>
+    </div>
+    <div class="lock-attempts hidden" id="lockAttempts"></div>
+
     <div class="lock-error" id="lockError"></div>
-    <button class="btn btn-filled lock-btn" id="lockUnlockBtn">Unlock</button>
+    <button class="btn btn-filled lock-btn" id="lockUnlockBtn">
+      <span id="lockBtnText">Unlock</span>
+    </button>
     <button class="text-btn" id="lockForgotBtn">Forgot passcode?</button>
 
     <div class="lock-recovery hidden" id="lockRecovery">
@@ -49,7 +60,10 @@
   <canvas id="matrix"></canvas>
 </div>
 
-<nav class="rail">
+<nav class="rail" id="rail">
+  <button class="rail-toggle" id="railToggle" title="Expand sidebar" aria-label="Expand sidebar">
+    <span class="material-symbols-rounded">chevron_right</span>
+  </button>
   <div class="rail-logo"><span class="material-symbols-rounded">auto_stories</span></div>
   <button class="rail-btn active" data-view="search" title="Search">
     <span class="material-symbols-rounded">search</span><span class="rail-label">Search</span>
@@ -96,13 +110,13 @@
       <div class="searchbar">
         <span class="material-symbols-rounded">search</span>
         <input id="searchInput" type="text" placeholder="Search manga, pick a genre, or press Search to see what's trending"
-               autocomplete="off" spellcheck="false" list="searchSuggestions">
-        <datalist id="searchSuggestions"></datalist>
+               autocomplete="off" spellcheck="false">
         <button class="icon-btn filter-toggle" id="filterToggle" title="Filters">
           <span class="material-symbols-rounded">tune</span>
           <span class="filter-dot hidden" id="filterDot"></span>
         </button>
         <button class="btn btn-filled" id="searchBtn">Search</button>
+        <div class="suggest-box hidden" id="suggestBox"></div>
       </div>
       <div class="filters hidden" id="filtersRow">
         <div class="filter-group">
@@ -671,6 +685,10 @@
       <div class="setting-row">
         <div><label>Animations</label><p class="hint">Transitions, hover motion and glow</p></div>
         <label class="switch"><input type="checkbox" id="setAnimations"><span></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Square corners</label><p class="hint">Turn off all corner rounding</p></div>
+        <label class="switch"><input type="checkbox" id="setCorners"><span></span></label>
       </div>
       <div class="setting-row">
         <div><label>Dot matrix background</label><p class="hint">Animated ambient dots behind the UI</p></div>

@@ -207,6 +207,7 @@ function applyAppearance(s) {
   document.documentElement.setAttribute("data-theme", s.theme || "midnight");
   document.documentElement.setAttribute("data-accent", s.accent || "blue");
   document.documentElement.setAttribute("data-anim", s.animations === false ? "off" : "on");
+  document.documentElement.setAttribute("data-corners", s.corners || "rounded");
   matrix.set(s.matrix !== false);
   matrix.refreshColour();   // cached per theme, not read every frame
   document.querySelectorAll(".theme-swatch").forEach((b) =>
@@ -547,6 +548,8 @@ function renderCards(results, append = false) {
 /* One entry point for both modes. An empty box means "show me something",
    which runs the trending/genre browse instead of a text search. */
 async function doSearch(rerun = false, append = false) {
+  const _sug = $("suggestBox");
+  if (_sug) _sug.classList.add("hidden");
   const query = rerun || append ? lastQuery : $("searchInput").value.trim();
 
   if (!rerun && !append && /^https?:\/\//i.test(query)) {
@@ -646,17 +649,56 @@ $("loadMoreBtn").addEventListener("click", () => {
 });
 
 $("searchBtn").addEventListener("click", () => doSearch());
-$("searchInput").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+
+/* Enter must always run a search.
+   The input previously carried a <datalist>. In WebView2 an open datalist
+   popup consumes the Enter keypress, so keydown never reached this handler
+   and the Search button was the only way to search. keyup is used as a
+   belt-and-braces second path, guarded so one press cannot fire twice. */
+let _lastEnter = 0;
+function submitSearch(e) {
+  if (e.key !== "Enter") return;
+  e.preventDefault();
+  const now = Date.now();
+  if (now - _lastEnter < 250) return;   // ignore the paired keyup
+  _lastEnter = now;
+  doSearch();
+}
+$("searchInput").addEventListener("keydown", submitSearch);
+$("searchInput").addEventListener("keyup", submitSearch);
+
+/* Suggestions render into our own themed list rather than a native
+   datalist, which cannot be styled and breaks Enter in WebView2. */
 let suggestTimer = null;
 $("searchInput").addEventListener("input", () => {
   clearTimeout(suggestTimer);
   suggestTimer = setTimeout(async () => {
-    if (!api() || !api().suggest_query) return;
-    const res = await api().suggest_query($("searchInput").value.trim());
-    if (!res || !res.ok) return;
-    $("searchSuggestions").innerHTML = (res.items || [])
-      .map((q) => `<option value="${escapeHtml(q)}"></option>`).join("");
-  }, 180);
+    const box = $("suggestBox");
+    if (!box) return;
+    const term = $("searchInput").value.trim();
+    if (!term) { box.classList.add("hidden"); return; }
+    const res = await callApi("suggest_query", term);
+    const items = (res && res.items) || [];
+    if (!items.length) { box.classList.add("hidden"); return; }
+    box.innerHTML = items.slice(0, 8)
+      .map((q) => `<button type="button" class="suggest-item">${escapeHtml(q)}</button>`)
+      .join("");
+    box.classList.remove("hidden");
+    box.querySelectorAll(".suggest-item").forEach((btn) =>
+      btn.addEventListener("click", () => {
+        $("searchInput").value = btn.textContent;
+        box.classList.add("hidden");
+        doSearch();
+      }));
+  }, 200);
+});
+
+document.addEventListener("click", (e) => {
+  const box = $("suggestBox");
+  if (!box || box.classList.contains("hidden")) return;
+  if (!box.contains(e.target) && e.target !== $("searchInput")) {
+    box.classList.add("hidden");
+  }
 });
 
 $("searchInput").addEventListener("input", () => {
@@ -1407,6 +1449,7 @@ function fillSettings(s) {
   $("setNameRange").value = s.name_range || "{title} - Chapters {chapters}";
   $("setAnimations").checked = s.animations !== false;
   $("setMatrix").checked = s.matrix !== false;
+  if ($("setCorners")) $("setCorners").checked = (s.corners || "rounded") === "square";
   updateNamingPreview();
   applyAppearance(s);
 }
@@ -1582,6 +1625,7 @@ whenReady(async () => {
       updateFilterDot();
     }
   }
+  applyRailState(state.settings.rail_expanded === true);
   $("setDedupe").checked = state.settings.dedupe_results !== false;
   $("setInterleave").checked = !!state.settings.interleave_results;
 
@@ -1631,35 +1675,157 @@ function showLock(show) {
     $("lockError").textContent = "";
     $("lockInput").value = "";
     $("lockRecovery").classList.add("hidden");
-    setTimeout(() => $("lockInput").focus(), 60);
+    setTimeout(() => {
+      const input = $("lockInput");
+      if (input && !input.disabled) input.focus();
+    }, 60);
   }
 }
 
+/* Remember whether a passcode was set, so the very first frame can decide
+   whether to paint the overlay at all. Without this the app either flashes
+   its contents before locking, or (if the bridge never answers) stays
+   covered forever. */
+const LOCK_HINT_KEY = "mangadl-lock-enabled";
+
+function clearLockPending() {
+  const overlay = $("lockOverlay");
+  if (!overlay) return;
+  overlay.classList.remove("lock-pending");
+  // .lock-overlay is display:flex by default, so removing the pending class
+  // is not enough -- it must be explicitly hidden unless we are locked.
+  if (!document.body.classList.contains("locked")) {
+    overlay.classList.add("hidden");
+  }
+}
+
+(function primeLockOverlay() {
+  // No passcode last time -> do not cover the UI while the bridge answers.
+  try {
+    if (localStorage.getItem(LOCK_HINT_KEY) !== "1") clearLockPending();
+  } catch (e) {
+    clearLockPending();
+  }
+  // Fail-safe: whatever happens -- no bridge, a crashed handler, a hung
+  // call -- the app must never stay permanently covered.
+  setTimeout(clearLockPending, 4000);
+})();
+
 async function checkLock() {
-  if (!api() || !api().lock_status) return;
-  const st = await api().lock_status();
-  if (!st.enabled) { showLock(false); return; }
-  const hint = st.hint ? `Hint: ${st.hint}` : "Enter your passcode to continue";
-  $("lockSub").textContent = hint;
-  showLock(true);
+  const overlay = $("lockOverlay");
+  // The overlay is painted on the very first frame via .lock-pending, so a
+  // passcode-protected app is never briefly readable while the bridge
+  // answers. Clearing that class is what reveals the UI underneath.
+  const settle = (locked) => {
+    overlay.classList.remove("lock-pending");
+    showLock(locked);
+  };
+
+  if (!api() || !api().lock_status) { settle(false); return; }
+  const st = await callApi("lock_status");
+  try {
+    localStorage.setItem(LOCK_HINT_KEY, st && st.enabled ? "1" : "0");
+  } catch (e) { /* private mode: the timeout fail-safe still applies */ }
+  if (!st || !st.enabled) { settle(false); return; }
+
+  state.lock = st;
+  $("lockSub").textContent = st.hint
+    ? `Hint: ${st.hint}`
+    : "Enter your passcode to continue";
+  if (st.cooldown) {
+    $("lockError").textContent = `Too many attempts - wait ${st.cooldown}s`;
+  }
+  settle(true);
+}
+
+let _cooldownTimer = null;
+
+function lockCooldown(seconds) {
+  clearInterval(_cooldownTimer);
+  const btn = $("lockUnlockBtn");
+  const label = $("lockBtnText");
+  const input = $("lockInput");
+  let left = Math.max(0, parseInt(seconds) || 0);
+  if (!left) return;
+
+  const tick = () => {
+    if (left <= 0) {
+      clearInterval(_cooldownTimer);
+      btn.disabled = false;
+      input.disabled = false;
+      label.textContent = "Unlock";
+      $("lockError").textContent = "";
+      input.focus();
+      return;
+    }
+    btn.disabled = true;
+    input.disabled = true;
+    label.textContent = `Locked out (${left}s)`;
+    left -= 1;
+  };
+  tick();
+  _cooldownTimer = setInterval(tick, 1000);
+}
+
+function showAttempts(left) {
+  const el = $("lockAttempts");
+  if (left == null) { el.classList.add("hidden"); return; }
+  el.textContent = `${left} attempt${left === 1 ? "" : "s"} remaining`;
+  el.classList.remove("hidden");
+  el.classList.toggle("danger", left <= 1);
+  el.classList.toggle("warn", left === 2);
 }
 
 async function attemptUnlock() {
-  const code = $("lockInput").value;
-  if (!code) return;
-  const res = await api().lock_verify(code);
-  if (res.ok) {
+  const input = $("lockInput");
+  const code = input.value;
+  if (!code || input.disabled) return;
+
+  const btn = $("lockUnlockBtn");
+  btn.disabled = true;
+  $("lockBtnText").textContent = "Checking…";
+
+  const res = await callApi("lock_verify", code);
+
+  btn.disabled = false;
+  $("lockBtnText").textContent = "Unlock";
+
+  if (res && res.ok) {
+    showAttempts(null);
+    $("lockError").textContent = "";
     showLock(false);
     resetIdleTimer();
     toast("Unlocked");
     return;
   }
-  $("lockError").textContent = res.cooldown
-    ? `Too many attempts — wait ${res.cooldown}s`
-    : `${res.error}${res.attempts_left != null ? ` (${res.attempts_left} left)` : ""}`;
-  $("lockInput").value = "";
-  $("lockInput").focus();
+
+  // wrong: shake the panel so the failure is unmistakable
+  const box = document.querySelector(".lock-box");
+  box.classList.remove("shake");
+  void box.offsetWidth;                 // restart the animation
+  box.classList.add("shake");
+
+  if (res && res.cooldown) {
+    $("lockError").textContent = "Too many attempts";
+    showAttempts(null);
+    lockCooldown(res.cooldown);
+  } else {
+    $("lockError").textContent = (res && res.error) || "Incorrect passcode";
+    if (res && res.attempts_left != null) showAttempts(res.attempts_left);
+  }
+  input.value = "";
+  input.focus();
 }
+
+/* show/hide the passcode */
+$("lockEyeBtn") && $("lockEyeBtn").addEventListener("click", () => {
+  const input = $("lockInput");
+  const showing = input.type === "text";
+  input.type = showing ? "password" : "text";
+  $("lockEyeIcon").textContent = showing ? "visibility" : "visibility_off";
+  $("lockEyeBtn").title = showing ? "Show passcode" : "Hide passcode";
+  input.focus();
+});
 
 $("lockUnlockBtn").addEventListener("click", attemptUnlock);
 $("lockInput").addEventListener("keydown", (e) => { if (e.key === "Enter") attemptUnlock(); });
@@ -1855,6 +2021,13 @@ function splitList(value) {
     });
     toast("Filters updated");
   }));
+
+$("setCorners") && $("setCorners").addEventListener("change", async (e) => {
+  const value = e.target.checked ? "square" : "rounded";
+  document.documentElement.setAttribute("data-corners", value);
+  state.settings.corners = value;
+  await callApi("set_settings", { corners: value });
+});
 
 ["setDedupe", "setInterleave"].forEach((id) =>
   $(id).addEventListener("change", async () => {
@@ -2291,4 +2464,26 @@ $("rescanRootBtn") && $("rescanRootBtn").addEventListener("click", async () => {
   if ($("outputDir")) $("outputDir").value = res.output_dir;
   if ($("setOutputDir")) $("setOutputDir").value = res.output_dir;
   loadMoved();
+});
+
+
+/* ============================================== expandable side rail */
+
+function applyRailState(open) {
+  document.body.classList.toggle("rail-open", !!open);
+  const rail = $("rail");
+  if (rail) rail.classList.toggle("is-open", !!open);
+  const btn = $("railToggle");
+  if (btn) {
+    btn.title = open ? "Collapse sidebar" : "Expand sidebar";
+    btn.setAttribute("aria-label", btn.title);
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+  }
+}
+
+$("railToggle") && $("railToggle").addEventListener("click", async () => {
+  const open = !document.body.classList.contains("rail-open");
+  applyRailState(open);
+  const res = await callApi("set_settings", { rail_expanded: open });
+  if (res) state.settings = res;
 });

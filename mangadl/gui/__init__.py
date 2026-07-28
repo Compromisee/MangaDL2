@@ -39,6 +39,8 @@ DEFAULT_SETTINGS = {
     "retries": 5,
     "keep_images": False,
     "theme": "midnight",
+    "corners": "rounded",       # "rounded" | "square"
+    "rail_expanded": False,     # side rail starts collapsed
     "accent": "blue",
     "animations": True,
     "matrix": True,

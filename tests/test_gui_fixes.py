@@ -171,11 +171,15 @@ def test_corner_radii_snap_to_the_scale():
     values = set(re.findall(r"border-radius:\s*([^;]+);", css))
 
     allowed_px = {"3px", "999px", "50%", "4px 4px 2px 2px"}
-    stray = {
-        v.strip() for v in values
-        if not v.strip().startswith("var(--radius")
-        and v.strip() not in allowed_px
-    }
+    stray = set()
+    for value in values:
+        # the square-corners mode legitimately forces 0 / 50% with !important
+        cleaned = value.replace("!important", "").strip()
+        if cleaned in ("0", "0px", "50%"):
+            continue
+        if cleaned.startswith("var(--radius") or cleaned in allowed_px:
+            continue
+        stray.add(cleaned)
     assert stray == set(), f"unmapped radii: {stray}"
 
 

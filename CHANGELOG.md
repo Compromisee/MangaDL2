@@ -7,6 +7,54 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.2 — Search fixed, square corners, thinner rail, better lock
+
+### Fixed — search did nothing
+
+Only genre/category browsing worked; typing a query and pressing Enter did
+nothing. The search input carried a native `<datalist>`, and in WebView2 an
+open datalist popup **consumes the Enter keypress**, so `keydown` never
+reached the handler. The Search button worked, which is why category
+browsing appeared fine.
+
+The datalist is gone. Enter is handled on both `keydown` and `keyup`
+(debounced so one press cannot fire twice), and suggestions now render into
+a themed list that can actually be styled.
+
+### Fixed — lock screen appeared too late
+
+The overlay started hidden and was only shown once `lock_status` returned, so
+a protected app was briefly readable. It now paints on the very first frame.
+
+Two safeguards came with that, because covering the UI up-front is risky:
+
+- the previous lock state is remembered, so an app with no passcode never
+  flashes an overlay it does not need
+- a fail-safe timer clears the overlay no matter what. Without it, a missing
+  bridge or a hung call left the app permanently covered — caught when the
+  existing dropdown tests started timing out against an unclickable page
+
+### Added — square corners mode
+
+A single switch in Settings turns off all rounding. It zeroes the radius
+scale and flattens pills, fields, dropdowns and switches, while leaving
+genuine circles (spinner, lock badge) round so controls stay recognisable.
+
+### Added — thinner, expandable side rail
+
+The rail is now 60px instead of 84px. An expand button widens it to 194px
+and shows the labels inline; the state is remembered between runs.
+
+### Improved — lock screen
+
+Show/hide passcode button, a remaining-attempts counter that turns amber
+then red, a shake on a wrong entry, and a live cooldown countdown that
+disables the field while it runs.
+
+### Testing
+
+- 331 offline tests plus 17 live-site tests
+
 ## v1.4.1 — Crash on close, Natomanga covers, lock order, rounding, saved folder
 
 ### Fixed — crash on window close

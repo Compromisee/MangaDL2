@@ -371,6 +371,25 @@ A complete feature reference for MangaDL.
 302. Download location saved when typed directly
 303. Both folder fields stay in sync
 
+## Square mode, rail and lock polish
+
+304. Square corners mode: turn off all rounding in one switch
+305. Square mode flattens pills, fields, dropdowns and switches
+306. True circles (spinner, lock badge) stay round in square mode
+307. Corner preference saved and restored
+308. Side rail is narrower by default
+309. Expand button widens the rail and reveals labels
+310. Rail state remembered between runs
+311. Lock overlay paints on the very first frame
+312. Remembered lock state avoids a needless overlay flash
+313. Fail-safe timer means the overlay can never strand the app
+314. Show/hide passcode button
+315. Remaining-attempts counter with warning colours
+316. Wrong passcode shakes the panel
+317. Live cooldown countdown that disables the field
+318. Enter reliably submits a search
+319. Themed suggestion list replacing the native datalist
+
 ## Core engine
 
 - Download any series from a supported site by URL
