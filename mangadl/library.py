@@ -252,9 +252,13 @@ def toggle_bookmark(info: dict) -> bool:
         kept = [b for b in marks if _key(b.get("url")) != key]
         if len(kept) == len(marks):
             kept.append({
-                "url": key,
+                # Store the URL as given, not the normalised key: the key has
+                # no scheme, so clicking the bookmark produced a dead link.
+                "url": (info.get("url") or "").strip() or key,
+                "key": key,
                 "title": info.get("title", "Unknown"),
                 "cover": info.get("cover"),
+                "cover_mirrors": info.get("cover_mirrors") or [],
                 "status": info.get("status"),
                 "source": info.get("source"),
                 "source_name": info.get("source_name"),
@@ -269,6 +273,145 @@ def toggle_bookmark(info: dict) -> bool:
 def clear_bookmarks():
     with _lock:
         _save(BOOKMARKS_PATH, [])
+
+
+# ------------------------------------------------------- bookmark folders
+#
+# Folders are stored separately from the bookmarks themselves, and a bookmark
+# points at one by id. Keeping the two apart means renaming or deleting a
+# folder never has to rewrite every bookmark, and a bookmark whose folder has
+# gone simply falls back to the unfiled root instead of disappearing.
+
+FOLDERS_PATH = os.path.join(DIR, "bookmark_folders.json")
+
+
+def _folder_id(name) -> str:
+    """Stable id derived from the name, with a numeric suffix on collision."""
+    base = re.sub(r"[^a-z0-9]+", "-", str(name or "").strip().lower()).strip("-")
+    return base or "folder"
+
+
+def load_folders() -> list:
+    with _lock:
+        return _load(FOLDERS_PATH, [])
+
+
+def create_folder(name, colour=None, locked=False, blurred=False) -> dict:
+    """Create a bookmark folder. Returns the stored record."""
+    name = str(name or "").strip()
+    if not name:
+        return {"ok": False, "error": "Folder needs a name"}
+
+    with _lock:
+        folders = _load(FOLDERS_PATH, [])
+        if any(f["name"].lower() == name.lower() for f in folders):
+            return {"ok": False, "error": "A folder with that name exists"}
+
+        base = _folder_id(name)
+        taken = {f["id"] for f in folders}
+        folder_id, n = base, 2
+        while folder_id in taken:
+            folder_id, n = f"{base}-{n}", n + 1
+
+        record = {
+            "id": folder_id,
+            "name": name,
+            "colour": colour or "",
+            "locked": bool(locked),
+            "blurred": bool(blurred),
+            "created": _now(),
+        }
+        folders.append(record)
+        _save(FOLDERS_PATH, folders)
+        return {"ok": True, "folder": record}
+
+
+def update_folder(folder_id, **changes) -> dict:
+    allowed = {"name", "colour", "locked", "blurred"}
+    with _lock:
+        folders = _load(FOLDERS_PATH, [])
+        for folder in folders:
+            if folder["id"] != folder_id:
+                continue
+            for key, value in changes.items():
+                if key not in allowed:
+                    continue
+                if key in ("locked", "blurred"):
+                    folder[key] = bool(value)
+                elif key == "name":
+                    text = str(value or "").strip()
+                    if text:
+                        folder["name"] = text
+                else:
+                    folder[key] = value
+            _save(FOLDERS_PATH, folders)
+            return {"ok": True, "folder": folder}
+        return {"ok": False, "error": "No such folder"}
+
+
+def delete_folder(folder_id, delete_bookmarks=False) -> dict:
+    """Remove a folder. Its bookmarks move back to the root by default."""
+    with _lock:
+        folders = [f for f in _load(FOLDERS_PATH, []) if f["id"] != folder_id]
+        _save(FOLDERS_PATH, folders)
+
+        marks = _load(BOOKMARKS_PATH, [])
+        if delete_bookmarks:
+            marks = [b for b in marks if b.get("folder") != folder_id]
+        else:
+            for mark in marks:
+                if mark.get("folder") == folder_id:
+                    mark["folder"] = ""
+        _save(BOOKMARKS_PATH, marks)
+        return {"ok": True}
+
+
+def set_bookmark_folder(url, folder_id) -> dict:
+    """Move one bookmark into a folder ("" = the unfiled root)."""
+    key = _key(url)
+    with _lock:
+        marks = _load(BOOKMARKS_PATH, [])
+        for mark in marks:
+            if _key(mark.get("url")) == key or mark.get("key") == key:
+                mark["folder"] = folder_id or ""
+                _save(BOOKMARKS_PATH, marks)
+                return {"ok": True}
+        return {"ok": False, "error": "Not bookmarked"}
+
+
+def folders_with_contents() -> dict:
+    """Folders plus their bookmarks, and everything still unfiled.
+
+    A folder's cover is the first bookmark added to it, so a folder is
+    recognisable without asking the user to pick artwork.
+    """
+    with _lock:
+        folders = _load(FOLDERS_PATH, [])
+        marks = _load(BOOKMARKS_PATH, [])
+
+    known = {f["id"] for f in folders}
+    grouped, unfiled = {f["id"]: [] for f in folders}, []
+    for mark in marks:
+        folder_id = mark.get("folder") or ""
+        # A bookmark pointing at a deleted folder falls back to the root
+        # rather than vanishing from the UI entirely.
+        if folder_id and folder_id in known:
+            grouped[folder_id].append(mark)
+        else:
+            unfiled.append(mark)
+
+    rows = []
+    for folder in folders:
+        items = grouped.get(folder["id"], [])
+        rows.append({
+            **folder,
+            "count": len(items),
+            "cover": items[0].get("cover") if items else None,
+            "cover_mirrors": (items[0].get("cover_mirrors") or []) if items else [],
+            "cover_source": items[0].get("source") if items else None,
+            "items": items,
+        })
+    return {"folders": rows, "unfiled": unfiled}
 
 
 # ------------------------------------------------------- relocation

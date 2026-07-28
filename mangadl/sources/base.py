@@ -51,6 +51,65 @@ class ScrapeError(Exception):
     """Raised when a source cannot be scraped."""
 
 
+#: Origin language -> series type. This is the only signal that reliably
+#: separates manga / manhwa / manhua across sites, and it is what readers
+#: actually mean by "type".
+_TYPE_BY_LANGUAGE = {
+    "ja": "Manga",
+    "ko": "Manhwa",
+    "zh": "Manhua",
+    "zh-hk": "Manhua",
+    "zh-ro": "Manhua",
+}
+
+#: Tags/keywords that name the type outright, checked before language so an
+#: explicitly labelled entry always wins.
+_TYPE_KEYWORDS = (
+    ("manhwa", "Manhwa"),
+    ("manhua", "Manhua"),
+    ("webtoon", "Manhwa"),
+    ("korean", "Manhwa"),
+    ("chinese", "Manhua"),
+    ("japanese", "Manga"),
+    ("doujinshi", "Manga"),
+    ("manga", "Manga"),
+    ("comic", "Comic"),
+    ("novel", "Novel"),
+)
+
+
+def _num_or_none(value):
+    """Parse a numeric field that sources leave as '' or null."""
+    try:
+        text = str(value or "").strip()
+        return float(text) if text else None
+    except (TypeError, ValueError):
+        return None
+
+
+def classify_type(language=None, tags=None, text=None):
+    """Best-effort series type: Manga / Manhwa / Manhua / Comic / Novel.
+
+    Returns ``None`` when nothing indicates a type -- callers must treat that
+    as "unknown", never as a mismatch, or sources that cannot report a type
+    would vanish from every filtered search.
+    """
+    for label in list(tags or []) + ([text] if text else []):
+        low = str(label or "").lower()
+        for needle, kind in _TYPE_KEYWORDS:
+            if needle in low:
+                return kind
+
+    code = str(language or "").strip().lower()
+    if code:
+        if code in _TYPE_BY_LANGUAGE:
+            return _TYPE_BY_LANGUAGE[code]
+        base = code.split("-", 1)[0]
+        if base in _TYPE_BY_LANGUAGE:
+            return _TYPE_BY_LANGUAGE[base]
+    return None
+
+
 class Source:
     """Abstract base class for a manga source.
 
@@ -77,6 +136,10 @@ class Source:
     #: Measured 2026-07: of the nine sources only Webtoons needs this --
     #: every other cover CDN answered 200 with no Referer at all.
     cover_needs_referer = False
+    #: Series type this site predominantly hosts, when it is unambiguous.
+    #: Used only as a fallback when a result carries no type of its own, and
+    #: never to *exclude* a result whose type is genuinely unknown.
+    default_series_type = None
     search_sorts = ()           # sort options offered by the site
     languages = ()              # available translation languages
 

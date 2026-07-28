@@ -47,7 +47,7 @@ Pages
 import logging
 import re
 
-from .base import Source, ScrapeError
+from .base import Source, ScrapeError, classify_type, _num_or_none
 
 logger = logging.getLogger(__name__)
 
@@ -352,6 +352,13 @@ class MangaDexSource(Source):
             manga_id=manga_id,
             status=(attrs.get("status") or "").title() or None,
             year=attrs.get("year"),
+            # Origin language is what actually distinguishes manga / manhwa /
+            # manhua, and it is the only field every MangaDex entry carries.
+            original_language=attrs.get("originalLanguage"),
+            series_type=classify_type(attrs.get("originalLanguage"), tags),
+            last_chapter=_num_or_none(attrs.get("lastChapter")),
+            last_volume=_num_or_none(attrs.get("lastVolume")),
+            demographic=attrs.get("publicationDemographic"),
             authors=list(dict.fromkeys(authors)),
             tags=tags,
             content_rating=attrs.get("contentRating"),
@@ -411,6 +418,13 @@ class MangaDexSource(Source):
             "artists": list(dict.fromkeys(artists)),
             "original_language": attrs.get("originalLanguage"),
             "demographic": attrs.get("publicationDemographic"),
+            # Advanced-info fields. lastChapter is only populated once a
+            # series is finished -- MangaDex leaves it "" for every ongoing
+            # title -- so it is surfaced but never relied on for filtering.
+            "series_type": classify_type(attrs.get("originalLanguage"), tags),
+            "last_chapter": _num_or_none(attrs.get("lastChapter")),
+            "last_volume": _num_or_none(attrs.get("lastVolume")),
+            "content_rating": attrs.get("contentRating"),
             "source": self.id,
             "source_name": self.name,
         }

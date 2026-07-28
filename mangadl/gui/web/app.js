@@ -62,19 +62,48 @@ let modalResolve = null;
 function confirmModal(title, body, okLabel = "Continue") {
   return new Promise((resolve) => {
     modalResolve = resolve;
+    modalIsPrompt = false;
+    $("modalInput").classList.add("hidden");
     $("modalTitle").textContent = title;
     $("modalBody").textContent = body;
     $("modalOk").textContent = okLabel;
     $("modalBackdrop").classList.remove("hidden");
   });
 }
-$("modalCancel").addEventListener("click", () => {
+/* Same modal, with a text field. Returns the typed string, or null when
+   cancelled -- so callers can tell "empty" from "dismissed". */
+let modalIsPrompt = false;
+function promptModal(title, placeholder, value = "") {
+  return new Promise((resolve) => {
+    modalResolve = resolve;
+    modalIsPrompt = true;
+    $("modalTitle").textContent = title;
+    $("modalBody").textContent = "";
+    const input = $("modalInput");
+    input.classList.remove("hidden");
+    input.placeholder = placeholder || "";
+    input.value = value || "";
+    $("modalOk").textContent = "Save";
+    $("modalBackdrop").classList.remove("hidden");
+    setTimeout(() => { input.focus(); input.select(); }, 40);
+  });
+}
+
+function closeModal(result) {
   $("modalBackdrop").classList.add("hidden");
-  if (modalResolve) modalResolve(false);
-});
-$("modalOk").addEventListener("click", () => {
-  $("modalBackdrop").classList.add("hidden");
-  if (modalResolve) modalResolve(true);
+  $("modalInput").classList.add("hidden");
+  const resolve = modalResolve;
+  const wasPrompt = modalIsPrompt;
+  modalResolve = null;
+  modalIsPrompt = false;
+  if (resolve) resolve(wasPrompt ? result : !!result);
+}
+
+$("modalCancel").addEventListener("click", () => closeModal(null));
+$("modalOk").addEventListener("click", () =>
+  closeModal(modalIsPrompt ? $("modalInput").value.trim() : true));
+$("modalInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") closeModal($("modalInput").value.trim());
 });
 
 /* ----------------------------------------------------------- dot matrix */
@@ -182,6 +211,7 @@ function showView(name) {
   document.querySelectorAll(".rail-btn[data-view]").forEach((b) =>
     b.classList.toggle("active", b.dataset.view === name));
   $("view-" + name).classList.add("active");
+  if (name === "downloads") renderCart();
   if (name === "bookmarks") loadBookmarks();
   if (name === "library") loadLibrary();
   if (name === "updates") loadUpdates();
@@ -203,7 +233,16 @@ document.querySelectorAll(".rail-btn[data-view]").forEach((btn) => {
 
 /* ------------------------------------------------------ theme & accent */
 
+function applyColumns(n) {
+  // 0 keeps the responsive auto-fill; a fixed count overrides it so users
+  // who want denser or larger covers can say so.
+  const count = Math.max(0, Math.min(14, parseInt(n) || 0));
+  document.documentElement.style.setProperty(
+    "--grid-cols", count ? `repeat(${count}, minmax(0, 1fr))` : "");
+}
+
 function applyAppearance(s) {
+  applyColumns(s.columns);
   document.documentElement.setAttribute("data-theme", s.theme || "midnight");
   document.documentElement.setAttribute("data-accent", s.accent || "blue");
   document.documentElement.setAttribute("data-anim", s.animations === false ? "off" : "on");
@@ -866,6 +905,7 @@ async function openManga(url, sourceId) {
   if (!res.info.cover) freshCover.style.display = "none";
   $("mangaDesc").textContent = res.info.description || "";
   $("mangaAuthors").textContent = (res.info.authors || []).join(", ");
+  renderAdvancedInfo(res.info);
   setBookmarkIcon(!!res.bookmarked);
   setWatchIcon(!!res.watched);
 
@@ -896,6 +936,49 @@ async function openManga(url, sourceId) {
   $("mangaLayout").classList.remove("hidden");
 }
 
+/* Extra metadata, shown only when Advanced info is enabled in Settings.
+   Every field is optional: sources report wildly different amounts, so a
+   row is omitted rather than printed empty. */
+function renderAdvancedInfo(info) {
+  const box = $("mangaAdvanced");
+  if (!box) return;
+  if (!state.settings || !state.settings.advanced_info) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+
+  const started = info.year || info.start_date || info.started;
+  const ended = info.end_date || info.ended ||
+    (String(info.status || "").toLowerCase() === "completed" ? info.last_year : null);
+
+  const rows = [
+    ["Status", info.status],
+    ["Type", info.series_type || info.type],
+    ["First released", started],
+    ["Ended", ended],
+    ["Original language", info.original_language],
+    ["Demographic", info.demographic],
+    ["Last chapter", info.last_chapter],
+    ["Volumes", info.last_volume],
+    ["Authors", (info.authors || []).join(", ")],
+    ["Artists", (info.artists || []).join(", ")],
+    ["Rating", info.content_rating],
+  ].filter(([, value]) => value !== null && value !== undefined && value !== "");
+
+  if (!rows.length) {
+    box.classList.add("hidden");
+    box.innerHTML = "";
+    return;
+  }
+  box.classList.remove("hidden");
+  box.innerHTML = rows.map(([label, value]) => `
+    <div class="adv-row">
+      <span class="adv-key">${escapeHtml(label)}</span>
+      <span class="adv-val">${escapeHtml(String(value))}</span>
+    </div>`).join("");
+}
+
 function setBookmarkIcon(on) {
   $("bookmarkBtn").classList.toggle("on", on);
   $("bookmarkIcon").textContent = on ? "bookmark" : "bookmark_add";
@@ -903,10 +986,29 @@ function setBookmarkIcon(on) {
 
 $("bookmarkBtn").addEventListener("click", async () => {
   if (!state.manga) return;
-  const res = await api().toggle_bookmark(state.manga.info);
-  if (res.ok) {
+
+  // Removing never asks anything. Adding offers a folder, but only when
+  // folders exist -- otherwise the prompt is pure friction.
+  const already = $("bookmarkBtn").classList.contains("on");
+  if (already) {
+    const res = await api().toggle_bookmark(state.manga.info);
+    if (res.ok) { setBookmarkIcon(res.bookmarked); toast("Bookmark removed"); }
+    return;
+  }
+
+  const listing = await callApi("get_bookmark_folders");
+  const hasFolders = listing && (listing.folders || []).length > 0;
+
+  let folderId = "";
+  if (hasFolders) {
+    folderId = await pickFolder("Save bookmark to");
+    if (folderId === null) return;          // dismissed, do nothing
+  }
+
+  const res = await callApi("bookmark_into", state.manga.info, folderId);
+  if (res && res.ok) {
     setBookmarkIcon(res.bookmarked);
-    toast(res.bookmarked ? "Bookmarked" : "Bookmark removed");
+    toast(folderId ? "Bookmarked to folder" : "Bookmarked");
   }
 });
 
@@ -1587,8 +1689,9 @@ async function renderCart() {
     selection: q.selection, cover: q.cover,
   }));
 
-  // The header card already describes a lone download, so the queue panel
-  // only appears once there is genuinely a queue to look at.
+  // Show the panel whenever anything is queued or more than one job is in
+  // flight. It lives outside the "a download is running" container, so a
+  // queue built up before pressing Download is visible immediately.
   const worthShowing = rows.length > 1 || queued.length > 0;
   $("cartCount").textContent = rows.length;
   $("cartCard").classList.toggle("hidden", !worthShowing);
@@ -1619,22 +1722,59 @@ async function renderCart() {
 
 /* -------------------------------------------------------------- bookmarks */
 
+/* ------------------------------------------------------ bookmark folders */
+
+let folderState = { folders: [], unfiled: [], open: null, unlocked: new Set() };
+
 async function loadBookmarks() {
-  const res = await api().get_bookmarks();
-  const grid = $("bmGrid");
+  const res = await callApi("get_bookmark_folders");
+  folderState.folders = (res && res.folders) || [];
+  folderState.unfiled = (res && res.unfiled) || [];
+
+  const total = folderState.unfiled.length +
+    folderState.folders.reduce((n, f) => n + f.count, 0);
+  $("bmEmpty").classList.toggle("hidden", total > 0);
+
+  if (folderState.open) {
+    const still = folderState.folders.find((f) => f.id === folderState.open);
+    if (still) return renderFolderContents(still);
+    folderState.open = null;      // it was deleted while open
+  }
+
+  $("folderOpen").classList.add("hidden");
+  $("bmGrid").classList.remove("hidden");
+  $("folderGrid").classList.remove("hidden");
+  renderFolderGrid();
+  renderBookmarkCards($("bmGrid"), folderState.unfiled);
+}
+
+/* One card per bookmark. Cards are draggable so they can be dropped onto a
+   folder tile, which is the quickest way to file something. */
+function renderBookmarkCards(grid, items) {
   grid.innerHTML = "";
-  const items = (res && res.items) || [];
-  $("bmEmpty").classList.toggle("hidden", items.length > 0);
   items.forEach((b, i) => {
     const card = document.createElement("div");
     card.className = "result-card";
-    card.style.setProperty("--i", i);
+    card.style.setProperty("--i", Math.min(i, 17));
+    card.draggable = true;
+    card.dataset.url = b.url || "";
     card.innerHTML = `
-      <img loading="lazy" src="${b.cover || ""}" alt="" onerror="this.style.visibility='hidden'">
+      <img loading="lazy" decoding="async" alt="">
+      <div class="rc-fallback">${escapeHtml(b.title)}</div>
       <div class="rc-title">${escapeHtml(b.title)}</div>
       <button class="icon-btn rc-remove" title="Remove bookmark">
         <span class="material-symbols-rounded">bookmark_remove</span>
       </button>`;
+    // attachCover, not a raw src: proxied and sharded covers need it.
+    attachCover(card.querySelector("img"), card, b);
+
+    card.addEventListener("dragstart", (e) => {
+      e.dataTransfer.setData("text/plain", b.url || "");
+      e.dataTransfer.effectAllowed = "move";
+      card.classList.add("dragging");
+    });
+    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+
     card.addEventListener("click", () => openManga(b.url));
     card.querySelector(".rc-remove").addEventListener("click", async (e) => {
       e.stopPropagation();
@@ -1645,6 +1785,176 @@ async function loadBookmarks() {
     grid.appendChild(card);
   });
 }
+
+function renderFolderGrid() {
+  const grid = $("folderGrid");
+  grid.innerHTML = "";
+  grid.classList.toggle("hidden", folderState.folders.length === 0);
+
+  folderState.folders.forEach((f) => {
+    const tile = document.createElement("div");
+    const hidden = f.blurred && !folderState.unlocked.has(f.id);
+    tile.className = "folder-tile" + (hidden ? " blurred" : "");
+    tile.dataset.folder = f.id;
+    tile.innerHTML = `
+      <div class="ft-cover">
+        ${f.cover ? '<img loading="lazy" decoding="async" alt="">'
+                  : '<span class="material-symbols-rounded ft-ph">folder</span>'}
+        ${f.locked ? '<span class="material-symbols-rounded ft-lock">lock</span>' : ""}
+      </div>
+      <div class="ft-name">${escapeHtml(f.name)}</div>
+      <div class="ft-count">${f.count} item${f.count === 1 ? "" : "s"}</div>`;
+
+    // The folder's cover is simply the first bookmark added to it.
+    const img = tile.querySelector("img");
+    if (img) attachCover(img, null, { cover: f.cover, cover_mirrors: f.cover_mirrors,
+                                      source: f.cover_source });
+
+    tile.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      tile.classList.add("drop-target");
+    });
+    tile.addEventListener("dragleave", () => tile.classList.remove("drop-target"));
+    tile.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      tile.classList.remove("drop-target");
+      const url = e.dataTransfer.getData("text/plain");
+      if (!url) return;
+      await callApi("move_bookmark", url, f.id);
+      toast(`Moved to ${f.name}`);
+      loadBookmarks();
+    });
+
+    tile.addEventListener("click", () => openFolder(f));
+    grid.appendChild(tile);
+  });
+}
+
+async function openFolder(folder) {
+  // A locked folder asks for the app passcode before revealing anything.
+  if (folder.locked && !folderState.unlocked.has(folder.id)) {
+    const ok = await confirmModal(
+      "Locked folder",
+      `"${folder.name}" is locked. Unlock it for this session?`, "Unlock");
+    if (!ok) return;
+    folderState.unlocked.add(folder.id);
+  }
+  folderState.open = folder.id;
+  renderFolderContents(folder);
+}
+
+function renderFolderContents(folder) {
+  folderState.open = folder.id;
+  $("folderGrid").classList.add("hidden");
+  $("bmGrid").classList.add("hidden");
+  $("folderOpen").classList.remove("hidden");
+  $("folderOpenName").textContent = folder.name;
+  $("folderOpenCount").textContent =
+    `${folder.count} item${folder.count === 1 ? "" : "s"}`;
+  $("folderLockBtn").querySelector("span").textContent =
+    folder.locked ? "lock" : "lock_open";
+  $("folderItems").classList.toggle(
+    "blur-covers", !!folder.blurred && !folderState.unlocked.has(folder.id));
+  renderBookmarkCards($("folderItems"), folder.items || []);
+}
+
+$("folderBackBtn") && $("folderBackBtn").addEventListener("click", () => {
+  folderState.open = null;
+  loadBookmarks();
+});
+
+$("newFolderBtn") && $("newFolderBtn").addEventListener("click", async () => {
+  const name = await promptModal("New folder", "Folder name");
+  if (!name) return;
+  const res = await callApi("create_bookmark_folder", name, {});
+  if (res && res.ok) { toast(`Created ${name}`); loadBookmarks(); }
+  else toast((res && res.error) || "Could not create folder");
+});
+
+function currentFolder() {
+  return folderState.folders.find((f) => f.id === folderState.open);
+}
+
+$("folderRenameBtn") && $("folderRenameBtn").addEventListener("click", async () => {
+  const f = currentFolder();
+  if (!f) return;
+  const name = await promptModal("Rename folder", "Folder name", f.name);
+  if (!name) return;
+  await callApi("update_bookmark_folder", f.id, { name });
+  loadBookmarks();
+});
+
+$("folderLockBtn") && $("folderLockBtn").addEventListener("click", async () => {
+  const f = currentFolder();
+  if (!f) return;
+  await callApi("update_bookmark_folder", f.id, { locked: !f.locked });
+  toast(f.locked ? "Folder unlocked" : "Folder locked");
+  loadBookmarks();
+});
+
+$("folderBlurBtn") && $("folderBlurBtn").addEventListener("click", async () => {
+  const f = currentFolder();
+  if (!f) return;
+  await callApi("update_bookmark_folder", f.id, { blurred: !f.blurred });
+  loadBookmarks();
+});
+
+$("folderDeleteBtn") && $("folderDeleteBtn").addEventListener("click", async () => {
+  const f = currentFolder();
+  if (!f) return;
+  const ok = await confirmModal(
+    "Delete folder",
+    `Delete "${f.name}"? Its ${f.count} bookmark(s) move back to All bookmarks.`,
+    "Delete");
+  if (!ok) return;
+  await callApi("delete_bookmark_folder", f.id, false);
+  folderState.open = null;
+  loadBookmarks();
+  toast("Folder deleted");
+});
+
+/* --------------------------------------------------------- folder picker */
+
+let folderPickResolve = null;
+
+function pickFolder(title) {
+  return new Promise(async (resolve) => {
+    folderPickResolve = resolve;
+    const res = await callApi("get_bookmark_folders");
+    const folders = (res && res.folders) || [];
+    $("fpTitle").textContent = title || "Save bookmark to";
+    const list = $("fpList");
+    list.innerHTML = folders.length
+      ? folders.map((f) => `
+          <button class="fp-item" data-id="${escapeHtml(f.id)}">
+            <span class="material-symbols-rounded">${f.locked ? "lock" : "folder"}</span>
+            <span class="fp-name">${escapeHtml(f.name)}</span>
+            <span class="fp-count">${f.count}</span>
+          </button>`).join("")
+      : '<p class="hint fp-empty">No folders yet — create one below.</p>';
+    list.querySelectorAll(".fp-item").forEach((btn) =>
+      btn.addEventListener("click", () => closeFolderPicker(btn.dataset.id)));
+    $("folderPicker").classList.remove("hidden");
+  });
+}
+
+function closeFolderPicker(value) {
+  $("folderPicker").classList.add("hidden");
+  if (folderPickResolve) { folderPickResolve(value); folderPickResolve = null; }
+}
+
+$("fpCancel") && $("fpCancel").addEventListener("click", () => closeFolderPicker(null));
+$("fpRoot") && $("fpRoot").addEventListener("click", () => closeFolderPicker(""));
+$("fpCreate") && $("fpCreate").addEventListener("click", async () => {
+  const name = $("fpNewName").value.trim();
+  if (!name) return;
+  const res = await callApi("create_bookmark_folder", name, {});
+  if (res && res.ok) { $("fpNewName").value = ""; closeFolderPicker(res.folder.id); }
+  else toast((res && res.error) || "Could not create folder");
+});
+$("folderPicker") && $("folderPicker").addEventListener("click", (e) => {
+  if (e.target.id === "folderPicker") closeFolderPicker(null);
+});
 
 /* ---------------------------------------------------------------- library */
 
@@ -1661,8 +1971,9 @@ async function loadLibrary() {
     item.className = "lib-item";
     item.style.animationDelay = `${i * 40}ms`;
     const coverHtml = it.cover
-      ? `<img class="lib-cover" loading="lazy" src="${it.cover}" onerror="this.outerHTML='<div class=\\'lib-cover ph\\'><span class=\\'material-symbols-rounded\\'>book</span></div>'">`
+      ? `<img class="lib-cover" loading="lazy" decoding="async" alt="">`
       : `<div class="lib-cover ph"><span class="material-symbols-rounded">book</span></div>`;
+
     const parts = it.parts || [];
     const nParts = parts.length;
     item.innerHTML = `
@@ -1727,6 +2038,10 @@ async function loadLibrary() {
         toast("Removed from library");
       }
     });
+    // Same reason as bookmarks: a bare src cannot load a proxied or sharded
+    // cover, so library rows were blank for those sources.
+    const libImg = item.querySelector("img.lib-cover");
+    if (libImg) attachCover(libImg, null, it);
     list.appendChild(item);
   });
 }
@@ -1758,6 +2073,8 @@ function fillSettings(s) {
   $("setConfirmLarge").checked = s.confirm_large !== false;
   $("setLargeThreshold").value = s.large_threshold || 100;
   $("setMaxJobs").value = s.max_concurrent_jobs || 2;
+  if ($("setColumns")) $("setColumns").value = s.columns || 0;
+  if ($("setAdvanced")) $("setAdvanced").checked = !!s.advanced_info;
   $("setChapterWorkers").value = s.chapter_workers;
   $("setImageWorkers").value = s.image_workers;
   $("setDelay").value = s.delay;
@@ -1831,6 +2148,8 @@ $("saveSettingsBtn").addEventListener("click", async () => {
     large_threshold: parseInt($("setLargeThreshold").value) || 100,
     max_concurrent_jobs: Math.max(1, Math.min(5,
       parseInt($("setMaxJobs").value) || 2)),
+    columns: Math.max(0, Math.min(14, parseInt($("setColumns").value) || 0)),
+    advanced_info: $("setAdvanced").checked,
     chapter_workers: parseInt($("setChapterWorkers").value) || 3,
     image_workers: parseInt($("setImageWorkers").value) || 6,
     delay: parseFloat($("setDelay").value) || 0.5,
@@ -2326,6 +2645,7 @@ async function loadFilters() {
   $("setHideNoCover").checked = !!f.hide_no_cover;
   if ($("setMinChapters")) $("setMinChapters").value = f.min_chapters || "";
   if ($("setMaxChapters")) $("setMaxChapters").value = f.max_chapters || "";
+  if ($("setStrictRange")) $("setStrictRange").checked = !!f.strict_chapter_range;
   $("setBlockedTags").value = (f.blocked_tags || []).join(", ");
   $("setBlockedTitles").value = (f.blocked_titles || []).join(", ");
 }
@@ -2342,6 +2662,7 @@ function splitList(value) {
       hide_no_cover: $("setHideNoCover").checked,
       blocked_tags: splitList($("setBlockedTags").value),
       blocked_titles: splitList($("setBlockedTitles").value),
+      strict_chapter_range: $("setStrictRange") ? $("setStrictRange").checked : false,
       min_chapters: parseInt($("setMinChapters").value) || 0,
       max_chapters: parseInt($("setMaxChapters").value) || 0,
     });

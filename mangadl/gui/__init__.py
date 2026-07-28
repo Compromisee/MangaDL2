@@ -52,6 +52,8 @@ DEFAULT_SETTINGS = {
     "interleave_results": False,    # round-robin sources instead of grouping
     "interleave_browse": True,      # trending feed mixes sources by default
     "max_concurrent_jobs": 2,       # manga downloading at the same time
+    "columns": 0,                   # result grid columns, 0 = fit the window
+    "advanced_info": False,         # extra metadata on the manga page
     "confirm_delete": True,
     "auto_snapshot": False,
     "default_source": DEFAULT_SOURCE,
@@ -104,6 +106,41 @@ def _dialog_types():
     if fd is not None:  # pywebview >= 5.1 style
         return fd.FOLDER, fd.OPEN, fd.SAVE
     return webview.FOLDER_DIALOG, webview.OPEN_DIALOG, webview.SAVE_DIALOG
+
+
+def _narrow_by_type(results, wanted):
+    """Keep only results whose series type matches.
+
+    Only one source (Weeb Central) accepts a type parameter, so every other
+    site silently ignored it -- searching "Manhwa" for "one piece" returned
+    62 results, all of them manga. The type is now classified from the
+    origin language and tags instead.
+
+    Items whose type cannot be determined are kept: a source that reports no
+    type would otherwise disappear entirely from a filtered search, which is
+    a worse failure than showing an extra row.
+    """
+    wanted = str(wanted or "").strip()
+    if not wanted or wanted.lower() in ("any", "all"):
+        return results
+
+    from ..sources.base import classify_type
+
+    target = wanted.lower()
+    kept = []
+    for item in results:
+        kind = (item.get("series_type") or item.get("type")
+                or classify_type(item.get("original_language"),
+                                 item.get("tags"),
+                                 item.get("demographic")))
+        if not kind:
+            # Fall back to what the whole site hosts, for sources whose
+            # search rows carry no per-title metadata at all.
+            source_cls = SOURCES.get(item.get("source"))
+            kind = getattr(source_cls, "default_series_type", None)
+        if not kind or str(kind).lower() == target:
+            kept.append(item)
+    return kept
 
 
 def _narrow_by_genres(results, extra_genres, match="all"):
@@ -647,6 +684,7 @@ class Api:
             # them would silently hide whole sources that omit them.
             if len(genres) > 1:
                 results = _narrow_by_genres(results, genres[1:], match)
+            results = _narrow_by_type(results, f.get("type"))
 
             results = features.apply_filters(results)
             if settings.get("dedupe_results", True) and source_id in ("", "all"):
@@ -822,6 +860,40 @@ class Api:
     def clear_bookmarks(self):
         library.clear_bookmarks()
         return {"ok": True}
+
+    # ------------------------------------------------- bookmark folders
+
+    def get_bookmark_folders(self):
+        try:
+            return {"ok": True, **library.folders_with_contents()}
+        except Exception as e:
+            logger.exception("Folder listing failed")
+            return {"ok": False, "error": str(e), "folders": [], "unfiled": []}
+
+    def create_bookmark_folder(self, name: str, options: dict = None):
+        o = options or {}
+        return library.create_folder(name, colour=o.get("colour"),
+                                     locked=o.get("locked"),
+                                     blurred=o.get("blurred"))
+
+    def update_bookmark_folder(self, folder_id: str, changes: dict = None):
+        return library.update_folder(folder_id, **(changes or {}))
+
+    def delete_bookmark_folder(self, folder_id: str, delete_bookmarks: bool = False):
+        return library.delete_folder(folder_id, bool(delete_bookmarks))
+
+    def move_bookmark(self, url: str, folder_id: str = ""):
+        return library.set_bookmark_folder(url, folder_id or "")
+
+    def bookmark_into(self, info: dict, folder_id: str = ""):
+        """Bookmark a manga and file it in one step."""
+        try:
+            added = library.toggle_bookmark(info or {})
+            if added and folder_id:
+                library.set_bookmark_folder((info or {}).get("url"), folder_id)
+            return {"ok": True, "bookmarked": added}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     # ------------------------------------------------- logs and recovery
 

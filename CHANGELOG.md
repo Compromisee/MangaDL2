@@ -7,6 +7,90 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.7 — Bookmark folders, type filter, cover and corner fixes
+
+### Fixed — covers missing in Bookmarks and Library
+
+Both views built their tile with a raw `<img src="...">`. This document sends
+`no-referrer` (MangaDex serves a placeholder otherwise), so hotlink-protected
+CDNs answer **403** from a bare `<img>` and sharded hosts get no mirror walk.
+Search results already went through `attachCover()`, which proxies those
+through Python — bookmarks and library rows did not, so covers from Webtoons
+and friends were permanently blank there.
+
+Bookmarks were also storing the *normalised* library key as their `url`.
+That key has no scheme, so every bookmark linked nowhere. They now keep the
+URL as given, plus any `cover_mirrors`.
+
+### Fixed — the download queue was invisible
+
+The queue card was nested inside `#dlActive`, which starts hidden and is only
+revealed once a job is running — so a queue built up *before* pressing
+Download could never be seen. It now sits outside that container and renders
+whenever the Downloads view opens.
+
+### Fixed — the Type filter did nothing
+
+Searching "one piece" restricted to **Manhwa** returned 62 results, all of
+them manga. Only one of the twelve sources (Weeb Central) implemented a
+`series_type` parameter; every other source silently ignored it.
+
+Type is now derived rather than requested: `classify_type()` maps origin
+language (`ja` → Manga, `ko` → Manhwa, `zh` → Manhua) with explicit tags
+taking priority, and sites with a single-type catalogue declare a
+`default_series_type` fallback. Measured after: "one piece" as Manhwa returns
+**0**, as Manga **41**; "solo leveling" as Manhwa returns 2, as Manga 3.
+
+Results whose type genuinely cannot be determined are **kept** — dropping
+them would erase whole sources from every filtered search.
+
+### Fixed — square corners missed the most visible shapes
+
+The setting flattens the radius variables, but the search box, both progress
+bars and a dozen pills hardcoded `999px`, which no variable can reach. 26
+such rules existed. Measured: `.searchbar` stayed at 999px in square mode
+before, now 0px.
+
+### Fixed — chapter min/max appeared to do nothing
+
+The filter worked; the data did not exist. Only **5 of 22** results carried a
+chapter count, because MangaDex leaves `lastChapter` empty for every ongoing
+series and Weeb Central's search is JS-rendered. Unknown counts are kept by
+design, so a `min_chapters` of 500 still showed them and the setting looked
+ignored.
+
+MangaDex now surfaces `lastChapter` where it exists (coverage 5/22 → 9/22),
+and a new **Strict chapter range** option hides unknown counts for anyone who
+wants a hard filter. The default stays lenient.
+
+### Added — bookmark folders
+
+* Create, rename and delete folders; deleting keeps the bookmarks and moves
+  them back to the root, so nothing is lost by accident.
+* File a bookmark by **dragging it onto a folder tile**, or pick a folder
+  from a popup when bookmarking (offered only when folders exist, so the
+  first bookmark is still one click).
+* Optional per-folder **lock** and **blurred covers**.
+* A folder's cover is the first book added to it.
+* A bookmark pointing at a deleted folder falls back to the root rather than
+  disappearing.
+
+### Added — advanced info, custom columns, tidier filters
+
+* **Advanced info** (opt-in) shows year, status, type, original language,
+  demographic, last chapter/volume, authors and artists on the manga page.
+  Every field is optional and omitted when a source does not report it.
+* **Result columns** setting: 0 keeps the responsive fit, 1–14 pins a count.
+* The **source picker was removed** from the search filter row — enabling and
+  ranking sources already lives in Settings.
+
+### Tests
+
+517 offline (up from 464) + 21 live. The new suite gets its own isolated
+`HOME` per test; without it, folder state leaked between cases.
+
+---
+
 ## v1.4.6 — Multi-genre search, full-width layout, shortcuts, count fixes
 
 ### Fixed — "downloaded" on the manga page was wrong

@@ -41,6 +41,10 @@ class NhentaiSource(Source):
     base_url = SITE
     domains = ("nhentai.to",)
 
+    #: Catalogue is entirely manga; used only as a fallback
+    #: when a result reports no type of its own.
+    default_series_type = "Manga"
+
     supports_search = True
     supports_browse = True
     supports_genres = True

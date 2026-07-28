@@ -444,6 +444,24 @@ A complete feature reference for MangaDL.
 369. Invert chapter selection, on visible rows only
 370. Copy title and link, with a clipboard fallback for WebView2
 371. Refresh the current view with `r`
+372. Bookmark and library covers load through the proxy (hotlinked CDNs)
+373. Bookmarks store an openable URL, not the normalised key
+374. Download queue visible before any job starts
+375. Series type classified from origin language and tags
+376. Type filter (Manga / Manhwa / Manhua) actually narrows results
+377. Per-source default type for sites with a single-type catalogue
+378. Square corners reach progress bars, the search box and every pill
+379. Strict chapter range option, for hiding unknown chapter counts
+380. Source picker removed from search filters (it lives in Settings)
+381. Advanced info panel: year, status, type, language, demographic, authors
+382. Custom result column count, 0 = fit the window
+383. Bookmark folders with create, rename and delete
+384. File bookmarks by dragging them onto a folder
+385. Folder picker when bookmarking, or save straight to the root
+386. Optional per-folder lock and blurred covers
+387. Folder cover is the first book added to it
+388. Deleting a folder keeps its bookmarks, moving them back to the root
+389. Text-input modal that distinguishes cancel from an empty value
 
 ## Core engine
 

@@ -463,7 +463,9 @@ body {
    into a single unreadable row. */
 .results-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  /* --grid-cols is set only when the user pins a column count in Settings;
+     otherwise the responsive auto-fill applies. */
+  grid-template-columns: var(--grid-cols, repeat(auto-fill, minmax(150px, 1fr)));
   gap: 18px;
   width: 100%;
   max-width: var(--content-max, 2200px);
@@ -2172,7 +2174,30 @@ body.rail-open .rail-toggle .material-symbols-rounded { transform: rotate(180deg
 [data-corners="square"] .settings-card input,
 [data-corners="square"] .b-track,
 [data-corners="square"] .b-fill,
-[data-corners="square"] .sp-bar { border-radius: 0 !important; }
+[data-corners="square"] .sp-bar,
+/* These hardcode 999px, so the radius variables above could never reach
+   them and the setting appeared to do nothing to the search box or any
+   progress bar -- the two most visible rounded shapes in the app. */
+[data-corners="square"] .searchbar,
+[data-corners="square"] .searchbar input,
+[data-corners="square"] .overall-bar,
+[data-corners="square"] .overall-fill,
+[data-corners="square"] .overall-fill::after,
+[data-corners="square"] .ac-bar,
+[data-corners="square"] .ac-fill,
+[data-corners="square"] .cart-count,
+[data-corners="square"] .cart-badge,
+[data-corners="square"] .lib-badge,
+[data-corners="square"] .source-pill,
+[data-corners="square"] .source-rank .cap,
+[data-corners="square"] .rail-badge,
+[data-corners="square"] .bar-row .b-track,
+[data-corners="square"] .bar-row .b-fill,
+[data-corners="square"] .toast,
+[data-corners="square"] .sp-fill,
+[data-corners="square"] .progress-bar,
+[data-corners="square"] .progress-fill,
+[data-corners="square"] ::-webkit-scrollbar-thumb { border-radius: 0 !important; }
 
 /* the toggle is a switch, not a circle: square it too, knob included */
 [data-corners="square"] .switch > span,
@@ -2317,3 +2342,141 @@ kbd {
   color: var(--text-2);
   text-align: center;
 }
+
+/* ------------------------------------------------- advanced info panel */
+
+.adv-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: 12.5px;
+}
+.adv-info.hidden { display: none; }
+
+.adv-row {
+  display: flex;
+  gap: 10px;
+  padding: 3px 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 45%, transparent);
+}
+.adv-row:last-child { border-bottom: none; }
+
+.adv-key {
+  flex: 0 0 128px;
+  color: var(--text-2);
+  font-weight: 600;
+}
+.adv-val { flex: 1; word-break: break-word; }
+
+/* ---------------------------------------------------- bookmark folders */
+
+.bm-toolbar { display: flex; align-items: center; gap: 14px; margin-bottom: 16px; }
+
+.folder-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 18px;
+  margin-bottom: 26px;
+}
+.folder-grid.hidden { display: none; }
+
+.folder-tile {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform .15s, border-color .15s;
+}
+.folder-tile:hover { transform: translateY(-3px); border-color: var(--accent); }
+.folder-tile.drop-target {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.ft-cover {
+  position: relative;
+  aspect-ratio: 3 / 4;
+  background: var(--surface-2);
+  display: flex; align-items: center; justify-content: center;
+}
+.ft-cover img { width: 100%; height: 100%; object-fit: cover; }
+.ft-ph { font-size: 46px; color: var(--text-2); }
+.folder-tile.blurred .ft-cover img { filter: blur(14px); }
+
+.ft-lock {
+  position: absolute; top: 8px; right: 8px;
+  padding: 4px; border-radius: 999px;
+  background: rgba(0,0,0,.6); color: #fff; font-size: 17px;
+}
+
+.ft-name {
+  padding: 9px 10px 2px;
+  font-size: 13px; font-weight: 600;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ft-count { padding: 0 10px 10px; font-size: 11.5px; color: var(--text-2); }
+
+.fo-head { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+.fo-head h2 { margin: 0; font-size: 18px; }
+.fo-count { flex: 1; font-size: 12.5px; color: var(--text-2); }
+.icon-btn.danger:hover { color: var(--danger, #d1242f); }
+
+.folder-open.hidden { display: none; }
+.results-grid.blur-covers img { filter: blur(14px); }
+.result-card.dragging { opacity: .45; }
+
+/* ------------------------------------------------------ folder picker */
+
+.fp-overlay {
+  position: fixed; inset: 0; z-index: 950;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(0,0,0,.55);
+  backdrop-filter: blur(4px);
+  animation: fade-in .15s ease;
+}
+.fp-overlay.hidden { display: none; }
+
+.fp-panel {
+  width: min(430px, 100%);
+  padding: 20px 22px 18px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: 0 24px 60px rgba(0,0,0,.45);
+  animation: card-in .2s ease;
+}
+.fp-head { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
+.fp-head h2 { margin: 0; font-size: 16px; }
+.fp-head .material-symbols-rounded { color: var(--accent); }
+
+.fp-list { display: flex; flex-direction: column; gap: 6px; max-height: 42vh; overflow-y: auto; }
+.fp-empty { margin: 6px 0 10px; }
+
+.fp-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  color: var(--text-1);
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+}
+.fp-item:hover { border-color: var(--accent); }
+.fp-name { flex: 1; }
+.fp-count { color: var(--text-2); font-size: 11.5px; }
+
+.fp-new { display: flex; gap: 8px; margin: 14px 0 4px; }
+.fp-new input { flex: 1; }
+.fp-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+
+.modal-input { width: 100%; margin-top: 12px; }
+.modal-input.hidden { display: none; }

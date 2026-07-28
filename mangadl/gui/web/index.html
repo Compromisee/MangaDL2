@@ -122,12 +122,9 @@
         <div class="suggest-box hidden" id="suggestBox"></div>
       </div>
       <div class="filters hidden" id="filtersRow">
-        <div class="filter-group">
-          <span class="filter-label">Source</span>
-          <select id="fSource">
-            <option value="all">All sources</option>
-          </select>
-        </div>
+        <select id="fSource" hidden>
+          <option value="all">All sources</option>
+        </select>
         <div class="filter-group">
           <span class="filter-label">Genre</span>
           <select id="fGenre">
@@ -263,6 +260,7 @@
             </a>
           </div>
           <div class="meta-row" id="mangaAuthors"></div>
+          <div class="adv-info hidden" id="mangaAdvanced"></div>
           <div class="chips" id="mangaTags"></div>
           <p class="manga-desc" id="mangaDesc"></p>
         </div>
@@ -374,6 +372,18 @@
       <p class="hint">Pick a manga from Search to get started</p>
     </div>
 
+    <div class="card" id="cartCard">
+      <div class="card-title">
+        <span class="material-symbols-rounded">shopping_cart</span>
+        Download queue
+        <span class="cart-count" id="cartCount">0</span>
+        <button class="btn btn-tonal btn-sm cart-clear" id="cartClearBtn">
+          <span class="material-symbols-rounded">clear_all</span> Clear queue
+        </button>
+      </div>
+      <div class="cart-list" id="cartList"></div>
+    </div>
+
     <div class="dl-active hidden" id="dlActive">
       <div class="card dl-header-card">
         <div class="dl-header">
@@ -403,18 +413,6 @@
         <div class="active-chapters" id="activeChapters"></div>
       </div>
 
-      <div class="card" id="cartCard">
-        <div class="card-title">
-          <span class="material-symbols-rounded">shopping_cart</span>
-          Download queue
-          <span class="cart-count" id="cartCount">0</span>
-          <button class="btn btn-tonal btn-sm cart-clear" id="cartClearBtn">
-            <span class="material-symbols-rounded">clear_all</span> Clear queue
-          </button>
-        </div>
-        <div class="cart-list" id="cartList"></div>
-      </div>
-
       <div class="card">
         <div class="card-title">
           <span class="material-symbols-rounded">receipt_long</span> Activity
@@ -431,6 +429,35 @@
       <span class="material-symbols-rounded">bookmark</span>
       <p>No bookmarks yet</p>
       <p class="hint">Open a manga and press the bookmark button</p>
+    </div>
+    <div class="bm-toolbar">
+      <button class="btn btn-tonal btn-sm" id="newFolderBtn">
+        <span class="material-symbols-rounded">create_new_folder</span> New folder
+      </button>
+      <span class="hint" id="bmHint">Drag a bookmark onto a folder to file it</span>
+    </div>
+    <div class="folder-grid" id="folderGrid"></div>
+    <div class="folder-open hidden" id="folderOpen">
+      <div class="fo-head">
+        <button class="icon-btn" id="folderBackBtn" title="Back to all bookmarks">
+          <span class="material-symbols-rounded">arrow_back</span>
+        </button>
+        <h2 id="folderOpenName"></h2>
+        <span class="fo-count" id="folderOpenCount"></span>
+        <button class="icon-btn" id="folderBlurBtn" title="Toggle blurred covers">
+          <span class="material-symbols-rounded">blur_on</span>
+        </button>
+        <button class="icon-btn" id="folderLockBtn" title="Toggle folder lock">
+          <span class="material-symbols-rounded">lock_open</span>
+        </button>
+        <button class="icon-btn" id="folderRenameBtn" title="Rename folder">
+          <span class="material-symbols-rounded">edit</span>
+        </button>
+        <button class="icon-btn danger" id="folderDeleteBtn" title="Delete folder">
+          <span class="material-symbols-rounded">delete</span>
+        </button>
+      </div>
+      <div class="results-grid wide" id="folderItems"></div>
     </div>
     <div class="results-grid wide" id="bmGrid"></div>
   </section>
@@ -813,6 +840,22 @@
     <div class="card settings-card">
       <div class="card-title"><span class="material-symbols-rounded">speed</span> Performance</div>
       <div class="setting-row">
+        <div><label>Result columns</label><p class="hint">0 = fit automatically to the window</p></div>
+        <div class="stepper" data-target="setColumns">
+          <button class="icon-btn step-down"><span class="material-symbols-rounded">remove</span></button>
+          <input type="number" id="setColumns" min="0" max="14" value="0">
+          <button class="icon-btn step-up"><span class="material-symbols-rounded">add</span></button>
+        </div>
+      </div>
+      <div class="setting-row">
+        <div><label>Advanced info</label><p class="hint">Show year, status, authors and demographic on the manga page</p></div>
+        <label class="switch"><input type="checkbox" id="setAdvanced"><span></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Strict chapter range</label><p class="hint">Also hide results whose chapter count is unknown</p></div>
+        <label class="switch"><input type="checkbox" id="setStrictRange"><span></span></label>
+      </div>
+      <div class="setting-row">
         <div><label>Concurrent manga</label><p class="hint">Separate manga downloading at once (1–5)</p></div>
         <div class="stepper" data-target="setMaxJobs">
           <button class="icon-btn step-down"><span class="material-symbols-rounded">remove</span></button>
@@ -906,6 +949,7 @@
   <div class="modal">
     <div class="modal-title" id="modalTitle">Confirm</div>
     <div class="modal-body" id="modalBody"></div>
+    <input type="text" class="modal-input hidden" id="modalInput">
     <div class="modal-actions">
       <button class="btn btn-tonal" id="modalCancel">Cancel</button>
       <button class="btn btn-filled" id="modalOk">Continue</button>
@@ -915,6 +959,25 @@
 
 <script src="dropdown.js"></script>
 <script src="app.js"></script>
+<!-- ============================================ FOLDER PICKER -->
+<div class="fp-overlay hidden" id="folderPicker">
+  <div class="fp-panel">
+    <div class="fp-head">
+      <span class="material-symbols-rounded">folder</span>
+      <h2 id="fpTitle">Save bookmark to</h2>
+    </div>
+    <div class="fp-list" id="fpList"></div>
+    <div class="fp-new">
+      <input type="text" id="fpNewName" placeholder="New folder name">
+      <button class="btn btn-tonal btn-sm" id="fpCreate">Create</button>
+    </div>
+    <div class="fp-actions">
+      <button class="btn btn-tonal" id="fpCancel">Cancel</button>
+      <button class="btn btn-filled" id="fpRoot">Just bookmark it</button>
+    </div>
+  </div>
+</div>
+
 <!-- =============================================== SHORTCUTS -->
 <div class="sc-overlay hidden" id="shortcutsOverlay">
   <div class="sc-panel">

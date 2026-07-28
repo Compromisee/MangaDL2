@@ -48,6 +48,10 @@ class OmegaScansSource(Source):
     base_url = SITE
     domains = ("omegascans.org", "api.omegascans.org")
 
+    #: Catalogue is entirely manhwa; used only as a fallback
+    #: when a result reports no type of its own.
+    default_series_type = "Manhwa"
+
     supports_search = True
     supports_browse = True
     supports_genres = True

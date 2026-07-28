@@ -260,6 +260,11 @@ DEFAULT_FILTERS = {
     "blocked_authors": [],
     "min_chapters": 0,          # hide series with fewer chapters than this
     "max_chapters": 0,          # 0 = no upper limit
+    # Many sources do not report a chapter count at all (MangaDex leaves
+    # lastChapter empty for every ongoing series), so an unknown count is
+    # kept by default -- dropping it would make whole sources disappear from
+    # a filtered search. Turn this on for a strict "must be in range" filter.
+    "strict_chapter_range": False,
     "hide_no_cover": False,
     "safe_mode": False,        # drop adult ratings where the source reports them
 }
@@ -322,6 +327,7 @@ def apply_filters(results, filters=None):
         max_chapters = int(filters.get("max_chapters") or 0)
     except (TypeError, ValueError):
         max_chapters = 0
+    strict_range = bool(filters.get("strict_chapter_range"))
 
     kept = []
     for item in results:
@@ -329,7 +335,10 @@ def apply_filters(results, filters=None):
         # filter when a count is actually known -- otherwise a source that
         # omits it would vanish entirely from every filtered search.
         count = _chapter_count(item)
-        if count is not None:
+        if count is None:
+            if strict_range and (min_chapters or max_chapters):
+                continue
+        else:
             if min_chapters and count < min_chapters:
                 continue
             if max_chapters and count > max_chapters:
