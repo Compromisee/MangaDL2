@@ -402,7 +402,31 @@ A complete feature reference for MangaDL.
 327. Webtoons per-chapter Referer for its hotlink-protected CDN
 328. nhentai source, flagged adult-only
 329. nhentai thumbnails resolved to full-size pages
-330. Nine sources total
+330. Twelve sources total
+331. nhentai browses `/popular` (the site root lists no galleries at all)
+332. nhentai genre slugs verified against the live site
+333. nhentai covers follow the site's own `data-fallbacks` chain
+334. Cover proxy for hotlink-protected CDNs, inlined as data URIs
+335. Webtoons covers load in the GUI despite the global `no-referrer`
+336. Natomanga cover host is never rewritten (shards, not mirrors)
+337. Transient cover failures retry the same URL instead of another host
+338. Mangadass source, flagged adult-only
+339. Mangadass real `/search?q=` endpoint (`/?s=` ignores the query)
+340. Mangadass chapters sorted numerically, not by document order
+341. Manga18.club source, flagged adult-only
+342. Manga18.club `?search=` endpoint plus an autocomplete-JSON fallback
+343. Manga18.club pages decoded from the base64 `slides_p_path` array
+344. HentaiAkane source, flagged adult-only
+345. HentaiAkane pages read from the `ts_reader.run` payload
+346. ManhwaRead decodes base64 page lists that ship without padding
+347. Connection pool sized to the worker count (no discarded connections)
+348. Download cart: queue several manga and keep browsing
+349. Concurrent downloads of different manga, configurable 1-5
+350. Every progress event is stamped with its job, so chapters never mix
+351. Chapter rows show the owning manga when several downloads run
+352. Queue panel with per-job status and removable pending entries
+353. Stop one download without touching the others
+354. A cancelled job reports "stopped", not "failed"
 
 ## Core engine
 

@@ -7,6 +7,180 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.5 — ManhwaRead bulk fix, download cart, concurrent downloads
+
+### Fixed — ManhwaRead bulk downloads lost chapters
+
+Downloading a range from ManhwaRead reliably dropped chapters with
+`Could not decode chapterData ...: Incorrect padding`.
+
+The reader's page list is base64-encoded JSON, and the site **strips the `=`
+padding** whenever the encoded length is not a multiple of four. Python's
+`base64.b64decode` is strict about padding, so those chapters raised and were
+skipped. Measured over twelve consecutive chapters of one series: chapter 03
+had `len % 4 == 2` and failed while the other eleven decoded fine.
+
+That ~8% hit rate is exactly why a single chapter usually worked and a bulk
+range did not — the longer the range, the likelier it contained a bad one.
+Re-padding to the next multiple of four fixes it. A 1–6 range that previously
+finished 5/6 with one failure now completes 6/6.
+
+### Fixed — connection pool smaller than the worker count
+
+Every bulk download logged `Connection pool is full, discarding connection`.
+urllib3 pools ten connections per host by default while the engine runs up to
+sixteen image threads, so the surplus connections were closed and reopened for
+every page. The pool is now sized to the worker ceiling: measured 0 warnings
+after, on a job that produced them continuously before.
+
+### Added — download cart and concurrent downloads
+
+Several manga can now download at the same time.
+
+* **Add to queue** next to the download button queues a manga and lets you
+  keep browsing; anything past the limit waits for a free slot and starts
+  automatically when one opens.
+* **Download queue** panel lists running and pending jobs with per-job status,
+  and pending entries can be removed individually or cleared.
+* **Concurrent manga** setting (1–5, default 2).
+* Stopping is per-job: `stop_download(job_id)` stops one download and leaves
+  the others running. Verified live — stopping one of two in-flight jobs let
+  the other finish a full 300-page download.
+* A cancelled job now reports **stopped** rather than **failed**.
+
+### Fixed — concurrent downloads mixed up chapters
+
+This was the real hazard in running jobs side by side, and it existed in the
+event layer rather than on disk.
+
+Progress events were coalesced into a map keyed on the **chapter name alone**,
+and the UI's progress rows used the same key. Chapter names are not unique
+across manga, so two series both reporting "Chapter 01" collapsed into one
+entry: one series' progress silently overwrote the other's, and they shared a
+single progress bar.
+
+Every engine event is now stamped with a job id, and both the coalescing map
+and the UI rows are keyed on `(job, chapter)`. Aggregate counters are summed
+across jobs instead of being overwritten, and a chapter row shows its owning
+manga only when more than one download is running, so a single download looks
+exactly as it always has.
+
+Verified end-to-end with three concurrent jobs including two colliding
+"Chapter 01"s: 0 unstamped events, correct per-job chapter counts (5/3/2), and
+each series' Chapter 01 byte-distinct (31 vs 38 pages, different hashes) — no
+cross-contamination. Output paths were already per-manga, so files on disk
+were never at risk.
+
+### Tests
+
+424 offline (up from 393) + 21 live.
+
+---
+
+## v1.4.4 — nhentai, Webtoons and Natomanga covers; three new sources
+
+### Fixed — nhentai returned nothing
+
+Two separate faults, both measured against the live site:
+
+* **Browse was always empty.** It fetched the site root, which is a landing
+  page carrying **zero** `.gallery` cards. `/popular` is the real listing and
+  returns 25 per page. The `Trending` sort mapped to `/popular-today`, a 404.
+* **7 of the 12 genres were invented.** The list was generic manga genres
+  rather than nhentai tag slugs; `romance`, `drama`, `fantasy`, `school-life`,
+  `vanilla`, `historical` and `sci-fi` all answered **404**, so those genre
+  browses failed outright. Replaced with slugs verified to return results
+  (`big-breasts`, `sole-female`, `nakadashi`, `full-color`, …).
+
+Covers now also follow the ordered `data-fallbacks` list the site puts on each
+card — thumbnail, then `.webp`, then the first page — instead of the single
+`src`, which is not always present on the CDN.
+
+### Fixed — Webtoons covers did not load
+
+`webtoon-phinf.pstatic.net` answers **403 to any request whose Referer is not
+webtoons.com** (measured: 403 with no Referer, with `file://` and with
+`example.com`; 200 with `https://www.webtoons.com/`).
+
+The GUI sends `<meta name="referrer" content="no-referrer">` because MangaDex
+serves a "read this at MangaDex" placeholder otherwise, so the two demands are
+mutually exclusive in one document and no `<img>` tag can satisfy both.
+
+Sources can now declare `cover_needs_referer`, and those covers are fetched by
+Python with the correct header and handed to the page as a `data:` URI through
+a new `proxy_cover` API (bounded cache, 240 entries). Verified in Chromium: six
+Webtoons covers decoded at 480×623, none blank. Of the twelve sources only
+Webtoons needs this — every other cover CDN answered 200 with no Referer.
+
+### Fixed — Natomanga covers (re-researched)
+
+v1.4.1 treated `img-r1` / `img-r2` / `imgs-2` as interchangeable mirrors and
+rewrote a failing cover onto each sibling. **Re-measuring disproved that.**
+Over ten consecutive search covers, each requested from all three hosts:
+
+| host | 200s |
+|---|---|
+| the host named in the page markup | **10/10** |
+| `img-r1.2xstorage.com` | 3/10 |
+| `img-r2.2xstorage.com` | 1/10 |
+| `imgs-2.2xstorage.com` | 6/10 |
+
+They are content shards, not mirrors: `/thumb/naruto.webp` is 200 on `img-r1`
+and a hard **404** on `img-r2`. Every rewritten fallback was a likely 404, so
+the failure was being made worse. The URL from the markup is now the only
+candidate, and the real failure mode — a transient 429/503 on the correct
+host — is handled by retrying the *same* URL once.
+
+### Added — three sources (twelve total)
+
+| Source | Site | Notes |
+|---|---|---|
+| `mangadass` | mangadass.com | 18+ |
+| `manga18club` | manga18.club | 18+ |
+| `hentaiakane` | hentaiakane.com | 18+ |
+
+Findings worth recording:
+
+* **Mangadass** — `/?s=<term>` is a decoy: it returns the homepage grid
+  unchanged (identical 24 titles for `naruto`, `daddy` and no query at all).
+  `/search?q=` is the real endpoint. Chapters also needed a numeric sort: the
+  "Read First"/"Read Last" buttons sit above the list and point at real
+  chapters, so document order yielded 2, 3, 4, 5, 6, 7, 8, **1**.
+* **Manga18.club** — both `/?s=` and `/list-manga?q=` are decoys returning the
+  same 20 rows for every query; the form posts `search`. The reader ships no
+  usable `<img>` tags — one placeholder and an obfuscated script — with the
+  pages held in `slides_p_path`, an array of base64-encoded CDN URLs. Decoding
+  it in Python reproduces exactly the 11 URLs a real Chromium run requested,
+  so no browser is needed. Its series cover also had to be read from
+  `.detail_avatar`; the previous selector fell through to the "you may also
+  like" sidebar and returned a different series' artwork.
+* **HentaiAkane** — the request said "hentaikane", which does not resolve
+  (`.com`, `.net`, `.org`, `.xyz`, `.to` are all NXDOMAIN); `hentaiakane.com`
+  is the live site. Pages come from its `ts_reader.run({...})` payload. Cards
+  are scoped to `.bs` because `a.series` on the same page is the sidebar
+  popular list, which would inject unrelated titles.
+
+All three are stamped `content_rating: pornographic` and tagged `Adult`, so
+Safe mode filters them and the UI shows the `18+` chip. End-to-end verified: a
+real CBZ built from HentaiAkane came to 13,279,316 bytes across 14 pages.
+
+### Not added
+
+* **Comix** (`comix.to`) — every `/api/v1/` endpoint answers
+  `403 {"message":"Missing token."}`. The token is produced by an obfuscated
+  anti-bot chunk; the call still 403s from inside a real browser session
+  holding `cf_clearance`, and the SPA renders a blank page headless (0 images,
+  0 API responses observed). Nothing could be read reliably.
+* **Comick** — unchanged from v1.0: `md_images` is empty for every title.
+
+### Tests
+
+393 offline (up from 355) + 21 live. Two v1.4.1 tests that asserted the
+disproven Natomanga mirror behaviour were rewritten to assert the measured
+behaviour instead.
+
+---
+
 ## v1.4.3 — Aggregator fix, chapter-count filters, Webtoons and nhentai
 
 ### Fixed — multi-source search silently lost sources

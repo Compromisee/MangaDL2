@@ -800,6 +800,79 @@ body {
 .ac-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent-2)); border-radius: 999px; transition: width .2s; }
 .ac-count { width: 64px; text-align: right; color: var(--text-2); font-variant-numeric: tabular-nums; }
 
+/* Owning manga, shown on a chapter row only while several downloads run.
+   Chapter names are not unique across series, so without this two jobs
+   both on "Chapter 01" are indistinguishable. */
+.ac-job {
+  max-width: 130px;
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 11.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 0 auto;
+}
+
+/* ------------------------------------------------------------- cart */
+
+.dl-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+.dl-buttons .btn-big { flex: 1 1 auto; }
+
+.cart-count {
+  margin-left: 8px;
+  min-width: 22px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.cart-clear { margin-left: auto; }
+
+.cart-list { display: flex; flex-direction: column; gap: 8px; }
+
+.cart-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  font-size: 13px;
+  animation: card-in .25s ease;
+}
+
+.cart-title {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cart-badge {
+  padding: 2px 9px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  background: var(--surface-3, var(--surface));
+  color: var(--text-2);
+}
+.cart-badge.run { background: var(--accent); color: #fff; }
+.cart-badge.queued { background: var(--surface); color: var(--text-2); }
+.cart-badge.failed { background: var(--danger, #d1242f); color: #fff; }
+.cart-badge.stopped { background: var(--surface); color: var(--text-2); border: 1px solid var(--border); }
+.cart-badge.done { background: var(--ok, #1a7f37); color: #fff; }
+
+.cart-x { flex: 0 0 auto; }
+
 .log {
   max-height: 260px;
   overflow-y: auto;

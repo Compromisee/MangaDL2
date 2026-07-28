@@ -34,12 +34,25 @@ logger = logging.getLogger(__name__)
 SITE = "https://www.natomanga.com"
 PAGE_LIMIT = 200          # server honours this; keeps long series to few calls
 
-#: Cover thumbnails are mirrored across several interchangeable hosts. Any
-#: single one intermittently answers 404 or 429 (rate limited) while the
-#: others serve the identical file -- verified: the same thumbnail returned
-#: HTTP 200 and identical bytes from all three 2xstorage hosts while
-#: storage.waitst.com was returning 429. Covers therefore carry a list of
-#: mirrors so the UI can fall back instead of showing a blank tile.
+#: Cover hosts seen in Natomanga markup.
+#:
+#: These are **shards, not mirrors**. An earlier version of this file treated
+#: them as interchangeable and rewrote a cover URL onto every sibling host as
+#: a fallback; re-measuring showed that is wrong and actively harmful.
+#:
+#: Measured 2026-07 over 10 consecutive search covers, each requested from
+#: all three hosts:
+#:
+#:     host named in the page markup   10/10 HTTP 200
+#:     img-r1.2xstorage.com             3/10
+#:     img-r2.2xstorage.com             1/10
+#:     imgs-2.2xstorage.com             6/10
+#:
+#: e.g. ``/thumb/naruto.webp`` is 200 on img-r1 and a hard 404 on img-r2.
+#: A given thumbnail lives on exactly one shard, so the host printed in the
+#: HTML is authoritative and every rewritten sibling is a probable 404.
+#: The occasional real failure is a transient 429/503 on the correct host,
+#: which a retry of the *same* URL fixes -- so that is what we do.
 COVER_HOSTS = (
     "img-r1.2xstorage.com",
     "imgs-2.2xstorage.com",
@@ -96,23 +109,12 @@ class NatomangaSource(Source):
     def cover_mirrors(url):
         """Alternative URLs for a cover, best-first.
 
-        Returns the original plus the same path on every sibling host, so a
-        transient 404/429 on one mirror does not leave an empty cover.
+        The hosts are content shards rather than mirrors (see COVER_HOSTS),
+        so there is no sibling to fall back to: the URL in the markup is the
+        only one that serves the file. Returning just it keeps the caller's
+        retry-on-error path intact without sending it to guaranteed 404s.
         """
-        if not url:
-            return []
-        match = re.match(r"^(https?://)([^/]+)(/.*)$", url)
-        if not match:
-            return [url]
-        scheme, host, path = match.groups()
-        mirrors = [url]
-        for candidate in COVER_HOSTS:
-            if candidate == host:
-                continue
-            alternative = f"{scheme}{candidate}{path}"
-            if alternative not in mirrors:
-                mirrors.append(alternative)
-        return mirrors
+        return [url] if url else []
 
     @staticmethod
     def slug_of(manga_url: str) -> str:

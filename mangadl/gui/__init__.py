@@ -50,6 +50,7 @@ DEFAULT_SETTINGS = {
     "dedupe_results": True,         # collapse the same series across sources
     "interleave_results": False,    # round-robin sources instead of grouping
     "interleave_browse": True,      # trending feed mixes sources by default
+    "max_concurrent_jobs": 2,       # manga downloading at the same time
     "confirm_delete": True,
     "auto_snapshot": False,
     "default_source": DEFAULT_SOURCE,
@@ -109,13 +110,22 @@ class Api:
 
     def __init__(self):
         self.window = None
-        self.engine = None
+        self.engine = None          # most recent job, kept for back-compat
         self._thread = None
         self._sources = {}
         self._push_lock = threading.Lock()
         self._pending_events = []
         self._pending_progress = {}
         self._flush_timer = None
+        # ---- multi-job download manager ----------------------------------
+        # Several manga can download at once. Every job gets an id, and every
+        # engine event is stamped with it, because chapter names are NOT
+        # unique across manga -- two series both having "Chapter 01" was
+        # enough to make one overwrite the other's progress.
+        self._jobs = {}             # job id -> job record
+        self._jobs_lock = threading.RLock()
+        self._job_seq = 0
+        self._cart = []             # queued jobs waiting for a free slot
 
     # ----------------------------------------------------------- sources
 
@@ -449,6 +459,50 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    # Covers whose CDN refuses hotlinks cannot be loaded by an <img> tag:
+    # the GUI sends "no-referrer" globally because MangaDex swaps in a
+    # placeholder otherwise, and Webtoons' pstatic.net answers 403 to any
+    # request that does not carry a webtoons.com Referer. The two demands
+    # are mutually exclusive in one document, so those covers are fetched
+    # here -- with the right Referer -- and handed back as a data URI.
+    _COVER_CACHE = {}
+    _COVER_CACHE_MAX = 240
+
+    def proxy_cover(self, url: str, source_id: str = None):
+        """Fetch a hotlink-protected cover and return it as a data URI."""
+        import base64
+
+        url = (url or "").strip()
+        if not url.startswith(("http://", "https://")):
+            return {"ok": False, "error": "unsupported url"}
+
+        cached = self._COVER_CACHE.get(url)
+        if cached:
+            return {"ok": True, "data": cached, "cached": True}
+
+        try:
+            source = self._source(source_id) if source_id else source_for_url(url)
+            if source is None:
+                return {"ok": False, "error": "unknown source"}
+            response = source.fetch(url, max_retries=2)
+            blob = response.content
+            if not blob:
+                return {"ok": False, "error": "empty response"}
+
+            mime = (response.headers.get("Content-Type") or "").split(";")[0].strip()
+            if not mime.startswith("image/"):
+                mime = "image/jpeg"
+            data = f"data:{mime};base64," + base64.b64encode(blob).decode("ascii")
+
+            # Bounded so a long browse session cannot grow without limit.
+            if len(self._COVER_CACHE) >= self._COVER_CACHE_MAX:
+                self._COVER_CACHE.clear()
+            self._COVER_CACHE[url] = data
+            return {"ok": True, "data": data}
+        except Exception as e:
+            logger.warning("Cover proxy failed for %s: %s", url, e)
+            return {"ok": False, "error": str(e)}
+
     def get_sources(self):
         """Every supported site, for the source picker."""
         return {"ok": True, "sources": list_sources(),
@@ -473,8 +527,13 @@ class Api:
         etype = event.get("type")
         with self._push_lock:
             if etype in self._COALESCE:
-                # keep only the newest progress per chapter
-                self._pending_progress[event.get("chapter")] = event
+                # Keep only the newest progress per chapter -- but key on
+                # (job, chapter). Keying on the chapter name alone meant two
+                # manga downloading at once both reporting "Chapter 01"
+                # collapsed into a single event, so one series' progress
+                # silently replaced the other's.
+                key = (event.get("job"), event.get("chapter"))
+                self._pending_progress[key] = event
             else:
                 self._pending_events.append(event)
 
@@ -836,12 +895,9 @@ class Api:
 
     # --------------------------------------------------------- download
 
-    def start_download(self, options: dict):
-        if self._thread and self._thread.is_alive():
-            return {"ok": False, "error": "A download is already running"}
-
+    def _build_options(self, options: dict):
+        """Turn a raw options dict from JS into validated DownloadOptions."""
         settings = load_settings()
-
         opt = DownloadOptions(
             url=options.get("url", ""),
             selection=options.get("selection", "all"),
@@ -865,27 +921,229 @@ class Api:
         )
         if opt.format == "images":
             opt.keep_images = True
+        return opt
 
-        self.engine = DownloadEngine(opt, on_event=self._push)
+    def max_concurrent_jobs(self):
+        """How many manga may download at the same time."""
+        try:
+            value = int(load_settings().get("max_concurrent_jobs", 2) or 2)
+        except (TypeError, ValueError):
+            value = 2
+        return max(1, min(5, value))
 
-        def runner():
+    def _active_jobs(self):
+        return [j for j in self._jobs.values() if j["status"] == "running"]
+
+    def _job_event(self, job_id):
+        """An on_event callback that stamps every event with its job id.
+
+        Without this the UI cannot tell two concurrent downloads apart:
+        chapter names are not unique across manga, so "Chapter 01" from one
+        series was overwriting "Chapter 01" from another.
+        """
+        def emit(event):
+            record = self._jobs.get(job_id)
+            event = dict(event)
+            event["job"] = job_id
+            if record:
+                event.setdefault("job_title", record.get("title") or "")
+            self._push(event)
+        return emit
+
+    def _run_job(self, job_id):
+        """Body of a download thread."""
+        record = self._jobs.get(job_id)
+        if record is None:
+            return
+        engine = record["engine"]
+        push = self._job_event(job_id)
+        try:
+            result = engine.run()
+            with self._jobs_lock:
+                # A user-requested stop is not a failure -- reporting it as
+                # one made a deliberate cancel look like a broken download.
+                if result.get("stopped"):
+                    record["status"] = "stopped"
+                elif result.get("ok"):
+                    record["status"] = "done"
+                else:
+                    record["status"] = "failed"
+                record["result"] = result
+                if result.get("title"):
+                    record["title"] = result["title"]
+            push({"type": "finished", "result": result})
+        except Exception as e:
+            logger.exception("Download crashed")
+            with self._jobs_lock:
+                record["status"] = "failed"
+                record["result"] = {"ok": False, "error": str(e)}
+            push({"type": "error", "message": str(e)})
+            push({"type": "finished", "result": {"ok": False, "error": str(e)}})
+        finally:
+            self._start_queued()
+
+    def _spawn(self, entry):
+        """Start one queued cart entry immediately. Caller holds the lock."""
+        self._job_seq += 1
+        job_id = f"job{self._job_seq}"
+        opt = self._build_options(entry["options"])
+
+        engine = DownloadEngine(opt, on_event=self._job_event(job_id))
+        record = {
+            "id": job_id,
+            "title": entry.get("title") or opt.url,
+            "url": opt.url,
+            "source": opt.source or "",
+            "cover": entry.get("cover") or "",
+            "selection": opt.selection,
+            "status": "running",
+            "engine": engine,
+            "result": None,
+            "started": time.time(),
+        }
+        self._jobs[job_id] = record
+        self.engine = engine          # back-compat for stop_download()
+
+        thread = threading.Thread(target=self._run_job, args=(job_id,),
+                                  daemon=True, name=f"mangadl-{job_id}")
+        record["thread"] = thread
+        self._thread = thread
+        thread.start()
+
+        self._push({"type": "job_started", "job": job_id,
+                    "title": record["title"], "url": record["url"],
+                    "cover": record["cover"], "source": record["source"]})
+        return record
+
+    def _start_queued(self):
+        """Promote cart entries into running jobs while slots are free."""
+        started = []
+        with self._jobs_lock:
+            limit = self.max_concurrent_jobs()
+            while self._cart and len(self._active_jobs()) < limit:
+                started.append(self._spawn(self._cart.pop(0)))
+        if started:
+            self._flush()
+        return started
+
+    # ------------------------------------------------------------- cart
+
+    def add_to_cart(self, options: dict):
+        """Queue a manga for download. Starts at once if a slot is free."""
+        options = options or {}
+        if not (options.get("url") or "").strip():
+            return {"ok": False, "error": "No manga URL"}
+
+        entry = {
+            "options": options,
+            "title": options.get("title") or "",
+            "cover": options.get("cover") or "",
+        }
+        with self._jobs_lock:
+            # Refuse an exact duplicate that is already queued or running.
+            url = options["url"]
+            selection = options.get("selection", "all")
+            for job in self._jobs.values():
+                if (job["url"] == url and job["selection"] == selection
+                        and job["status"] == "running"):
+                    return {"ok": False, "error": "Already downloading",
+                            "job": job["id"]}
+            for queued in self._cart:
+                if (queued["options"].get("url") == url
+                        and queued["options"].get("selection", "all") == selection):
+                    return {"ok": False, "error": "Already in the cart"}
+            self._cart.append(entry)
+
+        self._start_queued()
+        return {"ok": True, "queued": len(self._cart),
+                "active": len(self._active_jobs())}
+
+    def get_cart(self):
+        """Everything queued or running, for the downloads panel."""
+        with self._jobs_lock:
+            jobs = [{
+                "id": j["id"], "title": j["title"], "url": j["url"],
+                "source": j["source"], "cover": j["cover"],
+                "selection": j["selection"], "status": j["status"],
+            } for j in self._jobs.values()]
+            queued = [{
+                "title": q.get("title") or q["options"].get("url"),
+                "url": q["options"].get("url"),
+                "cover": q.get("cover", ""),
+                "selection": q["options"].get("selection", "all"),
+                "status": "queued",
+            } for q in self._cart]
+        return {"ok": True, "jobs": jobs, "queued": queued,
+                "limit": self.max_concurrent_jobs()}
+
+    def remove_from_cart(self, url: str, selection: str = None):
+        """Drop a not-yet-started entry from the queue."""
+        with self._jobs_lock:
+            before = len(self._cart)
+            self._cart = [
+                q for q in self._cart
+                if not (q["options"].get("url") == url
+                        and (selection is None
+                             or q["options"].get("selection", "all") == selection))
+            ]
+            removed = before - len(self._cart)
+        return {"ok": True, "removed": removed}
+
+    def clear_cart(self):
+        with self._jobs_lock:
+            count = len(self._cart)
+            self._cart = []
+        return {"ok": True, "removed": count}
+
+    # --------------------------------------------------------- download
+
+    def start_download(self, options: dict):
+        """Start a download.
+
+        Kept as the single-job entry point the UI has always used. It now
+        routes through the cart so several manga can run at once, and
+        returns the job id so the caller can track this one specifically.
+        """
+        options = options or {}
+        if not (options.get("url") or "").strip():
+            return {"ok": False, "error": "No manga URL"}
+
+        with self._jobs_lock:
+            if len(self._active_jobs()) >= self.max_concurrent_jobs():
+                self._cart.append({
+                    "options": options,
+                    "title": options.get("title") or "",
+                    "cover": options.get("cover") or "",
+                })
+                return {"ok": True, "queued": True,
+                        "position": len(self._cart)}
+            record = self._spawn({
+                "options": options,
+                "title": options.get("title") or "",
+                "cover": options.get("cover") or "",
+            })
+        return {"ok": True, "job": record["id"]}
+
+    def stop_download(self, job_id: str = None):
+        """Stop one job, or every running job when no id is given."""
+        with self._jobs_lock:
+            if job_id:
+                targets = [self._jobs[job_id]] if job_id in self._jobs else []
+            else:
+                targets = self._active_jobs()
+                # a blanket stop should also empty the queue
+                self._cart = []
+            for job in targets:
+                job["status"] = "stopping"
+
+        for job in targets:
             try:
-                result = self.engine.run()
-                self._push({"type": "finished", "result": result})
-            except Exception as e:
-                logger.exception("Download crashed")
-                self._push({"type": "error", "message": str(e)})
-                self._push({"type": "finished", "result": {"ok": False, "error": str(e)}})
+                job["engine"].stop()
+            except Exception:
+                logger.debug("Could not stop %s", job["id"], exc_info=True)
 
-        self._thread = threading.Thread(target=runner, daemon=True)
-        self._thread.start()
-        return {"ok": True}
-
-    def stop_download(self):
-        if self.engine:
-            self.engine.stop()
         self._flush()          # deliver whatever is queued before stopping
-        return {"ok": True}
+        return {"ok": True, "stopped": [j["id"] for j in targets]}
 
     def shutdown(self):
         """Cancel the pending flush timer so it cannot outlive the window."""

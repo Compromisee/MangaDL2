@@ -18,6 +18,7 @@ One-shots
     chapter. That keeps it working with the normal download pipeline.
 """
 
+import json
 import logging
 import re
 from urllib.parse import quote, urljoin
@@ -47,17 +48,23 @@ class NhentaiSource(Source):
     adult_only = True
 
     search_sorts = ("Best Match", "Popularity", "Newest")
-    browse_sorts = ("Trending", "Popularity", "Newest")
+    browse_sorts = ("Popularity",)
 
+    #: Search accepts ?sort=; browse does not (``/popular-today`` is a 404).
     _SORTS = {
         "Popularity": "popular",
-        "Trending": "popular-today",
         "Newest": "date",
     }
 
+    #: Real nhentai tag slugs. Measured 2026-07: the previous list was made
+    #: up from generic manga genres and 7 of its 12 entries answered 404
+    #: ("romance", "drama", "fantasy", "school-life", "vanilla",
+    #: "historical", "sci-fi"), so every genre browse returned nothing.
+    #: Every slug below was verified to return 25 galleries.
     GENRES = (
-        "romance", "comedy", "drama", "fantasy", "school-life", "yuri",
-        "yaoi", "vanilla", "netorare", "harem", "historical", "sci-fi",
+        "big-breasts", "sole-female", "sole-male", "nakadashi", "anal",
+        "glasses", "stockings", "full-color", "schoolgirl-uniform", "milf",
+        "ahegao", "yuri", "yaoi", "netorare", "harem", "comedy",
     )
 
     def headers(self):
@@ -71,6 +78,29 @@ class NhentaiSource(Source):
     def full_size(url):
         """Turn a thumbnail URL into its full-size page."""
         return _THUMB.sub(r"/\1.\2", url or "")
+
+    @staticmethod
+    def _fallbacks(img, cover):
+        """Cover URLs to try, best first.
+
+        Cards carry ``data-fallbacks='["...", ...]'`` -- a JSON list the site
+        itself walks when a thumbnail 404s. Covers live on a separate CDN
+        (``zrocdn.xyz``) whose per-gallery files are not always present, so
+        honouring the list is what stops empty tiles.
+        """
+        candidates = []
+        if cover:
+            candidates.append(cover)
+        raw = (img.get("data-fallbacks") or "").strip()
+        if raw:
+            try:
+                for url in json.loads(raw):
+                    url = (url or "").strip()
+                    if url and url not in candidates:
+                        candidates.append(url)
+            except (TypeError, ValueError):
+                logger.debug("nhentai: unparsable data-fallbacks")
+        return candidates
 
     def _cards(self, soup, limit):
         results, seen = [], set()
@@ -89,15 +119,20 @@ class NhentaiSource(Source):
                 continue
 
             img = card.select_one("img")
-            cover = None
+            cover, mirrors = None, []
             if img is not None:
                 cover = (img.get("data-src") or img.get("src") or "").strip()
                 if cover:
                     cover = urljoin(SITE, cover)
+                # The site ships its own ordered fallback list on the tag and
+                # swaps to it in an onerror handler, so reuse it rather than
+                # guessing: thumb.webp, then the first page, then its webp.
+                mirrors = self._fallbacks(img, cover)
 
             seen.add(href)
             results.append(self._result(
                 title, href, cover=cover,
+                cover_mirrors=mirrors,
                 content_rating="pornographic",
                 tags=["Adult"],
                 adult=True,
@@ -125,15 +160,18 @@ class NhentaiSource(Source):
 
     def browse(self, sort: str = "Trending", genre: str = None, page: int = 1,
                limit: int = 32, **_):
+        """Discovery listing.
+
+        The site root is a landing page carrying **zero** ``.gallery`` cards
+        (measured), so browsing it always came back empty. ``/popular`` is
+        the real listing and pages with ``?page=N``.
+        """
         page = max(1, int(page or 1))
         if genre:
             slug = str(genre).strip().lower().replace(" ", "-")
             url = f"{SITE}/tag/{quote(slug)}/?page={page}"
         else:
-            url = f"{SITE}/?page={page}"
-        order = self._SORTS.get(sort or "")
-        if order and genre:
-            url += f"&sort={order}"
+            url = f"{SITE}/popular?page={page}"
         try:
             response = self.fetch(url)
         except ScrapeError as e:

@@ -82,26 +82,28 @@ def test_loaded_handler_also_returns_none():
 # ================================================ 2. Natomanga covers
 
 
-def test_cover_mirrors_are_generated():
-    """One CDN host intermittently 404s or 429s while the others serve the
-    identical file, so covers ship with fallbacks."""
+def test_cover_host_is_never_rewritten():
+    """Natomanga's cover hosts are shards, not mirrors.
+
+    v1.4.1 assumed they were interchangeable and rewrote a cover onto every
+    sibling host as a fallback. Re-measuring in v1.4.4 disproved it: over ten
+    consecutive search covers the host named in the markup was 200 10/10
+    while the siblings managed 3/10, 1/10 and 6/10 -- e.g.
+    /thumb/naruto.webp is 200 on img-r1 and a hard 404 on img-r2. Rewriting
+    the host therefore sends the UI to guaranteed 404s, so the URL from the
+    page must be the only candidate.
+    """
     from mangadl.sources.natomanga import NatomangaSource
 
-    mirrors = NatomangaSource.cover_mirrors(
-        "https://img-r1.2xstorage.com/thumb/naruto.webp")
-    assert len(mirrors) >= 3
-    assert mirrors[0] == "https://img-r1.2xstorage.com/thumb/naruto.webp"
-    assert all(m.endswith("/thumb/naruto.webp") for m in mirrors)
-    assert len(set(mirrors)) == len(mirrors)      # no duplicates
+    url = "https://img-r1.2xstorage.com/thumb/naruto.webp"
+    assert NatomangaSource.cover_mirrors(url) == [url]
 
 
 def test_cover_mirrors_handle_a_foreign_host():
     from mangadl.sources.natomanga import NatomangaSource
 
-    mirrors = NatomangaSource.cover_mirrors(
-        "https://storage.waitst.com/thumb/x.webp")
-    assert mirrors[0] == "https://storage.waitst.com/thumb/x.webp"
-    assert len(mirrors) > 1        # still offers the 2xstorage siblings
+    url = "https://storage.waitst.com/thumb/x.webp"
+    assert NatomangaSource.cover_mirrors(url) == [url]
 
 
 @pytest.mark.parametrize("value", [None, "", "not a url"])

@@ -370,6 +370,25 @@ mangadl disk orphans        # library entries whose files are gone
 | `mangakatana` | [mangakatana.com](https://mangakatana.com) | HTML scraping | Large back catalogue, no account needed |
 | `natomanga` | [natomanga.com](https://www.natomanga.com) | HTML + JSON chapter endpoint | Manganato / Mangakakalot successor |
 | `weebcentral` | [weebcentral.com](https://weebcentral.com) | HTML scraping | May need FlareSolverr |
+| `omegascans` | [omegascans.org](https://omegascans.org) | JSON API | Coin-locked chapters are skipped |
+| `manhwaread` | [manhwaread.com](https://manhwaread.com) | HTML + base64 chapter payload | CDN needs a Referer |
+| `webtoons` | [webtoons.com](https://www.webtoons.com) | HTML scraping | Official site; covers are proxied (hotlink-protected CDN) |
+| `mangadass` | [mangadass.com](https://mangadass.com) | HTML scraping | **18+** · use `/search?q=`, `/?s=` ignores the query |
+| `manhwa18` | [manhwa18.cc](https://manhwa18.cc) | HTML scraping | **18+** |
+| `manga18club` | [manga18.club](https://manga18.club) | HTML + base64 page list | **18+** · pages decoded from `slides_p_path` |
+| `hentaiakane` | [hentaiakane.com](https://hentaiakane.com) | HTML + `ts_reader` JSON | **18+** |
+| `nhentai` | [nhentai.to](https://nhentai.to) | HTML scraping | **18+** · one gallery = one chapter |
+
+Adult sources are stamped `content_rating: pornographic` and tagged `Adult`, so
+**Safe mode** in Settings removes them, and each can be disabled individually.
+
+Two requested sites were deliberately left out:
+
+* **Comick** (`comick.io`) — the API returns an empty `md_images` array for
+  every title, so no pages can be read.
+* **Comix** (`comix.to`) — every `/api/v1/` call answers
+  `403 {"message":"Missing token."}`, including from inside a real browser
+  session with `cf_clearance` set, and the SPA renders nothing without it.
 
 ```bash
 mangadl sources                        # list them with their capabilities

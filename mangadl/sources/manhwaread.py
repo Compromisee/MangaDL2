@@ -39,6 +39,26 @@ SITE = "https://manhwaread.com"
 _CHAPTER_DATA = re.compile(r"var\s+chapterData\s*=\s*(\{.*?\})\s*;", re.S)
 
 
+def _b64_decode(data):
+    """Decode base64 that may have had its ``=`` padding stripped.
+
+    The site emits the payload without padding whenever the length is not a
+    multiple of four, and Python's ``base64.b64decode`` is strict about it.
+    Measured over twelve consecutive chapters of one series, one (chapter 03,
+    ``len % 4 == 2``) raised ``binascii.Error: Incorrect padding`` while the
+    other eleven decoded fine -- which is why single-chapter downloads
+    usually worked and a bulk range reliably lost chapters.
+
+    Re-padding to the next multiple of four restores it; the same bytes then
+    parse as the normal page list.
+    """
+    if isinstance(data, bytes):
+        data = data.decode("ascii", "ignore")
+    data = re.sub(r"\s+", "", data or "")
+    data += "=" * (-len(data) % 4)
+    return base64.b64decode(data)
+
+
 class ManhwaReadSource(Source):
     id = "manhwaread"
     name = "ManhwaRead"
@@ -279,6 +299,11 @@ class ManhwaReadSource(Source):
 
     # ----------------------------------------------------------- pages
 
+    @staticmethod
+    def decode_payload(data):
+        """Decode the chapter payload, tolerating missing base64 padding."""
+        return _b64_decode(data).decode("utf-8", "replace")
+
     def get_chapter_images(self, chapter) -> list:
         chapter_url = self.normalize_url(self._chapter_url(chapter))
         if not chapter_url:
@@ -294,7 +319,7 @@ class ManhwaReadSource(Source):
 
         try:
             payload = json.loads(match.group(1))
-            pages = json.loads(base64.b64decode(payload["data"]).decode("utf-8"))
+            pages = json.loads(self.decode_payload(payload["data"]))
         except Exception as e:
             raise ScrapeError(f"Could not decode chapterData for {chapter_url}: {e}")
 

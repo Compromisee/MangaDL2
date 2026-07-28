@@ -12,6 +12,9 @@ Nothing else in the codebase hardcodes a site.
 import logging
 
 from .base import BASE_HEADERS, DEFAULT_UA, ScrapeError, Source
+from .hentaiakane import HentaiAkaneSource
+from .manga18club import Manga18ClubSource
+from .mangadass import MangadassSource
 from .mangadex import MangaDexSource
 from .mangakatana import MangakatanaSource
 from .manhwa18 import Manhwa18Source
@@ -34,7 +37,10 @@ SOURCE_CLASSES = [
     OmegaScansSource,
     ManhwaReadSource,
     WebtoonsSource,
+    MangadassSource,
     Manhwa18Source,
+    Manga18ClubSource,
+    HentaiAkaneSource,
     NhentaiSource,
 ]
 
@@ -47,6 +53,7 @@ __all__ = [
     "ScrapeError", "Source", "MangaDexSource", "MangakatanaSource",
     "NatomangaSource", "WeebCentralSource", "OmegaScansSource",
     "ManhwaReadSource", "Manhwa18Source", "WebtoonsSource",
+    "MangadassSource", "Manga18ClubSource", "HentaiAkaneSource",
     "NhentaiSource",
     "get_source", "source_for_url", "detect_source", "list_sources",
     "search_all", "browse_all", "genres_all",
@@ -69,6 +76,7 @@ def list_sources() -> list:
             "supports_scanlator": cls.supports_scanlator,
             "needs_flaresolverr": cls.needs_flaresolverr,
             "adult_only": getattr(cls, "adult_only", False),
+            "cover_needs_referer": getattr(cls, "cover_needs_referer", False),
             "sorts": list(cls.search_sorts),
             "languages": list(cls.languages),
         }

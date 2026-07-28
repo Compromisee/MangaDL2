@@ -42,6 +42,11 @@ class WebtoonsSource(Source):
     supports_search = True
     supports_browse = True
     supports_genres = True
+    #: pstatic.net answers 403 to any request whose Referer is not
+    #: webtoons.com -- measured 403 with no Referer / file:// / example.com,
+    #: 200 with https://www.webtoons.com/. The GUI cannot send that header
+    #: from an <img> tag, so covers are proxied through the Python side.
+    cover_needs_referer = True
     search_sorts = ("Best Match", "Popularity", "Latest Updates")
     browse_sorts = ("Trending", "Popularity", "Latest Updates")
 

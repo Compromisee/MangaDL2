@@ -492,13 +492,51 @@ function attachCover(img, card, item) {
       return;
     }
 
+    /* Some CDNs (Webtoons' pstatic.net) answer 403 unless the request
+       carries their own site as the Referer. This document is sent with
+       "no-referrer" because MangaDex substitutes a placeholder image
+       otherwise, so those covers can never load from an <img> tag. Ask
+       Python to fetch them with the right header and inline the bytes. */
+    const src = sourceById[item.source];
+    const mustProxy = !!(src && src.cover_needs_referer);
+    let proxied = false;
+
+    const viaProxy = async (url) => {
+      if (proxied || !api() || !api().proxy_cover) return false;
+      proxied = true;
+      try {
+        const res = await api().proxy_cover(url, item.source || null);
+        if (res && res.ok && res.data) { img.src = res.data; return true; }
+      } catch (e) { /* fall through to the placeholder */ }
+      return false;
+    };
+
+    /* Natomanga's cover hosts are shards, not mirrors: the URL in the
+       markup is the only one that serves the file, and its occasional
+       failure is a transient 429/503. So retry the *same* URL once after a
+       short delay before giving up, rather than rewriting the host. */
     let index = 0;
-    const tryNext = () => {
+    let retried = false;
+    const tryNext = async () => {
       if (index >= candidates.length) {
+        if (!retried && candidates.length) {
+          retried = true;
+          const last = candidates[candidates.length - 1];
+          setTimeout(() => { img.src = last + (last.includes("?") ? "&" : "?") + "r=1"; }, 600);
+          return;
+        }
+        // Direct loads are exhausted -- one last attempt through Python.
+        if (!proxied && await viaProxy(candidates[0])) return;
         if (card) card.classList.add("no-cover");
         return;
       }
-      img.src = candidates[index++];
+      const url = candidates[index++];
+      if (mustProxy) {
+        if (await viaProxy(url)) return;
+        if (card) card.classList.add("no-cover");
+        return;
+      }
+      img.src = url;
     };
 
     img.addEventListener("load", () => {
@@ -956,7 +994,12 @@ function updateDownloadButton() {
   if (n === 0) label.textContent = "Select chapters to download";
   else if (n === total) label.textContent = `Download all ${total} chapters`;
   else label.textContent = `Download ${n} chapter${n > 1 ? "s" : ""}`;
-  $("downloadBtn").disabled = n === 0 || state.downloading;
+  // Downloading no longer disables the button: several manga can run at
+  // once, and anything over the concurrency limit is queued rather than
+  // rejected. Only an empty selection blocks it.
+  $("downloadBtn").disabled = n === 0;
+  const cart = $("addCartBtn");
+  if (cart) cart.disabled = n === 0;
 }
 
 /* The bulk buttons act on what is *visible*. Selecting chapters you have
@@ -1089,29 +1132,21 @@ $("outputDir") && $("outputDir").addEventListener("change", (e) =>
 
 /* -------------------------------------------------------------- download */
 
-$("downloadBtn").addEventListener("click", async () => {
-  if (!state.manga || state.selected.size === 0) return;
-  if (state.downloading) { toast("A download is already running"); return; }
-
+function buildDownloadOptions() {
   const s = state.settings;
-  if (s.confirm_large !== false && state.selected.size >= (s.large_threshold || 100)) {
-    const ok = await confirmModal(
-      "Large download",
-      `You are about to download ${state.selected.size} chapters. This may take a while and use significant bandwidth. Continue?`,
-      "Download");
-    if (!ok) return;
-  }
-
   const chapters = state.manga.chapters;
-  const nums = [...state.selected].map((i) => chapterNumber(chapters[i].name)).sort((a, b) => a - b);
+  const nums = [...state.selected]
+    .map((i) => chapterNumber(chapters[i].name)).sort((a, b) => a - b);
   const selection = state.selected.size === chapters.length ? "all" : nums.join(",");
 
   let bundle = 0;
   if (state.bundleMode === "1") bundle = 1;
   else if (state.bundleMode === "n") bundle = Math.max(2, parseInt($("bundleN").value) || 10);
 
-  const options = {
+  return {
     url: state.manga.info.url,
+    title: state.manga.info.title,
+    cover: state.manga.info.cover || "",
     source: state.source || "",
     language: $("fLanguage") ? $("fLanguage").value : "en",
     selection,
@@ -1127,31 +1162,75 @@ $("downloadBtn").addEventListener("click", async () => {
     name_chapter: s.name_chapter,
     name_range: s.name_range,
   };
+}
 
-  const res = await api().start_download(options);
+/* Queue this manga and stay where you are -- the point of the cart is to
+   line several up without waiting for each to finish. */
+$("addCartBtn").addEventListener("click", async () => {
+  if (!state.manga || state.selected.size === 0) return;
+  const res = await api().add_to_cart(buildDownloadOptions());
+  if (!res || !res.ok) { toast((res && res.error) || "Could not queue"); return; }
+  state.downloading = true;
+  $("railDot").classList.add("on");
+  $("dlEmpty").classList.add("hidden");
+  $("dlActive").classList.remove("hidden");
+  $("stopBtn").classList.remove("hidden");
+  toast(`Queued ${state.manga.info.title}`);
+  renderCart();
+});
+
+$("downloadBtn").addEventListener("click", async () => {
+  if (!state.manga || state.selected.size === 0) return;
+
+  const s = state.settings;
+  if (s.confirm_large !== false && state.selected.size >= (s.large_threshold || 100)) {
+    const ok = await confirmModal(
+      "Large download",
+      `You are about to download ${state.selected.size} chapters. This may take a while and use significant bandwidth. Continue?`,
+      "Download");
+    if (!ok) return;
+  }
+
+  const res = await api().start_download(buildDownloadOptions());
   if (!res.ok) { toast(res.error); return; }
 
+  if (res.queued) {
+    toast(`Queued — ${res.position} waiting for a free slot`);
+  }
   beginDownloadUI(state.manga.info.title, state.selected.size);
 });
 
 function beginDownloadUI(title, total) {
+  const fresh = ![...jobs.values()].some((j) => !j.finished);
   state.downloading = true;
-  state.totalChapters = total;
-  state.doneChapters = 0;
   $("railDot").classList.add("on");
   $("dlEmpty").classList.add("hidden");
   $("dlActive").classList.remove("hidden");
   $("dlTitle").textContent = title;
   $("dlStatus").textContent = "Starting…";
-  $("overallFill").style.width = "0%";
-  $("overallText").textContent = total ? `0 / ${total}` : "…";
-  $("activeChapters").innerHTML = '<div class="none">Waiting…</div>';
-  $("dlLog").innerHTML = "";
+  // Only reset the aggregate counters when nothing else is running, so
+  // starting a second manga does not wipe the first one's progress.
+  if (fresh) {
+    jobs.clear();
+    state.totalChapters = total;
+    state.doneChapters = 0;
+    $("overallFill").style.width = "0%";
+    $("overallText").textContent = total ? `0 / ${total}` : "…";
+    $("dlLog").innerHTML = "";
+    $("activeChapters").innerHTML = '<div class="none">Waiting…</div>';
+  }
   $("stopBtn").classList.remove("hidden");
   $("openFolderBtn").classList.add("hidden");
   updateDownloadButton();
+  renderCart();
   showView("downloads");
 }
+
+$("cartClearBtn") && $("cartClearBtn").addEventListener("click", async () => {
+  const res = await api().clear_cart();
+  renderCart();
+  toast(res && res.removed ? `Removed ${res.removed} queued` : "Queue empty");
+});
 
 $("stopBtn").addEventListener("click", async () => {
   await api().stop_download();
@@ -1166,6 +1245,8 @@ $("openFolderBtn").addEventListener("click", () => {
 /* ------------------------------------------------------- engine events */
 
 const activeBars = new Map();
+/* job id -> {title, total, done, status} for concurrent downloads */
+const jobs = new Map();
 
 function logLine(cls, text) {
   const log = $("dlLog");
@@ -1177,25 +1258,64 @@ function logLine(cls, text) {
   while (log.children.length > 200) log.removeChild(log.lastChild);
 }
 
-function ensureBar(chapter) {
-  if (activeBars.has(chapter)) return activeBars.get(chapter);
+/* Progress rows are keyed on job + chapter, never on the chapter name
+   alone. Chapter names are not unique across manga: two series downloading
+   at once both reporting "Chapter 01" shared a single row, so one series'
+   progress visibly overwrote the other's. */
+function barKey(event) {
+  return `${event.job || "job"}\u0000${event.chapter}`;
+}
+
+function jobLabel(jobId) {
+  const job = jobs.get(jobId);
+  return job && job.title ? job.title : "";
+}
+
+function ensureBar(event) {
+  const key = barKey(event);
+  if (activeBars.has(key)) return activeBars.get(key);
   const wrap = $("activeChapters");
   const none = wrap.querySelector(".none");
   if (none) none.remove();
   const row = document.createElement("div");
   row.className = "ac-row";
+  const owner = jobLabel(event.job) || event.job_title || "";
+  // Only show the owning manga when more than one is running, so the
+  // single-download case looks exactly as it always has.
+  const tag = (owner && jobs.size > 1)
+    ? `<span class="ac-job" title="${escapeHtml(owner)}">${escapeHtml(owner)}</span>`
+    : "";
   row.innerHTML = `
-    <span class="ac-name" title="${escapeHtml(chapter)}">${escapeHtml(chapter)}</span>
+    ${tag}
+    <span class="ac-name" title="${escapeHtml(event.chapter)}">${escapeHtml(event.chapter)}</span>
     <div class="ac-bar"><div class="ac-fill"></div></div>
     <span class="ac-count">–</span>`;
   wrap.appendChild(row);
-  activeBars.set(chapter, row);
+  activeBars.set(key, row);
   return row;
 }
 
-function removeBar(chapter) {
-  const row = activeBars.get(chapter);
-  if (row) { row.remove(); activeBars.delete(chapter); }
+function removeBar(event) {
+  const key = barKey(event);
+  const row = activeBars.get(key);
+  if (row) { row.remove(); activeBars.delete(key); }
+  if (!activeBars.size) {
+    $("activeChapters").innerHTML = state.downloading
+      ? '<div class="none">Waiting…</div>'
+      : '<div class="none">Idle</div>';
+  }
+}
+
+/* Remove every row belonging to one job (used when it finishes). */
+function removeJobBars(jobId) {
+  const prefix = `${jobId}\u0000`;
+  [...activeBars.keys()].forEach((key) => {
+    if (key.startsWith(prefix)) {
+      const row = activeBars.get(key);
+      if (row) row.remove();
+      activeBars.delete(key);
+    }
+  });
   if (!activeBars.size) {
     $("activeChapters").innerHTML = state.downloading
       ? '<div class="none">Waiting…</div>'
@@ -1224,80 +1344,220 @@ window.onEngineEvents = function (events) {
 };
 
 window.onEngineEvent = function (event) {
+  /* Every event carries a job id so concurrent downloads never interfere.
+     Aggregate counters are summed across jobs rather than overwritten. */
+  const job = event.job ? (jobs.get(event.job) || registerJob(event.job, {})) : null;
+
   switch (event.type) {
+    case "job_started":
+      registerJob(event.job, {
+        title: event.title, url: event.url,
+        cover: event.cover, source: event.source,
+      });
+      renderCart();
+      break;
     case "status":
-      $("dlStatus").textContent = event.message;
+      if (job) job.status = event.message;
+      $("dlStatus").textContent = summaryText();
       break;
     case "plan":
-      state.totalChapters = event.total;
+      if (job) {
+        job.title = event.title || job.title;
+        job.total = event.total;
+        job.done = 0;
+        job.directory = event.directory;
+      }
+      state.totalChapters = totalOf("total");
       lastOutputDir = event.directory;
-      $("dlStatus").textContent = `Downloading ${event.total} chapters`;
-      $("overallText").textContent = `0 / ${event.total}`;
-      logLine("info", `Saving to ${event.directory}`);
+      logLine("info", `${event.title || ""} → ${event.directory}`);
+      refreshOverall();
+      renderCart();
       break;
     case "chapter_start":
-      ensureBar(event.chapter);
+      ensureBar(event);
       break;
     case "chapter_progress": {
-      const row = ensureBar(event.chapter);
+      const row = ensureBar(event);
       const pct = event.total ? Math.round((event.done / event.total) * 100) : 0;
       row.querySelector(".ac-fill").style.width = pct + "%";
       row.querySelector(".ac-count").textContent = `${event.done}/${event.total}`;
       break;
     }
     case "chapter_done":
-      removeBar(event.chapter);
-      state.doneChapters = event.completed;
-      $("overallFill").style.width = Math.round((event.completed / event.total) * 100) + "%";
-      $("overallText").textContent = `${event.completed} / ${event.total}`;
-      logLine("ok", `${event.chapter} — ${event.pages} pages`);
+      removeBar(event);
+      if (job) { job.done = event.completed; job.total = event.total || job.total; }
+      state.doneChapters = totalOf("done");
+      refreshOverall();
+      logLine("ok", prefixed(event, `${event.chapter} — ${event.pages} pages`));
       markChapterDownloaded(event.chapter);
       break;
     case "chapter_failed":
-      removeBar(event.chapter);
-      logLine("err", `Failed: ${event.chapter}`);
+      removeBar(event);
+      logLine("err", prefixed(event, `Failed: ${event.chapter}`));
       break;
     case "packaging":
-      $("dlStatus").textContent = `Packaging ${event.file}`;
-      logLine("info", `Packing ${event.file}`);
+      logLine("info", prefixed(event, `Packing ${event.file}`));
       break;
     case "packaged":
-      logLine("ok", `Created ${event.file.split(/[\\/]/).pop()}`);
+      logLine("ok", prefixed(event, `Created ${event.file.split(/[\\/]/).pop()}`));
       break;
     case "error":
-      logLine("err", event.message);
+      logLine("err", prefixed(event, event.message));
       toast(event.message);
       break;
     case "stopped":
-      logLine("info", "Stopped by user");
+      logLine("info", prefixed(event, "Stopped by user"));
       break;
     case "finished": {
-      state.downloading = false;
-      $("railDot").classList.remove("on");
-      $("stopBtn").classList.add("hidden");
-      activeBars.forEach((row) => row.remove());
-      activeBars.clear();
-      $("activeChapters").innerHTML = '<div class="none">Idle</div>';
       const r = event.result || {};
+      if (job) {
+        job.finished = true;
+        job.ok = !!r.ok;
+        job.result = r;
+        if (r.title) job.title = r.title;
+      }
+      if (event.job) removeJobBars(event.job);
+
       if (r.ok) {
-        $("dlStatus").textContent = `Complete — ${r.downloaded} chapters downloaded`;
-        $("overallFill").style.width = "100%";
         lastOutputDir = r.directory || lastOutputDir;
         $("openFolderBtn").classList.remove("hidden");
-        toast("Download complete");
-        if (state.settings.open_folder_when_done && lastOutputDir) {
-          api().open_folder(lastOutputDir);
-        }
+        logLine("ok", prefixed(event, `Complete — ${r.downloaded} chapters`));
       } else if (r.stopped) {
-        $("dlStatus").textContent = "Stopped";
+        logLine("info", prefixed(event, "Stopped"));
       } else {
-        $("dlStatus").textContent = "Failed" + (r.error ? `: ${r.error}` : "");
+        logLine("err", prefixed(event, "Failed" + (r.error ? `: ${r.error}` : "")));
       }
+
+      // The whole panel only goes idle once every job has finished.
+      const running = [...jobs.values()].filter((j) => !j.finished);
+      if (!running.length) {
+        state.downloading = false;
+        $("railDot").classList.remove("on");
+        $("stopBtn").classList.add("hidden");
+        activeBars.forEach((row) => row.remove());
+        activeBars.clear();
+        $("activeChapters").innerHTML = '<div class="none">Idle</div>';
+        const okCount = [...jobs.values()].filter((j) => j.ok).length;
+        $("dlStatus").textContent = okCount
+          ? `Complete — ${okCount} manga downloaded`
+          : "Finished";
+        if (okCount) {
+          toast("Download complete");
+          if (state.settings.open_folder_when_done && lastOutputDir) {
+            api().open_folder(lastOutputDir);
+          }
+        }
+      } else {
+        $("dlStatus").textContent = summaryText();
+      }
+      refreshOverall();
+      renderCart();
       updateDownloadButton();
       break;
     }
   }
 };
+
+/* ------------------------------------------------------------------ cart */
+
+function registerJob(id, info) {
+  let job = jobs.get(id);
+  if (!job) {
+    job = { id, title: "", total: 0, done: 0, finished: false, ok: false };
+    jobs.set(id, job);
+  }
+  Object.assign(job, info || {});
+  return job;
+}
+
+function totalOf(field) {
+  let sum = 0;
+  jobs.forEach((j) => { sum += Number(j[field] || 0); });
+  return sum;
+}
+
+function prefixed(event, text) {
+  // Name the manga in the log only when more than one is running.
+  const owner = jobLabel(event.job) || event.job_title || "";
+  return (owner && jobs.size > 1) ? `[${owner}] ${text}` : text;
+}
+
+function summaryText() {
+  const running = [...jobs.values()].filter((j) => !j.finished);
+  if (!running.length) return "Finished";
+  if (running.length === 1) {
+    const j = running[0];
+    return j.total ? `Downloading ${j.total} chapters` : "Preparing…";
+  }
+  return `Downloading ${running.length} manga`;
+}
+
+function refreshOverall() {
+  const total = totalOf("total");
+  const done = totalOf("done");
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  $("overallFill").style.width = pct + "%";
+  $("overallText").textContent = `${done} / ${total}`;
+  const running = [...jobs.values()].filter((j) => !j.finished);
+  $("dlTitle").textContent = running.length > 1
+    ? `${running.length} downloads`
+    : (running[0] || [...jobs.values()].pop() || {}).title || "–";
+}
+
+async function renderCart() {
+  const list = $("cartList");
+  if (!list) return;
+  let queued = [];
+  try {
+    const res = await api().get_cart();
+    if (res && res.ok) queued = res.queued || [];
+  } catch (e) { /* bridge not ready */ }
+
+  const rows = [];
+  jobs.forEach((j) => {
+    if (j.finished && j.ok) return;         // completed jobs leave the queue
+    rows.push({
+      title: j.title || j.url || j.id,
+      status: j.finished
+        ? (j.ok ? "done" : ((j.result || {}).stopped ? "stopped" : "failed"))
+        : "running",
+      done: j.done, total: j.total, url: j.url, cover: j.cover,
+    });
+  });
+  queued.forEach((q) => rows.push({
+    title: q.title || q.url, status: "queued", url: q.url,
+    selection: q.selection, cover: q.cover,
+  }));
+
+  // The header card already describes a lone download, so the queue panel
+  // only appears once there is genuinely a queue to look at.
+  const worthShowing = rows.length > 1 || queued.length > 0;
+  $("cartCount").textContent = rows.length;
+  $("cartCard").classList.toggle("hidden", !worthShowing);
+  if (!worthShowing) { list.innerHTML = ""; return; }
+
+  list.innerHTML = rows.map((r) => {
+    const badge = r.status === "running"
+      ? `<span class="cart-badge run">${r.total ? `${r.done}/${r.total}` : "starting"}</span>`
+      : `<span class="cart-badge ${r.status}">${r.status}</span>`;
+    const remove = r.status === "queued"
+      ? `<button class="icon-btn cart-x" data-url="${escapeHtml(r.url || "")}"
+                 data-sel="${escapeHtml(r.selection || "all")}" title="Remove">
+           <span class="material-symbols-rounded">close</span></button>`
+      : "";
+    return `<div class="cart-row">
+      <span class="cart-title" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}</span>
+      ${badge}${remove}</div>`;
+  }).join("");
+
+  list.querySelectorAll(".cart-x").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      await api().remove_from_cart(btn.dataset.url, btn.dataset.sel);
+      renderCart();
+      toast("Removed from queue");
+    });
+  });
+}
 
 /* -------------------------------------------------------------- bookmarks */
 
@@ -1439,6 +1699,7 @@ function fillSettings(s) {
   $("setOpenWhenDone").checked = !!s.open_folder_when_done;
   $("setConfirmLarge").checked = s.confirm_large !== false;
   $("setLargeThreshold").value = s.large_threshold || 100;
+  $("setMaxJobs").value = s.max_concurrent_jobs || 2;
   $("setChapterWorkers").value = s.chapter_workers;
   $("setImageWorkers").value = s.image_workers;
   $("setDelay").value = s.delay;
@@ -1510,6 +1771,8 @@ $("saveSettingsBtn").addEventListener("click", async () => {
     open_folder_when_done: $("setOpenWhenDone").checked,
     confirm_large: $("setConfirmLarge").checked,
     large_threshold: parseInt($("setLargeThreshold").value) || 100,
+    max_concurrent_jobs: Math.max(1, Math.min(5,
+      parseInt($("setMaxJobs").value) || 2)),
     chapter_workers: parseInt($("setChapterWorkers").value) || 3,
     image_workers: parseInt($("setImageWorkers").value) || 6,
     delay: parseFloat($("setDelay").value) || 0.5,

@@ -70,8 +70,21 @@ class Source:
     supports_scanlator = False  # multiple releases per chapter number
     needs_flaresolverr = False  # site sits behind Cloudflare
     adult_only = False          # site hosts adult content exclusively
+    #: True when the cover CDN refuses hotlinks and needs a Referer.
+    #: The GUI sends ``no-referrer`` globally (MangaDex serves a placeholder
+    #: otherwise), so such covers must be proxied through Python instead.
+    #: Measured 2026-07: of the nine sources only Webtoons needs this --
+    #: every other cover CDN answered 200 with no Referer at all.
+    cover_needs_referer = False
     search_sorts = ()           # sort options offered by the site
     languages = ()              # available translation languages
+
+    #: urllib3 keeps ten pooled connections per host by default, but the
+    #: download engine runs up to sixteen image threads. The surplus
+    #: connections were being closed and reopened on every page --
+    #: "Connection pool is full, discarding connection" -- which is pure
+    #: overhead and extra load on the site. Size the pool to the ceiling.
+    POOL_SIZE = 16
 
     def __init__(self, delay: float = 0.5, session: requests.Session = None,
                  language: str = "en", **options):
@@ -80,7 +93,22 @@ class Source:
         self.options = options
         self.session = session or requests.Session()
         self.session.headers.update(self.headers())
+        self._size_pool(self.session)
         self._solverr = None
+
+    @classmethod
+    def _size_pool(cls, session):
+        """Widen the connection pool so worker threads do not thrash it."""
+        try:
+            from requests.adapters import HTTPAdapter
+
+            for prefix in ("http://", "https://"):
+                session.mount(prefix, HTTPAdapter(
+                    pool_connections=cls.POOL_SIZE,
+                    pool_maxsize=cls.POOL_SIZE,
+                ))
+        except Exception:      # pragma: no cover - never fatal
+            logger.debug("Could not resize the connection pool", exc_info=True)
 
     # ------------------------------------------------------------ setup
 

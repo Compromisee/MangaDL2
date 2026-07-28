@@ -295,10 +295,17 @@
             </div>
           </div>
 
-          <button class="btn btn-filled btn-big" id="downloadBtn">
-            <span class="material-symbols-rounded">download</span>
-            <span id="downloadBtnLabel">Download all chapters</span>
-          </button>
+          <div class="dl-buttons">
+            <button class="btn btn-filled btn-big" id="downloadBtn">
+              <span class="material-symbols-rounded">download</span>
+              <span id="downloadBtnLabel">Download all chapters</span>
+            </button>
+            <button class="btn btn-tonal btn-big" id="addCartBtn"
+                    title="Queue this manga and keep browsing">
+              <span class="material-symbols-rounded">add_shopping_cart</span>
+              <span>Add to queue</span>
+            </button>
+          </div>
         </div>
 
         <div class="card">
@@ -378,6 +385,18 @@
           <span class="material-symbols-rounded">sync</span> Active chapters
         </div>
         <div class="active-chapters" id="activeChapters"></div>
+      </div>
+
+      <div class="card" id="cartCard">
+        <div class="card-title">
+          <span class="material-symbols-rounded">shopping_cart</span>
+          Download queue
+          <span class="cart-count" id="cartCount">0</span>
+          <button class="btn btn-tonal btn-sm cart-clear" id="cartClearBtn">
+            <span class="material-symbols-rounded">clear_all</span> Clear queue
+          </button>
+        </div>
+        <div class="cart-list" id="cartList"></div>
       </div>
 
       <div class="card">
@@ -777,6 +796,14 @@
 
     <div class="card settings-card">
       <div class="card-title"><span class="material-symbols-rounded">speed</span> Performance</div>
+      <div class="setting-row">
+        <div><label>Concurrent manga</label><p class="hint">Separate manga downloading at once (1–5)</p></div>
+        <div class="stepper" data-target="setMaxJobs">
+          <button class="icon-btn step-down"><span class="material-symbols-rounded">remove</span></button>
+          <input type="number" id="setMaxJobs" min="1" max="5" value="2">
+          <button class="icon-btn step-up"><span class="material-symbols-rounded">add</span></button>
+        </div>
+      </div>
       <div class="setting-row">
         <div><label>Concurrent chapters</label><p class="hint">Chapters downloaded in parallel (1–8)</p></div>
         <div class="stepper" data-target="setChapterWorkers">
