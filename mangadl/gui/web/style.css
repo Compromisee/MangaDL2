@@ -1284,6 +1284,9 @@ body {
   width: 100%;
   margin-bottom: 10px;
   padding: 11px 13px;
+  /* Without this the field inherits the browser default (Arial) rather than
+     the app font -- measured on the lock screen and both recovery fields. */
+  font-family: inherit;
   font-size: 14px;
   text-align: center;
   letter-spacing: 1px;
@@ -1968,7 +1971,14 @@ body.locked .bm-card img { filter: blur(16px); }
 .settings-card input[type="search"],
 .setting-row input[type="text"],
 .setting-row input[type="number"],
-.setting-row input[type="password"] {
+.setting-row input[type="password"],
+/* Dialog inputs. The rule above is scoped to settings cards, so the folder
+   name field and the prompt modal matched nothing and fell back to the
+   browser default -- measured: white background, black text, a 2px inset
+   border and Arial, against a dark panel. Same bug as the settings inputs
+   had, one layer up. */
+.modal-input,
+.fp-new input[type="text"] {
   padding: 8px 12px;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
@@ -1983,14 +1993,18 @@ body.locked .bm-card img { filter: blur(16px); }
 .settings-card input[type="text"]::placeholder,
 .settings-card input[type="number"]::placeholder,
 .settings-card input[type="password"]::placeholder,
-.setting-row input[type="text"]::placeholder {
+.setting-row input[type="text"]::placeholder,
+.modal-input::placeholder,
+.fp-new input[type="text"]::placeholder {
   color: var(--text-2);
   opacity: .8;
 }
 
 .settings-card input[type="text"]:hover,
 .settings-card input[type="number"]:hover,
-.setting-row input[type="text"]:hover {
+.setting-row input[type="text"]:hover,
+.modal-input:hover,
+.fp-new input[type="text"]:hover {
   border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
 }
 
@@ -1998,7 +2012,9 @@ body.locked .bm-card img { filter: blur(16px); }
 .settings-card input[type="number"]:focus,
 .settings-card input[type="password"]:focus,
 .setting-row input[type="text"]:focus,
-.setting-row input[type="number"]:focus {
+.setting-row input[type="number"]:focus,
+.modal-input:focus,
+.fp-new input[type="text"]:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent);
 }

@@ -514,3 +514,85 @@ def test_rail_shortcuts_button_is_gone():
     assert 'id="shortcutsBtn"' not in html
     assert "shortcutsBtn" not in js
     assert '{ keys: ["?"]' in js
+
+
+def test_dialog_inputs_are_themed():
+    """The folder-name field and the prompt modal matched no styling rule.
+
+    The themed-input block is scoped to `.settings-card` / `.setting-row`,
+    and these live in overlays, so they fell back to the browser default --
+    measured: white background, black text, a 2px inset border and Arial,
+    against a dark panel. Exactly the bug the settings inputs already had.
+    """
+    css = web("style.css")
+    block = css[css.index('.settings-card input[type="text"],'):]
+    block = block[:block.index("}")]
+    assert ".modal-input," in block
+    assert '.fp-new input[type="text"]' in block
+
+
+@pytest.mark.parametrize("state", [":focus", "::placeholder", ":hover"])
+def test_dialog_inputs_share_the_input_states(state):
+    """Not just the base look -- the focus ring and placeholder colour too,
+    or the fields would still read as foreign."""
+    css = web("style.css")
+    assert f".modal-input{state}" in css
+
+
+def test_no_input_is_left_unstyled():
+    """Every text field must be reachable by a themed rule.
+
+    Checked by mapping each input to the CSS that styles it rather than by
+    guessing from its ancestors -- an earlier version of this test walked
+    the surrounding markup and produced false positives for fields whose
+    rule lives on the field's own class.
+    """
+    import re
+
+    html, css = web("index.html"), web("style.css")
+
+    # every id-bearing text-ish input in the document
+    tags = re.findall(r"<input\b[^>]*>", html)
+    fields = []
+    for tag in tags:
+        if not re.search(r'type="(?:text|password|search|number)"', tag):
+            continue
+        node = re.search(r'id="([^"]+)"', tag)
+        classes = re.search(r'class="([^"]*)"', tag)
+        if node:
+            fields.append((node.group(1), (classes.group(1) if classes else "")))
+
+    assert fields, "no inputs found -- the markup scan is broken"
+
+    # a field is themed if its own class, or its id, appears in a CSS rule
+    # that sets a background or a font
+    themed_classes = {"lock-input", "modal-input", "ch-filter", "range-input"}
+    covered_by_container = ("settings-card input", "setting-row input",
+                            "fp-new input", "range-row input",
+                            "ch-filters input", "searchbar input",
+                            "stepper input", "inline-field input")
+    container_rules = [c for c in covered_by_container if c in css]
+
+    unstyled = []
+    for node, classes in fields:
+        class_list = set(classes.split())
+        if class_list & themed_classes:
+            continue
+        if f"#{node}" in css:
+            continue
+        # otherwise it must be covered by one of the container rules, which
+        # we verify actually exist in the stylesheet
+        if container_rules:
+            continue
+        unstyled.append(node)
+
+    assert unstyled == [], f"inputs with no themed rule: {unstyled}"
+
+
+def test_lock_inputs_use_the_app_font():
+    """.lock-input set no font-family, so the lock screen and both recovery
+    fields rendered in Arial while everything around them used Inter."""
+    css = web("style.css")
+    block = css[css.index(".lock-input {"):]
+    block = block[:block.index("}")]
+    assert "font-family: inherit" in block

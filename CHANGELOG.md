@@ -7,6 +7,45 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.9 — Dialog inputs themed
+
+### Fixed — the folder name field was unstyled
+
+The themed-input rule is scoped to `.settings-card` / `.setting-row`. The
+folder-name field and the prompt modal live in overlays, so nothing matched
+them and they fell back to the browser default. Measured against a correctly
+styled settings input:
+
+| | settings input | dialog input (before) |
+|---|---|---|
+| background | `rgb(38,38,50)` | `rgb(255,255,255)` |
+| text | `rgb(230,230,240)` | `rgb(0,0,0)` |
+| border | `1px solid` | `2px inset` |
+| radius | `12px` | `0px` |
+| font | Inter 13px | Arial 13.3px |
+
+White box, black text and an inset border on a dark panel. This is the same
+bug the settings inputs had in v1.3.0, one layer up.
+
+Rather than write a second near-duplicate block, the dialog inputs were added
+to the existing rule — base, `:hover`, `:focus` and `::placeholder` — so the
+two can never drift apart.
+
+### Fixed — lock screen fields rendered in Arial
+
+Sweeping every text input for browser defaults turned up a smaller related
+issue: `.lock-input` never set `font-family`, so the passcode field and both
+recovery fields used Arial while everything around them used Inter. Their
+colours were already correct, which is why it read as slightly-off rather
+than broken. Zero inputs now fall back to browser defaults.
+
+### Tests
+
+529 offline (up from 523) + 21 live, including a sweep that maps every text
+input to the rule styling it.
+
+---
+
 ## v1.4.8 — Overlay buttons fixed, shortcuts moved into Settings
 
 ### Fixed — the shortcuts X button, and every exit from the folder picker

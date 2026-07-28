@@ -464,6 +464,8 @@ A complete feature reference for MangaDL.
 389. Text-input modal that distinguishes cancel from an empty value
 390. Keyboard shortcuts listed in Settings, not only in a popup
 391. Overlay buttons bind reliably (markup declared before the script)
+392. Dialog text inputs themed to match the rest of the app
+393. Lock screen and recovery fields use the app font
 
 ## Core engine
 
