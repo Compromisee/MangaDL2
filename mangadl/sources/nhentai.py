@@ -167,9 +167,15 @@ class NhentaiSource(Source):
         the real listing and pages with ``?page=N``.
         """
         page = max(1, int(page or 1))
-        if genre:
-            slug = str(genre).strip().lower().replace(" ", "-")
+        slug = str(genre or "").strip().lower().replace(" ", "-")
+        # Genre labels are merged across sources, so this source is regularly
+        # handed a tag it does not have ("action", "romance"). Those return a
+        # hard 404, which burned four retries and logged an error every time.
+        # Fall back to the search index, which does understand the word.
+        if slug and slug in self.GENRES:
             url = f"{SITE}/tag/{quote(slug)}/?page={page}"
+        elif slug:
+            url = f"{SITE}/search/?q={quote(slug)}&page={page}"
         else:
             url = f"{SITE}/popular?page={page}"
         try:

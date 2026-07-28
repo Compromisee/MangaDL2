@@ -427,6 +427,23 @@ A complete feature reference for MangaDL.
 352. Queue panel with per-job status and removable pending entries
 353. Stop one download without touching the others
 354. A cancelled job reports "stopped", not "failed"
+355. Multi-genre search: combine genres with AND or OR
+356. Genre chips toggle, building a selection instead of replacing it
+357. Picked genres shown as removable chips with a Clear button
+358. Genre intersection computed per source, never across sites
+359. Library keys normalised (scheme, www, query, fragment)
+360. Downloaded chapters matched by number, tolerating changed dates
+361. Downloaded pill and highlighted rows can no longer disagree
+362. URLs with tracking parameters no longer return zero chapters
+363. Manhwa18 genre browsing fixed (/webtoon-genre/)
+364. nhentai falls back to search for genres it does not have as tags
+365. Content fills the window instead of a fixed centred column
+366. Keyboard shortcuts with a searchable `?` help overlay
+367. Two-key navigation chords (g s, g d, g b, g l, g u, g ,)
+368. Shortcuts ignored while typing and while the lock screen is up
+369. Invert chapter selection, on visible rows only
+370. Copy title and link, with a clipboard fallback for WebView2
+371. Refresh the current view with `r`
 
 ## Core engine
 

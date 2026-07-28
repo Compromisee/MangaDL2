@@ -10,6 +10,7 @@ Nothing else in the codebase hardcodes a site.
 """
 
 import logging
+import re
 
 from .base import BASE_HEADERS, DEFAULT_UA, ScrapeError, Source
 from .hentaiakane import HentaiAkaneSource
@@ -56,7 +57,8 @@ __all__ = [
     "MangadassSource", "Manga18ClubSource", "HentaiAkaneSource",
     "NhentaiSource",
     "get_source", "source_for_url", "detect_source", "list_sources",
-    "search_all", "browse_all", "genres_all",
+    "search_all", "browse_all", "browse_multi", "genres_all",
+    "split_genres",
 ]
 
 
@@ -285,6 +287,99 @@ def browse_all(sort="Trending", genre=None, page=1, limit=12,
             break
         index += 1
     return merged
+
+
+def _result_identity(item):
+    """Stable identity for a search/browse result, for set operations."""
+    url = (item.get("url") or "").strip().lower().rstrip("/")
+    if url:
+        return url
+    return re.sub(r"\s+", " ", (item.get("title") or "").strip().lower())
+
+
+def split_genres(genre):
+    """Accept a genre as a list, or as a comma/pipe separated string."""
+    if genre is None:
+        return []
+    if isinstance(genre, (list, tuple, set)):
+        values = list(genre)
+    else:
+        values = re.split(r"[,|]", str(genre))
+    out = []
+    for value in values:
+        value = str(value or "").strip()
+        if value and value.lower() not in {v.lower() for v in out}:
+            out.append(value)
+    return out
+
+
+def browse_multi(genres, sort="Trending", page=1, limit=12, match="all",
+                 source_ids=None, use_config=True, interleave=True,
+                 **filters) -> list:
+    """Browse several genres at once.
+
+    No source accepts more than one genre per request, so each is fetched
+    separately and combined here:
+
+    * ``match="all"``  -- intersection, titles carrying **every** genre
+    * ``match="any"``  -- union, titles carrying at least one
+
+    Intersecting is done per source. Comparing across sources would be
+    wrong: the same title on two sites has two different URLs, so a title
+    listed under "Action" on one and "Romance" on another would look like a
+    match for "Action AND Romance" when neither site agrees it is both.
+    """
+    wanted = split_genres(genres)
+    if not wanted:
+        return browse_all(sort=sort, genre=None, page=page, limit=limit,
+                          source_ids=source_ids, use_config=use_config,
+                          interleave=interleave, **filters)
+    if len(wanted) == 1:
+        return browse_all(sort=sort, genre=wanted[0], page=page, limit=limit,
+                          source_ids=source_ids, use_config=use_config,
+                          interleave=interleave, **filters)
+
+    per_genre = []
+    for name in wanted:
+        rows = browse_all(sort=sort, genre=name, page=page,
+                          limit=max(limit, 40), source_ids=source_ids,
+                          use_config=use_config, interleave=False, **filters)
+        per_genre.append(rows)
+
+    # group by source so intersections only compare like with like
+    by_source = {}
+    for index, rows in enumerate(per_genre):
+        for row in rows:
+            bucket = by_source.setdefault(row.get("source", ""), {})
+            entry = bucket.setdefault(_result_identity(row),
+                                      {"row": row, "hits": set()})
+            entry["hits"].add(index)
+
+    need = len(wanted) if str(match).lower() != "any" else 1
+    kept = []
+    for bucket in by_source.values():
+        for entry in bucket.values():
+            if len(entry["hits"]) >= need:
+                row = dict(entry["row"])
+                row["matched_genres"] = [wanted[i] for i in sorted(entry["hits"])]
+                kept.append(row)
+
+    if interleave:
+        kept = _interleave_by_source(kept)
+    return kept[:limit] if limit else kept
+
+
+def _interleave_by_source(rows):
+    """Round-robin rows by source so one site cannot fill the first screen."""
+    buckets = {}
+    for row in rows:
+        buckets.setdefault(row.get("source", ""), []).append(row)
+    out = []
+    while any(buckets.values()):
+        for key in list(buckets):
+            if buckets[key]:
+                out.append(buckets[key].pop(0))
+    return out
 
 
 def genres_all(source_ids=None, use_config=True) -> list:

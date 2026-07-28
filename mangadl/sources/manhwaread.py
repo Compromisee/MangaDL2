@@ -268,7 +268,7 @@ class ManhwaReadSource(Source):
 
         # Only keep chapters belonging to THIS series: the page also lists
         # "latest updates" for unrelated titles.
-        series_path = re.sub(r"^https?://[^/]+", "", manga_url).rstrip("/")
+        series_path = self.series_path(manga_url)
         chapters, seen = [], set()
 
         for link in soup.select('a[href*="/chapter"]'):

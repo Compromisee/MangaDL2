@@ -92,6 +92,9 @@
     <span class="material-symbols-rounded">build</span><span class="rail-label">Tools</span>
   </button>
   <div class="rail-spacer"></div>
+  <button class="rail-btn" id="shortcutsBtn" title="Keyboard shortcuts (?)">
+    <span class="material-symbols-rounded">keyboard</span><span class="rail-label">Keys</span>
+  </button>
   <button class="rail-btn" data-view="settings" title="Settings">
     <span class="material-symbols-rounded">settings</span><span class="rail-label">Settings</span>
   </button>
@@ -129,6 +132,13 @@
           <span class="filter-label">Genre</span>
           <select id="fGenre">
             <option value="">Any genre</option>
+          </select>
+        </div>
+        <div class="filter-group" id="genreMatchGroup" hidden>
+          <span class="filter-label">Match</span>
+          <select id="fGenreMatch">
+            <option value="all">All genres</option>
+            <option value="any">Any genre</option>
           </select>
         </div>
         <div class="filter-group" id="browseSortGroup" hidden>
@@ -212,6 +222,11 @@
       <span class="material-symbols-rounded">local_fire_department</span>
       <span id="browseHeadText">Trending now</span>
       <div class="genre-chips" id="genreChips"></div>
+    </div>
+    <div class="picked-genres hidden" id="pickedGenres">
+      <span class="pg-label">Genres</span>
+      <div class="pg-list" id="pickedGenreList"></div>
+      <button class="btn btn-tonal btn-sm" id="clearGenresBtn">Clear</button>
     </div>
     <div class="results-state" id="searchState"></div>
     <div class="results-grid" id="searchResults"></div>
@@ -319,6 +334,7 @@
             <button class="text-btn" id="selectNoneBtn">None</button>
             <button class="text-btn" id="selectNewBtn">New only</button>
             <button class="text-btn" id="selectLatestBtn">Latest</button>
+            <button class="text-btn" id="selectInvertBtn" title="Invert selection">Invert</button>
           </div>
           <div class="range-row">
             <span class="material-symbols-rounded">tag</span>
@@ -899,5 +915,20 @@
 
 <script src="dropdown.js"></script>
 <script src="app.js"></script>
+<!-- =============================================== SHORTCUTS -->
+<div class="sc-overlay hidden" id="shortcutsOverlay">
+  <div class="sc-panel">
+    <div class="sc-head">
+      <span class="material-symbols-rounded">keyboard</span>
+      <h2>Keyboard shortcuts</h2>
+      <button class="icon-btn" id="shortcutsClose" title="Close">
+        <span class="material-symbols-rounded">close</span>
+      </button>
+    </div>
+    <div class="sc-body" id="shortcutsBody"></div>
+    <p class="sc-foot">Shortcuts are ignored while typing in a field.</p>
+  </div>
+</div>
+
 </body>
 </html>

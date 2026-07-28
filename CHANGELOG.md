@@ -7,6 +7,111 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.6 — Multi-genre search, full-width layout, shortcuts, count fixes
+
+### Fixed — "downloaded" on the manga page was wrong
+
+Three separate causes, all measured:
+
+* **URL variants missed the library.** The key only stripped a trailing
+  slash, so of seven realistic variants of one URL, **five missed** —
+  `http://` vs `https://`, a `www.` prefix, a `?query`, a `#fragment` and a
+  different case. Reaching a manga by a slightly different link made an
+  already-downloaded series look untouched. Keys are now normalised, and old
+  entries are found and migrated rather than orphaned.
+* **Chapter labels drift.** Several sources append the release date to the
+  label (`Chapter 02 21/02/2026`). When a site edits that date the recorded
+  name stops matching the listed one, so a downloaded chapter showed as
+  missing — *while still counting toward the total*, which is why the
+  "N downloaded" pill and the highlighted rows disagreed. Matching is now on
+  the chapter **number**, and the pill is derived from the same match.
+* **`get_library_entry` indexed the library with a raw URL**, which the
+  normalised keys broke. Replaced with a tolerant `library.get_entry()`.
+
+The stored entry keeps the URL as given — the key has no scheme, so using it
+for display would have produced links that do not open.
+
+### Fixed — URLs with tracking parameters returned zero chapters
+
+Four sources filtered chapter links by "does this href start with the series
+path?" and built that prefix from the **full** URL, query string included.
+Pasting a link with `?ref=` or `utm_*` made the prefix unmatchable, so every
+chapter was rejected and the manga silently showed **no chapters at all**.
+Measured on ManhwaRead: 36 chapters clean, **0** with `?ref=x`. Now a shared
+`Source.series_path()` strips the query and fragment; all three affected
+sources return identical counts with and without parameters.
+
+### Fixed — two genre endpoints that always 404'd
+
+* **Manhwa18** used `/genres/<slug>`; the site serves `/webtoon-genre/<slug>`
+  (`/genres/`, `/genre/` and `/manga-genre/` are all 404). Verified 24 cards
+  per genre, paginated.
+* **nhentai** was handed shared genre labels like "action" that are not
+  nhentai tags and 404, burning four retries and logging an error each time.
+  Unknown labels now fall back to its search index.
+
+A multi-source genre browse that previously logged four 404s now logs none.
+
+### Added — multi-genre search
+
+Genres combine instead of replacing each other:
+
+* Chips and the dropdown **toggle**, building a selection.
+* **Match: all / any** — intersection or union — appears once two are picked.
+* Picked genres show as removable chips with a Clear button.
+
+No source accepts more than one genre per request, so each is fetched
+separately and combined. The intersection is computed **per source**: the
+same title has different URLs on different sites, so pairing a hit from one
+with a hit from another would invent matches neither site agrees with.
+Verified the AND result is exactly the set intersection (22 of 40 each for
+Action ∩ Romance on MangaDex), and that every returned row lists both genres.
+
+With a text query the extra genres are applied to result tags instead.
+Results that carry no tags are kept — dropping them would silently hide whole
+sources that omit them.
+
+### Changed — content fills the window
+
+Views sat in a fixed 1080px column and centred themselves. Measured before:
+
+| viewport | grid | unused | columns |
+|---|---|---|---|
+| 1280px | 1080px | 11% | 6 |
+| 1920px | 1080px | **42%** | 6 |
+| 2560px | 1080px | **57%** | 6 |
+
+After, at 1920px: 1780px wide, **4% unused, 10 columns**. The caps are now
+ceilings rather than fixed widths, so wide screens gain columns while an
+ultra-wide monitor does not stretch covers into one unreadable row. Settings
+forms deliberately stay narrower so they remain scannable.
+
+### Added — keyboard shortcuts and QOL
+
+18 shortcuts with a `?` help overlay generated from the same list the handler
+uses, so the two cannot drift apart.
+
+* `/` focus search · `?` help · `Esc` close/clear · `r` refresh
+* `g` then `s d b l u ,` to navigate
+* On a manga: `a` all · `n` new only · `c` clear · `i` invert · `d` download
+  · `q` queue · `b` bookmark · `y` copy title and link
+
+Shortcuts are ignored while typing in any field and while the lock screen is
+up, and modifier combos are left to the browser. One subtlety: Chromium
+reports `Shift+/` as key `/` with `shiftKey` set, which matched "focus
+search" before the help overlay could ever open — shifted keys are now
+matched explicitly.
+
+Also added: **Invert** chapter selection (acting on visible rows only, like
+the other bulk buttons) and **copy title + link** with an `execCommand`
+fallback, because WebView2 does not always grant clipboard-write.
+
+### Tests
+
+464 offline (up from 424) + 21 live.
+
+---
+
 ## v1.4.5 — ManhwaRead bulk fix, download cart, concurrent downloads
 
 ### Fixed — ManhwaRead bulk downloads lost chapters

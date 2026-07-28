@@ -232,7 +232,7 @@ def test_relocation_rewrites_directory_and_outputs():
     url, new_root = _library_with_moved_folder()
     library.apply_relocations(library.find_moved_entries([new_root]))
 
-    entry = library.load_library()[url]
+    entry = library.get_entry(url)
     assert entry["directory"] == os.path.join(new_root, "Naruto")
     assert os.path.isdir(entry["directory"])
     assert all(os.path.isfile(p) for p in entry["outputs"])
@@ -260,9 +260,9 @@ def test_relocation_keeps_chapters_and_metadata():
     from mangadl import library
 
     url, new_root = _library_with_moved_folder()
-    before = library.load_library()[url]["chapters"]
+    before = library.get_entry(url)["chapters"]
     library.apply_relocations(library.find_moved_entries([new_root]))
-    after = library.load_library()[url]
+    after = library.get_entry(url)
     assert after["chapters"] == before
     assert after["title"] == "Naruto"
     assert after["source"] == "mangakatana"

@@ -317,10 +317,55 @@ function syncSourceUI() {
   if (offGroup) offGroup.hidden = !wcOnly;
 }
 
+/* Genres are multi-select: the dropdown adds to a picked list rather than
+   replacing it, so "Action + Romance" is expressible. The single `genre`
+   field is still sent for older call sites / one-genre searches. */
+let pickedGenres = [];
+
+function toggleGenre(name) {
+  const key = (name || "").trim();
+  if (!key) return;
+  const at = pickedGenres.findIndex((g) => g.toLowerCase() === key.toLowerCase());
+  if (at >= 0) pickedGenres.splice(at, 1);
+  else pickedGenres.push(key);
+  syncGenreUI();
+}
+
+function clearGenres() {
+  pickedGenres = [];
+  syncGenreUI();
+}
+
+function syncGenreUI() {
+  const sel = $("fGenre");
+  if (sel) sel.value = pickedGenres.length === 1 ? pickedGenres[0] : "";
+
+  const group = $("genreMatchGroup");
+  if (group) group.hidden = pickedGenres.length < 2;
+
+  const wrap = $("pickedGenres");
+  const list = $("pickedGenreList");
+  if (wrap && list) {
+    wrap.classList.toggle("hidden", pickedGenres.length === 0);
+    list.innerHTML = "";
+    pickedGenres.forEach((g) => {
+      const chip = document.createElement("button");
+      chip.className = "pg-chip";
+      chip.innerHTML = `${escapeHtml(g)}<span class="material-symbols-rounded">close</span>`;
+      chip.addEventListener("click", () => { toggleGenre(g); doSearch(true); });
+      list.appendChild(chip);
+    });
+  }
+  renderGenreChips();
+  updateFilterDot();
+}
+
 function getFilters() {
   return {
     source: $("fSource").value,
-    genre: $("fGenre") ? $("fGenre").value : "",
+    genres: pickedGenres.slice(),
+    genre_match: $("fGenreMatch") ? $("fGenreMatch").value : "all",
+    genre: pickedGenres.length ? pickedGenres[0] : "",
     browse_sort: $("fBrowseSort") ? $("fBrowseSort").value : "Trending",
     language: $("fLanguage") ? $("fLanguage").value : "en",
     sort: $("fSort").value,
@@ -335,7 +380,7 @@ function getFilters() {
 
 function filtersActive() {
   const f = getFilters();
-  return f.source !== "all" || f.genre !== "" || f.sort !== "Best Match"
+  return f.source !== "all" || pickedGenres.length > 0 || f.sort !== "Best Match"
       || f.order !== "Ascending" || f.status !== "Any" || f.type !== "Any"
       || f.official !== "Any";
 }
@@ -367,18 +412,15 @@ async function loadGenres() {
 function renderGenreChips() {
   const wrap = $("genreChips");
   if (!wrap) return;
-  const current = $("fGenre").value;
   wrap.innerHTML = "";
-  GENRES.slice(0, 10).forEach((g) => {
+  const active = new Set(pickedGenres.map((g) => g.toLowerCase()));
+  GENRES.slice(0, 12).forEach((g) => {
     const chip = document.createElement("button");
-    chip.className = "genre-chip" + (current === g.name ? " active" : "");
+    chip.className = "genre-chip" + (active.has(g.name.toLowerCase()) ? " active" : "");
     chip.textContent = g.name;
-    chip.addEventListener("click", () => {
-      $("fGenre").value = (current === g.name) ? "" : g.name;
-      updateFilterDot();
-      renderGenreChips();
-      doSearch(true);
-    });
+    // Chips add to the selection instead of replacing it, so several
+    // genres can be combined; clicking an active chip removes it.
+    chip.addEventListener("click", () => { toggleGenre(g.name); doSearch(true); });
     wrap.appendChild(chip);
   });
 }
@@ -416,9 +458,23 @@ $("fSource").addEventListener("change", async () => {
   doSearch(true);          // also refreshes the trending feed
 });
 
+/* The dropdown adds to the picked list rather than replacing it, so it can
+   be used repeatedly to build up a multi-genre query. */
 $("fGenre").addEventListener("change", () => {
-  updateFilterDot();
-  renderGenreChips();
+  const value = $("fGenre").value;
+  if (value && !pickedGenres.some((g) => g.toLowerCase() === value.toLowerCase())) {
+    pickedGenres.push(value);
+  } else if (!value) {
+    pickedGenres = [];
+  }
+  syncGenreUI();
+  doSearch(true);
+});
+
+$("fGenreMatch") && $("fGenreMatch").addEventListener("change", () => doSearch(true));
+
+$("clearGenresBtn") && $("clearGenresBtn").addEventListener("click", () => {
+  clearGenres();
   doSearch(true);
 });
 
@@ -426,8 +482,7 @@ $("fBrowseSort").addEventListener("change", () => doSearch(true));
 
 $("fReset").addEventListener("click", () => {
   $("fSource").value = "all";
-  $("fGenre").value = "";
-  renderGenreChips();
+  clearGenres();
   syncSourceUI();
   $("fSort").value = "Best Match";
   $("fStatus").value = "Any";
@@ -612,9 +667,10 @@ async function doSearch(rerun = false, append = false) {
   // trending / genre header
   const head = $("browseHead");
   if (browseMode) {
-    const g = filters.genre;
-    $("browseHeadText").textContent = g
-      ? `Top ${g} right now`
+    const picked = filters.genres || [];
+    const joiner = (filters.genre_match === "any") ? " or " : " + ";
+    $("browseHeadText").textContent = picked.length
+      ? `Top ${picked.join(joiner)} right now`
       : `${filters.browse_sort || "Trending"} now`;
     head.classList.remove("hidden");
     renderGenreChips();
@@ -628,6 +684,8 @@ async function doSearch(rerun = false, append = false) {
     res = await api().browse({
       source: filters.source,
       genre: filters.genre,
+      genres: filters.genres,
+      genre_match: filters.genre_match,
       sort: filters.browse_sort || "Trending",
       status: filters.status,
       page: browsePage,
@@ -2755,3 +2813,210 @@ $("railToggle") && $("railToggle").addEventListener("click", async () => {
   const res = await callApi("set_settings", { rail_expanded: open });
   if (res) state.settings = res;
 });
+
+/* ------------------------------------------------------------ QOL bits */
+
+/* Invert acts on the visible rows only, matching the other bulk buttons:
+   selecting chapters hidden by a filter would download rows you cannot see. */
+$("selectInvertBtn") && $("selectInvertBtn").addEventListener("click", () => {
+  const shown = visibleChapterIndices();
+  const next = new Set(state.selected);
+  shown.forEach((i) => (next.has(i) ? next.delete(i) : next.add(i)));
+  state.selected = next;
+  renderChapters();
+  updateDownloadButton();
+});
+
+/* Copy the current manga's title + link, handy for sharing or pasting back
+   into the search box. Uses the async clipboard API with a legacy fallback,
+   because WebView2 does not always grant clipboard-write. */
+async function copyText(text, okMessage) {
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      toast(okMessage || "Copied");
+      return true;
+    }
+  } catch (e) { /* fall through */ }
+  try {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(ta);
+    toast(ok ? (okMessage || "Copied") : "Could not copy");
+    return ok;
+  } catch (e) {
+    toast("Could not copy");
+    return false;
+  }
+}
+
+/* ================================================ keyboard shortcuts */
+
+/* A single global handler. Every entry is data so the help overlay is
+   generated from the same source of truth the handler uses -- the list can
+   never drift out of sync with what actually works. */
+const SHORTCUTS = [
+  { keys: ["/"], label: "Focus search", group: "General",
+    run: () => { showView("search"); const i = $("searchInput"); i.focus(); i.select(); } },
+  { keys: ["?"], label: "Show this help", group: "General",
+    run: () => toggleShortcuts() },
+  { keys: ["Escape"], label: "Close overlay / clear search", group: "General",
+    run: () => {
+      if (!$("shortcutsOverlay").classList.contains("hidden")) return toggleShortcuts(false);
+      const input = $("searchInput");
+      if (document.activeElement === input && input.value) { input.value = ""; return; }
+      if (document.activeElement) document.activeElement.blur();
+    } },
+  { keys: ["g", "s"], label: "Go to Search", group: "Navigation",
+    run: () => showView("search") },
+  { keys: ["g", "d"], label: "Go to Downloads", group: "Navigation",
+    run: () => showView("downloads") },
+  { keys: ["g", "b"], label: "Go to Bookmarks", group: "Navigation",
+    run: () => showView("bookmarks") },
+  { keys: ["g", "l"], label: "Go to Library", group: "Navigation",
+    run: () => showView("library") },
+  { keys: ["g", "u"], label: "Go to Updates", group: "Navigation",
+    run: () => showView("updates") },
+  { keys: ["g", ","], label: "Go to Settings", group: "Navigation",
+    run: () => showView("settings") },
+  { keys: ["a"], label: "Select all chapters", group: "Manga",
+    when: () => state.manga, run: () => $("selectAllBtn").click() },
+  { keys: ["n"], label: "Select undownloaded only", group: "Manga",
+    when: () => state.manga && $("selectNewBtn"),
+    run: () => $("selectNewBtn").click() },
+  { keys: ["c"], label: "Clear chapter selection", group: "Manga",
+    when: () => state.manga, run: () => $("selectNoneBtn").click() },
+  { keys: ["d"], label: "Download selection", group: "Manga",
+    when: () => state.manga && !$("downloadBtn").disabled,
+    run: () => $("downloadBtn").click() },
+  { keys: ["q"], label: "Add selection to queue", group: "Manga",
+    when: () => state.manga && $("addCartBtn") && !$("addCartBtn").disabled,
+    run: () => $("addCartBtn").click() },
+  { keys: ["b"], label: "Bookmark this manga", group: "Manga",
+    when: () => state.manga, run: () => $("bookmarkBtn").click() },
+  { keys: ["r"], label: "Refresh current view", group: "General",
+    run: () => refreshCurrentView() },
+  { keys: ["i"], label: "Invert chapter selection", group: "Manga",
+    when: () => state.manga && $("selectInvertBtn"),
+    run: () => $("selectInvertBtn").click() },
+  { keys: ["y"], label: "Copy title and link", group: "Manga",
+    when: () => state.manga,
+    run: () => copyText(`${state.manga.info.title} — ${state.manga.info.url}`,
+                        "Title and link copied") },
+];
+
+/* Typing must never trigger a shortcut. */
+function isTypingTarget(el) {
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = (el.tagName || "").toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select";
+}
+
+let chordPrefix = "";
+let chordTimer = null;
+
+function clearChord() {
+  chordPrefix = "";
+  if (chordTimer) { clearTimeout(chordTimer); chordTimer = null; }
+}
+
+function matchShortcut(key, shift) {
+  const combo = chordPrefix ? [chordPrefix, key] : [key];
+  return SHORTCUTS.find((sc) => {
+    if (sc.keys.length !== combo.length) return false;
+    if (!sc.keys.every((k, i) => k.toLowerCase() === combo[i].toLowerCase())) return false;
+    // Shift+/ is how "?" is typed on most layouts, and Chromium reports it
+    // as key "/" with shiftKey set -- which used to match "focus search"
+    // before the help overlay ever got a chance. Only accept an unshifted
+    // key unless the shortcut itself is a shifted character.
+    const needsShift = sc.keys.some((k) => k.length === 1 && k !== k.toLowerCase()) ||
+                       sc.keys.includes("?");
+    if (shift && !needsShift) return false;
+    return true;
+  });
+}
+
+document.addEventListener("keydown", (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  // The lock screen owns the keyboard while it is up.
+  const lock = $("lockOverlay");
+  if (lock && !lock.classList.contains("hidden")) return;
+  if (isTypingTarget(document.activeElement) && e.key !== "Escape") return;
+
+  const hit = matchShortcut(e.key, e.shiftKey);
+  if (hit) {
+    if (hit.when && !hit.when()) { clearChord(); return; }
+    e.preventDefault();
+    clearChord();
+    try { hit.run(); } catch (err) { /* never break typing */ }
+    return;
+  }
+
+  // Start (or restart) a two-key chord such as "g s".
+  const startsChord = !chordPrefix &&
+    SHORTCUTS.some((sc) => sc.keys.length === 2 &&
+                   sc.keys[0].toLowerCase() === e.key.toLowerCase());
+  if (startsChord) {
+    e.preventDefault();
+    chordPrefix = e.key;
+    chordTimer = setTimeout(clearChord, 1200);
+    return;
+  }
+  clearChord();
+});
+
+function keyCap(key) {
+  const pretty = { Escape: "Esc", " ": "Space" }[key] || key;
+  return `<kbd>${escapeHtml(pretty)}</kbd>`;
+}
+
+function renderShortcuts() {
+  const body = $("shortcutsBody");
+  if (!body) return;
+  const groups = {};
+  SHORTCUTS.forEach((sc) => (groups[sc.group] = groups[sc.group] || []).push(sc));
+  body.innerHTML = Object.entries(groups).map(([name, list]) => `
+    <div class="sc-group">
+      <h3>${escapeHtml(name)}</h3>
+      ${list.map((sc) => `
+        <div class="sc-row">
+          <span class="sc-keys">${sc.keys.map(keyCap).join(" ")}</span>
+          <span class="sc-label">${escapeHtml(sc.label)}</span>
+        </div>`).join("")}
+    </div>`).join("");
+}
+
+function toggleShortcuts(force) {
+  const el = $("shortcutsOverlay");
+  if (!el) return;
+  const show = force === undefined ? el.classList.contains("hidden") : force;
+  if (show) renderShortcuts();
+  el.classList.toggle("hidden", !show);
+}
+
+$("shortcutsBtn") && $("shortcutsBtn").addEventListener("click",
+  () => toggleShortcuts());
+$("shortcutsClose") && $("shortcutsClose").addEventListener("click",
+  () => toggleShortcuts(false));
+$("shortcutsOverlay") && $("shortcutsOverlay").addEventListener("click", (e) => {
+  if (e.target.id === "shortcutsOverlay") toggleShortcuts(false);
+});
+
+/* Re-run whatever the active view shows, so "r" always does something sane. */
+function refreshCurrentView() {
+  const active = document.querySelector(".view.active");
+  const id = active ? active.id.replace("view-", "") : "search";
+  if (id === "search") doSearch(true);
+  else if (id === "bookmarks") loadBookmarks();
+  else if (id === "library") loadLibrary();
+  else if (id === "updates") loadUpdates();
+  else if (id === "insights") loadInsights();
+  else if (id === "manga" && state.manga) openManga(state.manga.info.url);
+  toast("Refreshed");
+}

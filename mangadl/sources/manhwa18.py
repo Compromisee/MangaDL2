@@ -132,7 +132,10 @@ class Manhwa18Source(Source):
         order = self._SORTS.get(sort or "", "views")
         if genre:
             slug = str(genre).strip().lower().replace(" ", "-")
-            url = f"{SITE}/genres/{quote(slug)}?page={page}"
+            # Measured 2026-07: /genres/, /genre/ and /manga-genre/ are all
+            # 404 here. The site uses the singular, prefixed form, which
+            # returns 24 cards per genre and pages with ?page=N.
+            url = f"{SITE}/webtoon-genre/{quote(slug)}?page={page}"
         else:
             url = f"{SITE}/webtoons/{page}?orderby={order}"
         try:
@@ -181,7 +184,7 @@ class Manhwa18Source(Source):
             description = text or None
 
         tags = ["Adult"]
-        for link in soup.select('a[href*="/genres/"], a[href*="/genre/"]'):
+        for link in soup.select('a[href*="/webtoon-genre/"], a[href*="/genres/"], a[href*="/genre/"]'):
             label = link.get_text(strip=True)
             if label and label not in tags:
                 tags.append(label)
@@ -219,7 +222,7 @@ class Manhwa18Source(Source):
         soup = BeautifulSoup(response.content, "html.parser")
 
         # Restrict to this series: the page also advertises other titles.
-        series_path = re.sub(r"^https?://[^/]+", "", manga_url).rstrip("/")
+        series_path = self.series_path(manga_url)
         chapters, seen = [], set()
 
         for link in soup.select('a[href*="/chapter-"]'):

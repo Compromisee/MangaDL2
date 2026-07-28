@@ -262,7 +262,7 @@ class Manga18ClubSource(Source):
         response = self.fetch(manga_url)
         soup = BeautifulSoup(response.content, "html.parser")
 
-        series_path = re.sub(r"^https?://[^/]+", "", manga_url).rstrip("/")
+        series_path = self.series_path(manga_url)
         chapters, seen = [], set()
 
         for link in soup.select('.chapter_box a[href*="/chap"]'):

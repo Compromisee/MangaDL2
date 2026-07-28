@@ -24,6 +24,7 @@ Contracts the download engine relies on
 import logging
 import os
 import random
+import re
 import time
 
 import requests
@@ -128,6 +129,21 @@ class Source:
         if url and not url.startswith(("http://", "https://")):
             url = "https://" + url
         return url
+
+    @staticmethod
+    def series_path(manga_url: str) -> str:
+        """Path part of a series URL, without host, query or fragment.
+
+        Sources that filter chapter links by "does this href start with the
+        series path?" must not include a query string in that prefix. Pasting
+        a link with a tracking parameter -- ``?ref=x``, ``utm_*``, a share id
+        -- made the prefix unmatchable, so every chapter was rejected and the
+        manga silently showed **zero chapters**. Measured on ManhwaRead: 36
+        chapters for the clean URL, 0 with ``?ref=x`` appended.
+        """
+        url = (manga_url or "").strip()
+        url = url.split("#", 1)[0].split("?", 1)[0]
+        return re.sub(r"^https?://[^/]+", "", url).rstrip("/")
 
     # ------------------------------------------------------------- http
 

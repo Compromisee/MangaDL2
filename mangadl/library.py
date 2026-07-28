@@ -9,6 +9,7 @@ can highlight what has already been downloaded.
 
 import json
 import os
+import re
 import threading
 import time
 
@@ -24,7 +25,53 @@ def _now() -> str:
 
 
 def _key(url: str) -> str:
-    return (url or "").strip().rstrip("/")
+    """Canonical library key for a manga URL.
+
+    Previously this only stripped a trailing slash, so the same manga reached
+    under a slightly different URL got its own entry and looked as though
+    nothing had been downloaded. Measured: of seven realistic variants of one
+    URL, five missed -- ``http://`` vs ``https://``, a ``www.`` prefix, a
+    ``?query``, a ``#fragment`` and a different case.
+
+    Scheme, ``www.`` and host case are normalised away, and the query and
+    fragment are dropped. The path keeps its case because many sites use
+    case-sensitive slugs.
+    """
+    url = (url or "").strip()
+    if not url:
+        return ""
+
+    # strip fragment then query -- neither identifies the series
+    url = url.split("#", 1)[0].split("?", 1)[0]
+
+    match = re.match(r"^(?:https?://)?(?:www\.)?([^/]+)(/.*)?$", url, re.I)
+    if not match:
+        return url.rstrip("/")
+    host, path = match.groups()
+    return (host.lower() + (path or "")).rstrip("/")
+
+
+def _chapter_key(name) -> str:
+    """Identity for a chapter, tolerant of volatile labels.
+
+    Chapter names are not stable: several sources append the release date to
+    the label ("Chapter 02 21/02/2026"), so when a site edits that date the
+    recorded name stops matching the listed one and a downloaded chapter
+    silently shows as missing -- while still being counted in the total, so
+    the pill and the highlighted rows disagreed.
+
+    The chapter *number* is the stable part, so it is used when one can be
+    parsed. Falls back to the normalised full name otherwise.
+    """
+    from .utils import chapter_number, format_chapter_number
+
+    text = str(name or "").strip()
+    if not text:
+        return ""
+    number = chapter_number(text)
+    if number is not None and number >= 0:
+        return "#" + format_chapter_number(number)
+    return re.sub(r"\s+", " ", text).lower()
 
 
 def _load(path, default):
@@ -52,16 +99,59 @@ def load_library() -> dict:
         return _load(LIBRARY_PATH, {})
 
 
+def get_entry(url):
+    """One library entry, tolerating URL variants and legacy keys.
+
+    Callers must not index ``load_library()`` with a raw URL: keys are
+    normalised (scheme, ``www.``, query and fragment removed), so a raw URL
+    can miss an entry that is definitely there.
+    """
+    with _lock:
+        return _find_entry(_load(LIBRARY_PATH, {}), url)
+
+
+def _find_entry(lib, url):
+    """Look up a manga, tolerating keys written by older versions.
+
+    Entries saved before the key was normalised still carry the raw URL, so a
+    direct hit is tried first and a normalised comparison second. Without this
+    every pre-existing library entry would look empty after the upgrade.
+    """
+    key = _key(url)
+    entry = lib.get(key)
+    if entry is not None:
+        return entry
+    raw = (url or "").strip().rstrip("/")
+    entry = lib.get(raw)
+    if entry is not None:
+        return entry
+    for existing, value in lib.items():
+        if _key(existing) == key:
+            return value
+    return None
+
+
 def record_chapter(url, title, chapter_name, pages=0, cover=None, directory=None,
                    source=None):
     """Remember that a chapter of a manga has been downloaded."""
     with _lock:
         lib = _load(LIBRARY_PATH, {})
         key = _key(url)
+        existing = _find_entry(lib, url)
+        if existing is not None:
+            lib[key] = existing          # migrate to the canonical key
+            for old_key in [k for k in list(lib) if k != key and _key(k) == key]:
+                del lib[old_key]
+        # The dict key is the normalised form, but the entry keeps the URL as
+        # given: it is what the UI links to and what relocation reports, and
+        # a normalised key has no scheme, so it would not open in a browser.
         entry = lib.setdefault(key, {
-            "title": title, "url": key, "cover": cover, "source": source,
+            "title": title, "url": (url or "").strip() or key,
+            "cover": cover, "source": source,
             "directory": directory, "chapters": {}, "added": _now(),
         })
+        if not entry.get("url"):
+            entry["url"] = (url or "").strip() or key
         entry["title"] = title or entry.get("title")
         if cover:
             entry["cover"] = cover
@@ -90,8 +180,40 @@ def record_outputs(url, outputs):
 def downloaded_chapters(url) -> set:
     """Chapter names already downloaded for this manga."""
     with _lock:
-        entry = _load(LIBRARY_PATH, {}).get(_key(url))
+        entry = _find_entry(_load(LIBRARY_PATH, {}), url)
         return set(entry["chapters"].keys()) if entry else set()
+
+
+def downloaded_keys(url) -> set:
+    """Stable identities of the downloaded chapters.
+
+    Use this rather than :func:`downloaded_chapters` when matching against a
+    freshly scraped chapter list: the recorded label may embed a release date
+    the site has since edited.
+    """
+    with _lock:
+        entry = _find_entry(_load(LIBRARY_PATH, {}), url)
+        if not entry:
+            return set()
+        return {_chapter_key(name) for name in entry["chapters"]}
+
+
+def match_downloaded(url, chapters) -> list:
+    """Names from ``chapters`` that have already been downloaded.
+
+    Matching is done on the chapter number so a changed date suffix does not
+    make a downloaded chapter look missing. This is what the manga page uses,
+    so the "N downloaded" pill and the highlighted rows always agree.
+    """
+    keys = downloaded_keys(url)
+    if not keys:
+        return []
+    names = []
+    for chapter in chapters or []:
+        name = chapter.get("name") if isinstance(chapter, dict) else chapter
+        if name and _chapter_key(name) in keys:
+            names.append(name)
+    return names
 
 
 def remove_entry(url) -> bool:

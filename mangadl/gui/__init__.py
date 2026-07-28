@@ -15,8 +15,9 @@ import time
 import traceback
 
 from ..downloader import DownloadEngine, DownloadOptions
-from ..sources import (DEFAULT_SOURCE, SOURCES, browse_all, detect_source,
-                       genres_all, get_source, list_sources, search_all,
+from ..sources import (DEFAULT_SOURCE, SOURCES, browse_all, browse_multi,
+                       detect_source, genres_all, get_source, list_sources,
+                       search_all, split_genres,
                        source_for_url)
 from .. import config as appconfig
 from .. import features
@@ -103,6 +104,29 @@ def _dialog_types():
     if fd is not None:  # pywebview >= 5.1 style
         return fd.FOLDER, fd.OPEN, fd.SAVE
     return webview.FOLDER_DIALOG, webview.OPEN_DIALOG, webview.SAVE_DIALOG
+
+
+def _narrow_by_genres(results, extra_genres, match="all"):
+    """Filter search hits by additional genres using their tags.
+
+    Only applies to results that actually carry tags. A source that does not
+    report them would otherwise vanish entirely from a multi-genre search.
+    """
+    wanted = [g.strip().lower() for g in extra_genres if g and g.strip()]
+    if not wanted:
+        return results
+    need_all = str(match).lower() != "any"
+
+    kept = []
+    for item in results:
+        tags = {str(t).strip().lower() for t in (item.get("tags") or [])}
+        if not tags:
+            kept.append(item)          # unknown, not disqualified
+            continue
+        hits = [g for g in wanted if g in tags]
+        if (len(hits) == len(wanted)) if need_all else bool(hits):
+            kept.append(item)
+    return kept
 
 
 class Api:
@@ -579,7 +603,9 @@ class Api:
         try:
             f = filters or {}
             source_id = (f.get("source") or "").strip()
-            genre = (f.get("genre") or "").strip()
+            genres = split_genres(f.get("genres") or f.get("genre"))
+            genre = genres[0] if genres else ""
+            match = (f.get("genre_match") or "all").lower()
             query = (query or "").strip()
 
             # pasting a URL jumps straight to that manga
@@ -589,7 +615,8 @@ class Api:
             if not query:
                 return self.browse({
                     "source": source_id,
-                    "genre": genre,
+                    "genres": genres,
+                    "genre_match": match,
                     "sort": f.get("browse_sort") or "Trending",
                     "page": f.get("page", 1),
                     "status": f.get("status"),
@@ -614,6 +641,13 @@ class Api:
             else:
                 results = self._source(source_id).search(query, **kwargs)
 
+            # Sources take one genre per request, so when several are asked
+            # for alongside a text query the rest are applied to the tags on
+            # the results. Items that do not report tags are kept: dropping
+            # them would silently hide whole sources that omit them.
+            if len(genres) > 1:
+                results = _narrow_by_genres(results, genres[1:], match)
+
             results = features.apply_filters(results)
             if settings.get("dedupe_results", True) and source_id in ("", "all"):
                 ranks = {row["id"]: row.get("rank", 100)
@@ -631,7 +665,10 @@ class Api:
         try:
             o = options or {}
             source_id = (o.get("source") or "").strip()
-            genre = (o.get("genre") or "").strip() or None
+            # A genre may now be a list, or a comma separated string.
+            genres = split_genres(o.get("genres") or o.get("genre"))
+            genre = genres[0] if genres else None
+            match = (o.get("genre_match") or "all").lower()
             sort = o.get("sort") or "Trending"
             page = max(1, int(o.get("page", 1) or 1))
             settings = load_settings()
@@ -641,18 +678,30 @@ class Api:
                 extra["status"] = o["status"]
 
             if source_id in ("", "all"):
-                results = browse_all(
-                    sort=sort, genre=genre, page=page, limit=12,
-                    interleave=bool(settings.get("interleave_browse", True)),
-                    **extra)
+                if len(genres) > 1:
+                    results = browse_multi(
+                        genres, sort=sort, page=page, limit=24, match=match,
+                        interleave=bool(settings.get("interleave_browse", True)),
+                        **extra)
+                else:
+                    results = browse_all(
+                        sort=sort, genre=genre, page=page, limit=12,
+                        interleave=bool(settings.get("interleave_browse", True)),
+                        **extra)
             else:
                 source = self._source(source_id)
                 if not getattr(source, "supports_browse", False):
                     return {"ok": True, "results": [], "browse": True,
                             "message": f"{source.name} cannot list trending titles"}
-                # a per-source genre id may differ from the shared label
-                results = source.browse(sort=sort, genre=genre, page=page,
-                                        limit=32, **extra)
+                if len(genres) > 1:
+                    results = browse_multi(
+                        genres, sort=sort, page=page, limit=32, match=match,
+                        source_ids=[source_id], use_config=False,
+                        interleave=False, **extra)
+                else:
+                    # a per-source genre id may differ from the shared label
+                    results = source.browse(sort=sort, genre=genre, page=page,
+                                            limit=32, **extra)
 
             results = features.apply_filters(results)
             if settings.get("dedupe_results", True) and source_id in ("", "all"):
@@ -661,7 +710,8 @@ class Api:
                 results = features.dedupe(results, ranks)
 
             return {"ok": True, "results": results, "browse": True,
-                    "genre": genre, "sort": sort, "page": page}
+                    "genre": genre, "genres": genres, "genre_match": match,
+                    "sort": sort, "page": page}
         except Exception as e:
             logger.exception("Browse failed")
             return {"ok": False, "error": str(e)}
@@ -687,7 +737,11 @@ class Api:
                 "chapters": chapters,
                 "source": source.id,
                 "source_name": source.name,
-                "downloaded": sorted(library.downloaded_chapters(url)),
+                # Match on chapter number, not the raw label: several
+                # sources append a release date that the site later edits,
+                # which made downloaded chapters show as missing while still
+                # counting toward the total.
+                "downloaded": sorted(library.match_downloaded(url, chapters)),
                 "bookmarked": library.is_bookmarked(url),
                 "watched": tracking.is_watched(url),
                 "read": sorted(tracking.read_chapters(url)),
@@ -738,7 +792,9 @@ class Api:
         return {"ok": True, "items": items, "path": library.LIBRARY_PATH}
 
     def get_library_entry(self, url: str):
-        entry = library.load_library().get(url.rstrip("/"))
+        # Must go through the tolerant lookup: library keys are normalised,
+        # so a raw URL (or one carrying ?query) can miss a real entry.
+        entry = library.get_entry(url)
         if not entry:
             return {"ok": False, "error": "Not in library"}
         chapters = [

@@ -214,7 +214,7 @@ class MangadassSource(Source):
         soup = BeautifulSoup(response.content, "html.parser")
 
         # Restrict to this series -- the page advertises other titles too.
-        series_path = re.sub(r"^https?://[^/]+", "", manga_url).rstrip("/")
+        series_path = self.series_path(manga_url)
         chapters, seen = [], set()
 
         for link in soup.select('a[href*="/chapter-"]'):
