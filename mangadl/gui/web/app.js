@@ -212,6 +212,9 @@ function showView(name) {
     b.classList.toggle("active", b.dataset.view === name));
   $("view-" + name).classList.add("active");
   if (name === "downloads") renderCart();
+  // The Settings card lists the same shortcuts as the overlay, generated
+  // from the same array, so the two cannot fall out of sync.
+  if (name === "settings") renderShortcuts($("settingsShortcuts"));
   if (name === "bookmarks") loadBookmarks();
   if (name === "library") loadLibrary();
   if (name === "updates") loadUpdates();
@@ -3297,8 +3300,8 @@ function keyCap(key) {
   return `<kbd>${escapeHtml(pretty)}</kbd>`;
 }
 
-function renderShortcuts() {
-  const body = $("shortcutsBody");
+function renderShortcuts(target) {
+  const body = target || $("shortcutsBody");
   if (!body) return;
   const groups = {};
   SHORTCUTS.forEach((sc) => (groups[sc.group] = groups[sc.group] || []).push(sc));
@@ -3321,8 +3324,6 @@ function toggleShortcuts(force) {
   el.classList.toggle("hidden", !show);
 }
 
-$("shortcutsBtn") && $("shortcutsBtn").addEventListener("click",
-  () => toggleShortcuts());
 $("shortcutsClose") && $("shortcutsClose").addEventListener("click",
   () => toggleShortcuts(false));
 $("shortcutsOverlay") && $("shortcutsOverlay").addEventListener("click", (e) => {

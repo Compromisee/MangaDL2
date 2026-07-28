@@ -328,7 +328,7 @@ def test_shortcut_targets_exist_in_the_markup():
     html = read(os.path.join(WEB, "index.html"))
     for node in ("searchInput", "selectAllBtn", "selectNoneBtn", "selectNewBtn",
                  "selectInvertBtn", "downloadBtn", "addCartBtn", "bookmarkBtn",
-                 "shortcutsOverlay", "shortcutsBody", "shortcutsBtn"):
+                 "shortcutsOverlay", "shortcutsBody", "settingsShortcuts"):
         assert f'id="{node}"' in html, node
 
 

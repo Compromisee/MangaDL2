@@ -2480,3 +2480,10 @@ kbd {
 
 .modal-input { width: 100%; margin-top: 12px; }
 .modal-input.hidden { display: none; }
+
+/* Explanatory line under a settings card title. */
+.settings-note { margin: -4px 0 14px; }
+
+/* The shortcut list is reused verbatim inside a settings card, where it
+   needs no overlay chrome of its own. */
+.settings-card .sc-body { margin-top: 4px; }

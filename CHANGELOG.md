@@ -7,6 +7,44 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.8 — Overlay buttons fixed, shortcuts moved into Settings
+
+### Fixed — the shortcuts X button, and every exit from the folder picker
+
+`app.js` binds its listeners as it runs. Both overlays were declared *after*
+the `<script>` tag, so at bind time `$("shortcutsClose")` and
+`$("fpCancel")` were `null` and no handler was ever attached. There was no
+console error, and the buttons were fully hit-testable, which is why this
+looked like a styling or z-index problem rather than a missing listener.
+
+Confirmed with CDP `DOMDebugger.getEventListeners`:
+
+    shortcutsClose   listeners=NONE
+    fpCancel         listeners=NONE
+    modalCancel      listeners=['click']     <- declared above the script
+
+The reported X button was the visible half of it. The folder picker was
+worse: **Cancel, "Just bookmark it", Create and the backdrop were all dead**,
+so once that dialog opened there was no way out of it. Both overlays now sit
+above the script tags; all five exits verified working.
+
+A test now enforces the rule generally — every id that `app.js` attaches a
+listener to must appear before the script — so a future overlay cannot
+reintroduce this.
+
+### Changed — shortcuts live in Settings
+
+The full list is rendered into a **Keyboard shortcuts** card in Settings,
+from the same array the key handler uses, so the two cannot drift apart.
+Pressing `?` still opens the quick overlay from anywhere. The rail's "Keys"
+button was removed, since it was a second home for the same thing.
+
+### Tests
+
+523 offline (up from 517) + 21 live.
+
+---
+
 ## v1.4.7 — Bookmark folders, type filter, cover and corner fixes
 
 ### Fixed — covers missing in Bookmarks and Library

@@ -462,6 +462,8 @@ A complete feature reference for MangaDL.
 387. Folder cover is the first book added to it
 388. Deleting a folder keeps its bookmarks, moving them back to the root
 389. Text-input modal that distinguishes cancel from an empty value
+390. Keyboard shortcuts listed in Settings, not only in a popup
+391. Overlay buttons bind reliably (markup declared before the script)
 
 ## Core engine
 

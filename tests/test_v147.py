@@ -446,3 +446,71 @@ def test_new_toggles_match_the_normalised_switch_markup():
     assert '<span class="track">' not in html
     for node in ("setAdvanced", "setStrictRange"):
         assert f'id="{node}"><span></span>' in html, node
+
+
+# ============================== v1.4.8: overlay buttons / shortcuts in settings
+
+
+def test_overlays_are_declared_before_the_script():
+    """app.js binds its listeners as it runs, so any element declared after
+    the <script> tag is null at that moment and silently gets no handler.
+
+    That is exactly what broke the shortcuts X and every exit from the
+    folder picker -- verified with CDP: those buttons had zero registered
+    listeners while #modalCancel, which sits above the script, had one.
+    """
+    html = web("index.html")
+    script = html.index('<script src="app.js">')
+    for node in ("shortcutsOverlay", "shortcutsClose", "shortcutsBody",
+                 "folderPicker", "fpCancel", "fpRoot", "fpCreate", "fpList"):
+        assert html.index(f'id="{node}"') < script, f"{node} declared after app.js"
+
+
+def test_every_interactive_id_precedes_the_script():
+    """Generalises the rule above so a future overlay cannot repeat it."""
+    import re
+
+    html = web("index.html")
+    script = html.index('<script src="app.js">')
+    js = web("app.js")
+
+    # ids app.js binds a listener to directly
+    bound = set(re.findall(r'\$\("([A-Za-z0-9_]+)"\)\s*&&\s*\$\("\1"\)\.addEventListener', js))
+    bound |= set(re.findall(r'\$\("([A-Za-z0-9_]+)"\)\.addEventListener', js))
+
+    late = [i for i in bound
+            if f'id="{i}"' in html and html.index(f'id="{i}"') > script]
+    assert late == [], f"listeners bound to elements declared after app.js: {late}"
+
+
+def test_folder_picker_has_working_exits():
+    """All four ways out were dead, so the dialog was inescapable."""
+    js = web("app.js")
+    for handler in ('$("fpCancel")', '$("fpRoot")', '$("fpCreate")',
+                    '$("folderPicker")'):
+        assert f'{handler} && {handler}.addEventListener' in js, handler
+
+
+def test_shortcuts_render_into_a_given_container():
+    """The Settings card and the overlay share one generator, so the list
+    cannot drift between the two."""
+    js = web("app.js")
+    assert "function renderShortcuts(target)" in js
+    assert 'renderShortcuts($("settingsShortcuts"))' in js
+
+
+def test_settings_has_a_shortcuts_card():
+    html = web("index.html")
+    assert 'id="settingsShortcuts"' in html
+    # inside the settings view, not floating elsewhere
+    view = html.index('id="view-settings"')
+    assert html.index('id="settingsShortcuts"') > view
+
+
+def test_rail_shortcuts_button_is_gone():
+    """Shortcuts live in Settings now; the rail entry was a second home for
+    the same thing. "?" still opens the quick overlay."""
+    html, js = web("index.html"), web("app.js")
+    assert 'id="shortcutsBtn"' not in html
+    assert "shortcutsBtn" not in js
+    assert '{ keys: ["?"]' in js

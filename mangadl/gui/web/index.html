@@ -92,9 +92,6 @@
     <span class="material-symbols-rounded">build</span><span class="rail-label">Tools</span>
   </button>
   <div class="rail-spacer"></div>
-  <button class="rail-btn" id="shortcutsBtn" title="Keyboard shortcuts (?)">
-    <span class="material-symbols-rounded">keyboard</span><span class="rail-label">Keys</span>
-  </button>
   <button class="rail-btn" data-view="settings" title="Settings">
     <span class="material-symbols-rounded">settings</span><span class="rail-label">Settings</span>
   </button>
@@ -920,6 +917,17 @@
       </div>
     </div>
 
+    <div class="card settings-card">
+      <div class="card-title">
+        <span class="material-symbols-rounded">keyboard</span> Keyboard shortcuts
+      </div>
+      <p class="hint settings-note">
+        Shortcuts are ignored while you are typing in a field, and while the
+        lock screen is up.
+      </p>
+      <div class="sc-body" id="settingsShortcuts"></div>
+    </div>
+
     <div class="settings-save">
       <button class="btn btn-filled" id="saveSettingsBtn">
         <span class="material-symbols-rounded">save</span> Save settings
@@ -957,8 +965,6 @@
   </div>
 </div>
 
-<script src="dropdown.js"></script>
-<script src="app.js"></script>
 <!-- ============================================ FOLDER PICKER -->
 <div class="fp-overlay hidden" id="folderPicker">
   <div class="fp-panel">
@@ -993,5 +999,7 @@
   </div>
 </div>
 
+<script src="dropdown.js"></script>
+<script src="app.js"></script>
 </body>
 </html>
