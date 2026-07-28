@@ -7,6 +7,59 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.3 — Aggregator fix, chapter-count filters, Webtoons and nhentai
+
+### Fixed — multi-source search silently lost sources
+
+Searching a popular title with several sources enabled returned far fewer
+results than it should, and appeared to work only with a single source on.
+
+Mangakatana soft-throttles by answering **HTTP 200 with a zero-length body**
+instead of a 429. Measured: roughly 60% of rapid repeat searches came back
+empty, while an immediate retry succeeded. `fetch()` treated that as success,
+so the source contributed nothing and the aggregate looked broken. Empty
+bodies are now retried with backoff — measured 6/6 successful searches after
+the fix, against ~40% before.
+
+This was a shared bug in the base class, so every source benefits. It also
+explains the Natomanga symptoms: its searches and covers were fine in
+isolation but dropped out under aggregate load.
+
+Duplicate collapsing already keeps the highest-ranked source's copy and lists
+the rest under `also_on`, which is now visible because the sources actually
+report in. "One Piece" went from 25–29 unstable results to 54 across six
+sources.
+
+### Added — chapter-count filters
+
+`min_chapters` was stored in settings but never applied. Both a minimum and a
+maximum now work, in Settings under Content filters. Counts are read from an
+explicit count, `last_chapter`, or the newest chapter label. Series whose
+count cannot be determined are never filtered out — judging an unknown count
+would make whole sources disappear from every filtered search.
+
+### Added — two sources
+
+- **Webtoons** (`webtoons`) — official site. Episodes are paged, and the
+  viewer keeps real page URLs on `data-url` rather than `src`. Its CDN is
+  hotlink-protected (403 without a Referer, 200 with), so chapters carry one.
+- **nhentai** (`nhentai`) — **adult only**, tagged `pornographic` so Safe
+  mode removes it and it shows an 18+ chip. Thumbnails are `t`-suffixed; the
+  full page is the same path without it (21 KB vs 464 KB).
+
+Both verified downloading real CBZs with zero empty pages.
+
+### Not added
+
+**HentaiRead** sits behind a Cloudflare interstitial (HTTP 403, "Just a
+moment"). It would need FlareSolverr running to work at all, so shipping it
+as a normal source would have produced a site that silently fails for most
+people.
+
+### Testing
+
+- 355 offline tests plus 21 live-site tests
+
 ## v1.4.2 — Search fixed, square corners, thinner rail, better lock
 
 ### Fixed — search did nothing

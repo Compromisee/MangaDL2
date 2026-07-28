@@ -390,6 +390,20 @@ A complete feature reference for MangaDL.
 318. Enter reliably submits a search
 319. Themed suggestion list replacing the native datalist
 
+## Aggregator fix, chapter limits and two more sources
+
+320. Empty-but-200 throttle responses are retried instead of accepted
+321. Multi-source search no longer loses sources silently
+322. Minimum chapter-count filter
+323. Maximum chapter-count filter
+324. Chapter counts read from count, last_chapter or the newest label
+325. Unknown chapter counts are never filtered out
+326. Webtoons source with episode paging
+327. Webtoons per-chapter Referer for its hotlink-protected CDN
+328. nhentai source, flagged adult-only
+329. nhentai thumbnails resolved to full-size pages
+330. Nine sources total
+
 ## Core engine
 
 - Download any series from a supported site by URL

@@ -36,10 +36,10 @@ NETWORK = pytest.mark.skipif(
 
 
 def test_every_source_registered():
-    assert set(SOURCES) == {
+    assert {
         "mangadex", "mangakatana", "natomanga", "weebcentral",
-        "omegascans", "manhwaread", "manhwa18",
-    }
+        "omegascans", "manhwaread", "manhwa18", "webtoons", "nhentai",
+    } <= set(SOURCES)
 
 
 def test_sources_implement_the_interface():

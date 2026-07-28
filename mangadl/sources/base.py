@@ -141,6 +141,24 @@ class Source:
                     continue
 
                 response.raise_for_status()
+
+                # Some sites soft-throttle by answering HTTP 200 with an
+                # EMPTY body instead of a 429. Measured on Mangakatana:
+                # roughly 60% of rapid repeat searches came back 200 with
+                # zero bytes, while an immediate retry succeeded. Treating
+                # that as success is what made multi-source search look
+                # broken -- the source silently contributed no results.
+                if not response.content and self._expects_body(response):
+                    if attempt < max_retries - 1:
+                        wait = self._backoff(attempt, base=0.8, cap=8.0)
+                        logger.warning(
+                            "[%s] empty body with HTTP %s, retrying in %.1fs",
+                            self.id, response.status_code, wait)
+                        time.sleep(wait)
+                        continue
+                    last_exc = ScrapeError("empty response body")
+                    break
+
                 return response
 
             except requests.exceptions.RequestException as e:
@@ -162,6 +180,17 @@ class Source:
             return response.json()
         except ValueError as e:
             raise ScrapeError(f"Invalid JSON from {url}: {e}")
+
+    @staticmethod
+    def _expects_body(response):
+        """True when an empty body means the request really failed.
+
+        204/304 legitimately carry no body, and HEAD never does.
+        """
+        if response.status_code in (204, 304):
+            return False
+        return (response.request is None
+                or getattr(response.request, "method", "GET") != "HEAD")
 
     @staticmethod
     def _retry_after(response):

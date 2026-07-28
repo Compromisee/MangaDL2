@@ -258,7 +258,8 @@ DEFAULT_FILTERS = {
     "blocked_tags": [],        # hide results carrying these tags
     "blocked_titles": [],      # substring matches on the title
     "blocked_authors": [],
-    "min_chapters": 0,
+    "min_chapters": 0,          # hide series with fewer chapters than this
+    "max_chapters": 0,          # 0 = no upper limit
     "hide_no_cover": False,
     "safe_mode": False,        # drop adult ratings where the source reports them
 }
@@ -278,6 +279,32 @@ def set_filters(**changes):
         return filters
 
 
+def _chapter_count(item):
+    """Best-effort chapter count for a search result, or None if unknown.
+
+    Different sources expose this differently: an explicit count, a
+    ``last_chapter`` number, or only a "Chapter 123" label on the newest
+    release. None means "do not judge this item".
+    """
+    for key in ("chapter_count", "chapters", "total_chapters", "last_chapter"):
+        value = item.get(key)
+        if isinstance(value, (int, float)) and value > 0:
+            return float(value)
+        if isinstance(value, list):
+            return float(len(value))
+        if isinstance(value, str) and value.strip():
+            match = re.search(r"(\d+(?:\.\d+)?)", value)
+            if match:
+                return float(match.group(1))
+
+    latest = item.get("latest")
+    if isinstance(latest, str) and latest.strip():
+        match = re.search(r"(\d+(?:\.\d+)?)", latest)
+        if match:
+            return float(match.group(1))
+    return None
+
+
 def apply_filters(results, filters=None):
     """Drop results the user has chosen to hide."""
     filters = filters or get_filters()
@@ -287,8 +314,27 @@ def apply_filters(results, filters=None):
     safe = filters.get("safe_mode")
     adult = {"pornographic", "erotica", "smut", "hentai", "adult"}
 
+    try:
+        min_chapters = int(filters.get("min_chapters") or 0)
+    except (TypeError, ValueError):
+        min_chapters = 0
+    try:
+        max_chapters = int(filters.get("max_chapters") or 0)
+    except (TypeError, ValueError):
+        max_chapters = 0
+
     kept = []
     for item in results:
+        # Chapter-count limits. Sources report this inconsistently, so only
+        # filter when a count is actually known -- otherwise a source that
+        # omits it would vanish entirely from every filtered search.
+        count = _chapter_count(item)
+        if count is not None:
+            if min_chapters and count < min_chapters:
+                continue
+            if max_chapters and count > max_chapters:
+                continue
+
         title = (item.get("title") or "").lower()
         if any(b in title for b in blocked_titles):
             continue

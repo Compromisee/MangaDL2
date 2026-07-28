@@ -17,7 +17,9 @@ from .mangakatana import MangakatanaSource
 from .manhwa18 import Manhwa18Source
 from .manhwaread import ManhwaReadSource
 from .natomanga import NatomangaSource
+from .nhentai import NhentaiSource
 from .omegascans import OmegaScansSource
+from .webtoons import WebtoonsSource
 from .weebcentral import WeebCentralSource
 
 logger = logging.getLogger(__name__)
@@ -31,7 +33,9 @@ SOURCE_CLASSES = [
     WeebCentralSource,
     OmegaScansSource,
     ManhwaReadSource,
+    WebtoonsSource,
     Manhwa18Source,
+    NhentaiSource,
 ]
 
 SOURCES = {cls.id: cls for cls in SOURCE_CLASSES}
@@ -42,7 +46,8 @@ __all__ = [
     "BASE_HEADERS", "DEFAULT_SOURCE", "DEFAULT_UA", "SOURCES", "SOURCE_CLASSES",
     "ScrapeError", "Source", "MangaDexSource", "MangakatanaSource",
     "NatomangaSource", "WeebCentralSource", "OmegaScansSource",
-    "ManhwaReadSource", "Manhwa18Source",
+    "ManhwaReadSource", "Manhwa18Source", "WebtoonsSource",
+    "NhentaiSource",
     "get_source", "source_for_url", "detect_source", "list_sources",
     "search_all", "browse_all", "genres_all",
 ]

@@ -2003,6 +2003,8 @@ async function loadFilters() {
   const f = res.filters || {};
   $("setSafeMode").checked = !!f.safe_mode;
   $("setHideNoCover").checked = !!f.hide_no_cover;
+  if ($("setMinChapters")) $("setMinChapters").value = f.min_chapters || "";
+  if ($("setMaxChapters")) $("setMaxChapters").value = f.max_chapters || "";
   $("setBlockedTags").value = (f.blocked_tags || []).join(", ");
   $("setBlockedTitles").value = (f.blocked_titles || []).join(", ");
 }
@@ -2011,13 +2013,16 @@ function splitList(value) {
   return value.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-["setSafeMode", "setHideNoCover", "setBlockedTags", "setBlockedTitles"].forEach((id) =>
-  $(id).addEventListener("change", async () => {
-    await api().set_filters({
+["setSafeMode", "setHideNoCover", "setBlockedTags", "setBlockedTitles",
+ "setMinChapters", "setMaxChapters"].forEach((id) =>
+  $(id) && $(id).addEventListener("change", async () => {
+    await callApi("set_filters", {
       safe_mode: $("setSafeMode").checked,
       hide_no_cover: $("setHideNoCover").checked,
       blocked_tags: splitList($("setBlockedTags").value),
       blocked_titles: splitList($("setBlockedTitles").value),
+      min_chapters: parseInt($("setMinChapters").value) || 0,
+      max_chapters: parseInt($("setMaxChapters").value) || 0,
     });
     toast("Filters updated");
   }));

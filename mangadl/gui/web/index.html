@@ -627,6 +627,14 @@
         <label class="switch"><input type="checkbox" id="setHideNoCover"><span></span></label>
       </div>
       <div class="setting-row">
+        <div><label>Chapter count</label><p class="hint">Hide series outside this range. 0 = no limit</p></div>
+        <div class="inline-field">
+          <input type="number" id="setMinChapters" min="0" step="1" placeholder="Min" style="width:88px">
+          <span class="range-dash">to</span>
+          <input type="number" id="setMaxChapters" min="0" step="1" placeholder="Max" style="width:88px">
+        </div>
+      </div>
+      <div class="setting-row">
         <div><label>Blocked tags</label><p class="hint">Comma separated, e.g. Doujinshi, Ecchi</p></div>
         <input type="text" id="setBlockedTags" placeholder="none" style="width:230px">
       </div>
