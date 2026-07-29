@@ -60,10 +60,13 @@ def test_every_new_source_is_registered():
     assert not missing, missing
 
 
-def test_registry_has_twenty_three_sources():
+def test_registry_ids_are_unique_and_growing():
+    """v1.4.15 took the registry to 23; later releases add more. What must
+    always hold is that ids are unique -- a duplicate would silently shadow a
+    source in the SOURCES dict."""
     from mangadl.sources import SOURCE_CLASSES, SOURCES
 
-    assert len(SOURCE_CLASSES) == 23
+    assert len(SOURCE_CLASSES) >= 23
     assert len(SOURCES) == len(SOURCE_CLASSES)   # no duplicate ids
 
 

@@ -17,6 +17,7 @@ from .base import BASE_HEADERS, DEFAULT_UA, ScrapeError, Source
 from .demonicscans import DemonicScansSource
 from .flamecomics import FlameComicsSource
 from .hentaiakane import HentaiAkaneSource
+from .madarascans import MadaraScansSource
 from .manga18club import Manga18ClubSource
 from .mangadass import MangadassSource
 from .mangadex import MangaDexSource
@@ -49,6 +50,7 @@ SOURCE_CLASSES = [
     AsuraScansSource,
     FlameComicsSource,
     DemonicScansSource,
+    MadaraScansSource,
     OmegaScansSource,
     ManhwaReadSource,
     ToonilySource,
@@ -78,7 +80,8 @@ __all__ = [
     "ManhwaReadSource", "Manhwa18Source", "WebtoonsSource",
     "MangadassSource", "Manga18ClubSource", "HentaiAkaneSource",
     "NhentaiSource", "AsuraScansSource", "FlameComicsSource",
-    "DemonicScansSource", "ToonilySource", "ManhuaPlusSource",
+    "DemonicScansSource", "MadaraScansSource", "ToonilySource",
+    "ManhuaPlusSource",
     "ManhuaTopSource", "ManhwaTopSource", "MangaReadSource",
     "WitchScansSource", "WriterScansSource", "SetsuScansSource",
     "get_source", "source_for_url", "detect_source", "list_sources",

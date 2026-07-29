@@ -1,4 +1,17 @@
-"""Shared base for sites running the **Madara** WordPress theme.
+"""Shared base for sites running the **Madara WordPress theme**.
+
+.. warning::
+
+   This is **engine code, not a source**. It is not registered and never
+   appears in Settings, the CLI ``sources`` list or anywhere else in the UI.
+
+   It is easy to confuse with :mod:`mangadl.sources.madarascans`, which is
+   *Madara Scans* -- an actual scanlation site you can search and download
+   from. The two are unrelated: Madara Scans does not even run this theme.
+   (A user reported "Madara doesn't show in settings" for exactly this
+   reason; the answer was that the theme engine is not a site, and the site
+   they meant had not been added yet.)
+
 
 Madara ("A powerful manga, novel theme from Mangabooth.com") powers a large
 slice of the manhwa/manhua aggregator web. Six of the sources in this package
@@ -74,7 +87,20 @@ logger = logging.getLogger(__name__)
 
 
 class MadaraSource(Source):
-    """Scraper for the Madara WordPress theme. Subclass, do not register."""
+    """Scraper for the Madara WordPress **theme**. Subclass; never register.
+
+    Not a site. See the module docstring for why this is worth saying twice.
+    """
+
+    @classmethod
+    def is_engine(cls):
+        """True for this class only, not for the sites that subclass it.
+
+        A plain class attribute would inherit, so every Madara-based site
+        would claim to be engine code. Comparing the class identity keeps the
+        answer correct for subclasses.
+        """
+        return cls is MadaraSource
 
     # -- per-site knobs -------------------------------------------------
     #: Path that series live under, e.g. "/manga/" or "/serie/".

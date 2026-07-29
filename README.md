@@ -2,7 +2,7 @@
 
 # MangaDL
 
-**Download manga, manhwa and manhua from 23 sites as CBZ, PDF or EPUB — from a modern CLI, an interactive menu, a full-screen TUI or a minimalist desktop GUI.**
+**Download manga, manhwa and manhua from 24 sites as CBZ, PDF or EPUB — from a modern CLI, an interactive menu, a full-screen TUI or a minimalist desktop GUI.**
 
 [Project landing page](https://compromisee.github.io/WeebDL/) (GitHub Pages, served from `docs/`)
 
@@ -22,7 +22,7 @@
 
 ## Highlights
 
-- **23 sources, one tool.** MangaDex and Asura Scans through their JSON APIs, Flame Comics through its Next.js payload, and nineteen more scraped — manga, manhwa and manhua. The right source is detected from the URL you paste — no flags required. See [Sources](#sources).
+- **24 sources, one tool.** MangaDex and Asura Scans through their JSON APIs, Flame Comics through its Next.js payload, and nineteen more scraped — manga, manhwa and manhua. The right source is detected from the URL you paste — no flags required. See [Sources](#sources).
 - **Search everything at once.** One query fans out across every site in parallel and merges the results, each tagged with where it came from.
 - **Press Search with an empty box** and you get trending titles instead of nothing — the app opens on a discovery feed rather than a blank page.
 - **Browse by genre.** 200+ genres merged across sites, with quick-pick chips, genre-filtered search and per-genre trending.
@@ -417,6 +417,7 @@ mangadl disk orphans        # library entries whose files are gone
 | `asurascans` | [asuracomic.net](https://asuracomic.net) | JSON API (`api.asurascans.com`) | Site is an SPA that serves one document for every URL; the API is used instead. Pages with `offset`, not `page` |
 | `flamecomics` | [flamecomics.xyz](https://flamecomics.xyz) | Next.js `__NEXT_DATA__` | Whole 167-title catalogue in one request |
 | `demonicscans` | [demonicscans.org](https://demonicscans.org) | HTML scraping | MangaDemon. Genre filter is POST-only with numeric ids |
+| `madarascans` | [madarascans.org](https://madarascans.org) | HTML + `ts_reader` JSON | Madara **Scans** — the site. Unrelated to the Madara *theme* below |
 | `omegascans` | [omegascans.org](https://omegascans.org) | JSON API | Coin-locked chapters are skipped |
 | `manhwaread` | [manhwaread.com](https://manhwaread.com) | HTML + base64 chapter payload | CDN needs a Referer |
 | `toonily` | [toonily.com](https://toonily.com) | Madara theme | Manhwa. Page CDN needs a Referer; search pages with `&paged=` only |
@@ -436,6 +437,13 @@ mangadl disk orphans        # library entries whose files are gone
 
 Adult sources are stamped `content_rating: pornographic` and tagged `Adult`, so
 **Safe mode** in Settings removes them, and each can be disabled individually.
+
+**A note on the name "Madara".** Two unrelated things share it. `madarascans`
+is *Madara Scans*, a site you can search and download from. The **Madara
+WordPress theme** is an engine that six *other* sites run; it lives in
+`mangadl/sources/madara.py`, is not a source, and deliberately never appears
+in Settings or `mangadl sources`. Confusingly, Madara Scans does not run the
+Madara theme.
 
 Six of these run the **Madara** WordPress theme, so they share one scraper in
 `mangadl/sources/madara.py` and each site file only declares what differs — the

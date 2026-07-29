@@ -7,6 +7,70 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.17 — Madara Scans added, and the "Madara" name disambiguated
+
+### Added — Madara Scans (`madarascans`)
+
+Reported as "Madara doesn't show in settings". It genuinely was not there, and
+the reason is a naming collision I created last release.
+
+**Two unrelated things are called Madara:**
+
+| | What it is | In Settings? |
+|---|---|---|
+| `mangadl/sources/madara.py` | the shared scraper for the **Madara WordPress theme**, which six *other* sites run | **No** — engine code, no `base_url`, never registered |
+| `mangadl/sources/madarascans.py` | **Madara Scans**, an actual scanlation site | **Yes** — new in this release |
+
+v1.4.15's changelog talked about "the Madara scraper" meaning the theme
+engine, which reasonably reads as though the site had been added. It had not.
+Now it is, and the registry holds **24** sources.
+
+To stop this recurring: `MadaraSource.is_engine()` returns True for the engine
+class only — a plain class attribute would inherit, so all six theme-based
+sites would have claimed to be engine code — and a test fails if any
+registered source claims it.
+
+Confusingly, **Madara Scans does not run the Madara theme**: it is
+`themes/mangareader` (Themesia), the same family as Witch Scans, so it shares
+no code with `madara.py`.
+
+### Findings from the live site (2026-07)
+
+* `madarascans.com` **301s to `madarascans.org`**; both domains are claimed so
+  either pasted link resolves.
+* `/series/` is the catalogue — 30 cards a page, 11 pages. `/manga/` returns a
+  **53-byte empty document** and the homepage renders its grid in JS with zero
+  cards server-side, so either would have silently never browsed.
+* Browsing pages on the **query** (`?page=2`); the path form
+  `/series/page/2/` answers 200 and returns page one. So do `?paged=`,
+  `?pg=`, `?offset=` and `?show=` — all four returned the identical 30 slugs.
+* Search pages on the **path** (`/page/2/?s=`) — the opposite of browse.
+* Chapters are `#chapters-list-container div.ch-item`. Three selectors that
+  look right match **zero** anchors here: `#chapterlist` (present only inside
+  a `<style>` block), `.eplister` (absent), and `li[id^="chapter-item-"]` —
+  the rows are `div`, not `li`, even though `chapter-item` appears once per
+  chapter. That last one cost a round of debugging: the first build returned
+  25 chapters on one series and **0** on another.
+* Each card links the series **twice** (cover, then title), so entries are
+  de-duplicated by slug; `/series/list-mode` matches the same selector but is
+  a view toggle, not a series.
+* Pages come from `ts_reader.run({...})` and hotlink fine (200 `image/webp`,
+  no Referer).
+
+Verified end to end: search 5, info OK, chapters 25/38/8 on three series,
+18 pages, two real page downloads (3.2 MB + 3.5 MB), cover OK, and a valid
+19-page CBZ through the download engine. Browse, genres (6, all fetched and
+confirmed 200) and pagination (0 overlap between pages) all check out.
+
+### Changed
+
+* README, `SYNTAX.md`, `FEATURES.md` and the landing page all read 24 sources.
+* README gained an explicit note on the two meanings of "Madara".
+
+707 passing.
+
+---
+
 ## v1.4.16 — GUI startup fix, Rich made optional, SYNTAX.md
 
 ### Fixed — the GUI could freeze on open

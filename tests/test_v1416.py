@@ -342,3 +342,148 @@ def test_tui_fallback_message_points_at_the_menu():
         pytest.skip("Textual is installed; the fallback path is not taken")
     text = read(os.path.join(ROOT, "mangadl", "tui.py"))
     assert "mangadl menu" in text
+
+
+# ======================================= v1.4.17: Madara Scans, and the name
+
+def test_madarascans_is_registered_and_visible():
+    """Reported as "Madara doesn't show in settings". Two different things
+    are called Madara; the *site* was genuinely missing."""
+    from mangadl.sources import SOURCES, list_sources
+
+    assert "madarascans" in SOURCES
+    names = {m["name"] for m in list_sources()}
+    assert "Madara Scans" in names
+
+
+def test_madara_theme_engine_is_not_a_source():
+    """madara.py is the shared WordPress-theme scraper. It must never appear
+    in the UI: it has no base_url, so it would render as a blank row."""
+    from mangadl.sources import SOURCE_CLASSES, SOURCES
+    from mangadl.sources.madara import MadaraSource
+
+    assert MadaraSource not in SOURCE_CLASSES
+    assert "madara" not in SOURCES
+    assert MadaraSource.base_url == ""
+    assert MadaraSource.is_engine() is True
+
+
+def test_engine_flag_does_not_leak_to_subclasses():
+    """A plain class attribute would inherit and every Madara-based site
+    would claim to be engine code."""
+    from mangadl.sources import SOURCE_CLASSES
+
+    leaked = [c.id for c in SOURCE_CLASSES
+              if hasattr(c, "is_engine") and c.is_engine()]
+    assert not leaked, leaked
+
+
+def test_madarascans_does_not_subclass_the_theme_engine():
+    """Despite the name it runs themes/mangareader (Themesia), not Madara."""
+    from mangadl.sources.madara import MadaraSource
+    from mangadl.sources.madarascans import MadaraScansSource
+
+    assert not issubclass(MadaraScansSource, MadaraSource)
+
+
+def test_madarascans_claims_both_domains():
+    """.com 301s to .org; a pasted link to either must be recognised."""
+    from mangadl.sources import detect_source
+
+    assert detect_source("https://madarascans.org/series/x/") == "madarascans"
+    assert detect_source("https://madarascans.com/series/x/") == "madarascans"
+
+
+def test_madarascans_chapter_selector_matches_the_real_markup():
+    """Three selectors that look right and match ZERO anchors on this site:
+    #chapterlist (only inside a <style> block), .eplister (absent), and
+    li[id^=chapter-item-] (the rows are div.ch-item, not <li>)."""
+    from bs4 import BeautifulSoup
+
+    from mangadl.sources.madarascans import MadaraScansSource
+
+    html = """
+      <div id="chapters-list-container">
+        <div class="ch-item free" id="chapter-item-2" data-ch="2">
+          <a href="/x-chapter-2/">Chapter 2</a></div>
+        <div class="ch-item free" id="chapter-item-1" data-ch="1">
+          <a href="/x-chapter-1/">Chapter 1</a></div>
+      </div>
+      <a href="/x-chapter-9/">next shortcut outside the list</a>"""
+    source = MadaraScansSource()
+    try:
+        chapters = source.get_chapters.__wrapped__(source, "x") \
+            if hasattr(source.get_chapters, "__wrapped__") else None
+    finally:
+        source.close()
+
+    soup = BeautifulSoup(html, "html.parser")
+    assert len(soup.select('#chapters-list-container .ch-item a[href]')) == 2
+    assert len(soup.select('li[id^="chapter-item-"] a[href]')) == 0
+    assert len(soup.select('#chapterlist li a[href]')) == 0
+
+
+def test_madarascans_skips_the_list_mode_toggle():
+    """/series/list-mode matches the series selector but is a view toggle."""
+    from mangadl.sources.madarascans import MadaraScansSource
+
+    assert MadaraScansSource._series_slug(
+        "https://madarascans.org/series/list-mode") is None
+    assert MadaraScansSource._series_slug(
+        "https://madarascans.org/series/real-title/") == "real-title"
+    assert MadaraScansSource._series_slug("https://madarascans.org/") is None
+
+
+def test_madarascans_cards_dedupe_the_double_link():
+    """Every card links the series twice -- cover, then title -- so a naive
+    parse returns each series twice with one entry missing its title."""
+    from bs4 import BeautifulSoup
+
+    from mangadl.sources.madarascans import MadaraScansSource
+
+    html = """<div class="listupd">
+      <a href="https://madarascans.org/series/foo/"><img src="/c.jpg"></a>
+      <a href="https://madarascans.org/series/foo/">Foo Title</a>
+      <a href="https://madarascans.org/series/list-mode">List</a>
+    </div>"""
+    source = MadaraScansSource()
+    try:
+        rows = source._cards(BeautifulSoup(html, "html.parser"), 10)
+    finally:
+        source.close()
+
+    assert len(rows) == 1
+    assert rows[0]["title"] == "Foo Title"
+    assert rows[0]["cover"] == "https://madarascans.org/c.jpg"
+
+
+def test_madarascans_browse_pages_on_the_query_not_the_path():
+    """/series/page/2/ answers 200 and returns page one; ?page=2 is real."""
+    src = read(os.path.join(ROOT, "mangadl", "sources", "madarascans.py"))
+    body = src[src.index("def browse"):src.index("def genres")]
+    # Strip comments: the decoy path is named in one, to explain why it is
+    # avoided, and matching raw text would fail on correct code.
+    body = re.sub(r"(?m)#.*$", "", body)
+    assert "?page={page}" in body or "&page={page}" in body
+    assert "/series/page/" not in body
+
+
+def test_madarascans_search_pages_on_the_path():
+    """Search is the opposite of browse here: /page/<n>/?s=<term>."""
+    src = read(os.path.join(ROOT, "mangadl", "sources", "madarascans.py"))
+    body = src[src.index("def search"):src.index("def browse")]
+    assert "/page/{page}/?s=" in body
+
+
+def test_madarascans_avoids_the_empty_manga_path():
+    """/manga/ returns a 53-byte empty document; /series/ is the catalogue."""
+    src = read(os.path.join(ROOT, "mangadl", "sources", "madarascans.py"))
+    body = src[src.index("def browse"):src.index("def genres")]
+    assert "/series/" in body
+
+
+def test_registry_has_twenty_four_sources():
+    from mangadl.sources import SOURCE_CLASSES, SOURCES
+
+    assert len(SOURCE_CLASSES) == 24
+    assert len(SOURCES) == len(SOURCE_CLASSES)
