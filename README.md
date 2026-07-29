@@ -129,9 +129,51 @@ mangadl search "one piece" -s mangadex    # search a single source
 mangadl sources                           # list supported sites
 mangadl info <url>                        # title, author, status, tags, chapter count
 mangadl resume                 # resume an interrupted/crashed download
-mangadl tui                    # launch the full-screen terminal UI
+mangadl menu                   # interactive numbered menu (no extra deps)
+mangadl tui                    # full-screen terminal UI (needs Textual)
 mangadl gui                    # launch the desktop GUI
 ```
+
+### Search syntax
+
+```bash
+# narrow by series type or status
+mangadl search "solo" --type manhwa       # manga | manhwa | manhua | comic | novel
+mangadl search "one piece" --status Ongoing
+
+# cap and sort
+mangadl search "naruto" -n 5 --sort title
+mangadl search "berserk" --sort chapters --reverse   # sort: title|source|chapters|year
+
+# machine-readable output, for pipes and scripts
+mangadl search "blue" --urls              # one URL per line
+mangadl search "blue" --json | jq '.[].title'
+
+# act on a numbered result without copying a URL
+mangadl search "berserk" --open 1         # show details for result 1
+mangadl search "berserk" --download 1     # download result 1
+```
+
+`--type` is derived rather than requested: only one source accepts a type
+parameter, so the type is classified from origin language and tags, with a
+per-source default for single-type catalogues. Results whose type cannot be
+determined are **kept** — dropping them would erase whole sources from a
+filtered search.
+
+### Interactive menu
+
+```bash
+mangadl menu
+```
+
+A progressive, numbered interface — every prompt is a list you answer with a
+number. `b` goes back and `q` quits from any depth, so you cannot get stranded
+in a submenu, and a closed stdin exits cleanly instead of raising.
+
+It covers search, trending, pasting a URL, the library, bookmarks, settings
+(folders, formats, sources, filters) and tools. It needs nothing beyond the
+base install; `mangadl tui` needs Textual, which is an optional extra
+(`pip install mangadl[tui]`).
 
 ### All options
 

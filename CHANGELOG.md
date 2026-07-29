@@ -7,6 +7,67 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.13 — Interactive menu, richer CLI search
+
+### Added — `mangadl menu`
+
+A progressive, numbered interface. Every prompt is a list you answer with a
+number; `b` goes back and `q` quits from **any** depth, so it is impossible to
+get stranded in a submenu. It covers search, trending, pasting a URL, the
+library, bookmarks, settings (folders, formats, sources, filters) and tools.
+
+It deliberately needs nothing beyond `rich`, which is already a hard
+dependency. The full-screen `mangadl tui` needs Textual, an optional extra
+that in practice is often not installed — so the menu is the interface that
+always works.
+
+Edge cases that would otherwise look like crashes are handled: a closed stdin
+(a pipe that ran out) and Ctrl-C both unwind cleanly, and running it without a
+terminal prints guidance instead of blocking forever on a read that will never
+return.
+
+### Added — search syntax
+
+    --type manga|manhwa|manhua|comic|novel   narrow by series type
+    --status Ongoing|Completed|...           narrow by publication status
+    -n, --limit N                            cap the results
+    --sort title|source|chapters|year        sort, with --reverse
+    --urls                                   one URL per line, for pipes
+    --json                                   machine-readable output
+    --open N                                 show details for result N
+    --download N                             download result N
+
+`--open` and `--download` act on the numbers just printed, so finding
+something and acting on it is one command instead of a copy-paste of a URL.
+
+`--type` is derived rather than requested, for the same reason the GUI filter
+is: only one of the twelve sources accepts a type parameter. The type is
+classified from origin language and tags, with a per-source default for
+single-type catalogues, and results whose type cannot be determined are kept —
+dropping them would erase whole sources from a filtered search. Sorting by
+chapters puts unknown counts last rather than treating them as zero.
+
+### Fixed — `mangadl tui` crashed instead of explaining itself
+
+Textual was imported at module scope while the "Textual is not installed"
+message lived in `run_tui()` further down. With Textual absent the module
+failed *while it was still being imported*, so the friendly message never ran
+and the command died with a raw `ModuleNotFoundError` traceback. The import is
+now guarded, and the message points at `mangadl menu`, which needs nothing.
+
+### Fixed — the landing page was quoting stale numbers
+
+Six counters had drifted, three of them contradicting each other on the same
+page: 330 vs 408 features, 376 vs 255 tests, and 9 sources when there are 12.
+The genre metric said 99 where the live merge produces 116. All now match the
+repository.
+
+### Tests
+
+609 offline (up from 583) + 21 live.
+
+---
+
 ## v1.4.12 — GUI crash hardening
 
 The GUI was described as very prone to crashing. Four measured causes, plus

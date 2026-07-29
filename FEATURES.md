@@ -481,6 +481,19 @@ A complete feature reference for MangaDL.
 406. Cover cache bounded by bytes with LRU eviction
 407. Global JS error handlers clear spinners and surface a message
 408. Search/browse failures show a retry instead of a dead screen
+409. `mangadl menu` — progressive numbered interface, no extra dependencies
+410. Every menu prompt accepts a number; `b` = back, `q` = quit at any depth
+411. Menu covers search, trending, URLs, library, bookmarks, settings, tools
+412. Menu exits cleanly on EOF or a non-terminal stdin
+413. `mangadl search --type` narrows by manga / manhwa / manhua
+414. `mangadl search --status` narrows by publication status
+415. `mangadl search -n/--limit` caps the number of results
+416. `mangadl search --sort` by title, source, chapters or year, `--reverse`
+417. `mangadl search --urls` prints one URL per line for pipes
+418. `mangadl search --json` prints machine-readable results
+419. `mangadl search --open N` shows details for a numbered result
+420. `mangadl search --download N` downloads a numbered result
+421. `mangadl tui` explains itself instead of a traceback without Textual
 
 ## Core engine
 

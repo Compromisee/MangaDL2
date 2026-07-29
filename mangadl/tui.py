@@ -15,28 +15,61 @@ if __package__ in (None, ""):
     import mangadl  # noqa: F401
     __package__ = "mangadl"
 
-from textual import on, work
-from textual.app import App, ComposeResult
-from textual.binding import Binding
-from textual.containers import Horizontal, Vertical, VerticalScroll
-from textual.widgets import (
-    Button,
-    Footer,
-    Header,
-    Input,
-    Label,
-    ListItem,
-    ListView,
-    ProgressBar,
-    RichLog,
-    Select,
-    SelectionList,
-    Static,
-    Switch,
-    TabbedContent,
-    TabPane,
-)
-from textual.widgets.selection_list import Selection
+# Textual is an optional extra ("pip install mangadl[tui]"). Importing it at
+# module scope means a missing install crashes `mangadl tui` with a raw
+# ModuleNotFoundError: the friendly message in run_tui() never gets to print,
+# because the module fails while it is still being imported. Stand-ins keep
+# the module importable so run_tui() can explain itself instead.
+try:
+    from textual import on, work
+    from textual.app import App, ComposeResult
+    from textual.binding import Binding
+    from textual.containers import Horizontal, Vertical, VerticalScroll
+    from textual.widgets import (Button, Footer, Header, Input, Label,
+                                 ListItem, ListView, ProgressBar, RichLog,
+                                 Select, SelectionList, Static, Switch,
+                                 TabbedContent, TabPane)
+    from textual.widgets.selection_list import Selection
+
+    TEXTUAL_AVAILABLE = True
+except ImportError:                    # pragma: no cover - install dependent
+    TEXTUAL_AVAILABLE = False
+
+    App = object
+    ComposeResult = object
+
+    def on(*_args, **_kwargs):
+        return lambda fn: fn
+
+    def work(*_args, **_kwargs):
+        return lambda fn: fn
+
+    def Binding(*_args, **_kwargs):
+        return None
+
+    class _MissingMeta(type):
+        """Any attribute lookup yields another placeholder.
+
+        The class body below references widget *message* classes such as
+        ``Button.Pressed`` in decorators, which are evaluated at import
+        time -- so a plain stub raises AttributeError before run_tui() can
+        print anything useful.
+        """
+
+        def __getattr__(cls, _name):
+            return cls
+
+    class _Missing(metaclass=_MissingMeta):
+        """Placeholder widget; only reachable when Textual is absent."""
+
+        def __init__(self, *_args, **_kwargs):
+            raise RuntimeError("Textual is not installed")
+
+    Horizontal = Vertical = VerticalScroll = _Missing
+    Button = Footer = Header = Input = Label = _Missing
+    ListItem = ListView = ProgressBar = RichLog = _Missing
+    Select = SelectionList = Static = Switch = _Missing
+    TabbedContent = TabPane = Selection = _Missing
 
 from .downloader import DownloadEngine, DownloadOptions
 from .gui import load_settings, save_settings
@@ -869,10 +902,11 @@ class MangaDLTUI(App):
 def run_tui():
     from .logs import setup_logging
     setup_logging()
-    try:
-        import textual  # noqa: F401
-    except ImportError:
-        print("Textual is not installed. Run: pip install textual")
+    if not TEXTUAL_AVAILABLE:
+        print("The full-screen TUI needs Textual, which is not installed.\n"
+              "    pip install textual          (or: pip install mangadl[tui])\n"
+              "\nThe interactive menu needs nothing extra:\n"
+              "    mangadl menu")
         return 1
     MangaDLTUI().run()
     return 0

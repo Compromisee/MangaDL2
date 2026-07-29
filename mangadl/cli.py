@@ -79,14 +79,24 @@ def build_parser():
             "  mangadl library scan ~/Manga             re-link moved folders\n"
             "  mangadl info <url>\n"
             "  mangadl resume                       resume an interrupted download\n"
+            "  mangadl menu                         interactive numbered menu\n"
             "  mangadl tui                          full-screen terminal UI\n"
+            "\nsearch syntax:\n"
+            "  mangadl search \"solo\" --type manhwa      only manhwa\n"
+            "  mangadl search \"one piece\" --status Ongoing\n"
+            "  mangadl search \"naruto\" -n 5 --sort title\n"
+            "  mangadl search \"berserk\" --sort chapters --reverse\n"
+            "  mangadl search \"blue\" --urls               URLs only, pipe-friendly\n"
+            "  mangadl search \"blue\" --json               machine-readable\n"
+            "  mangadl search \"berserk\" --open 1          search, then show #1\n"
+            "  mangadl search \"berserk\" --download 1      search, then grab #1\n"
         ),
     )
     parser.add_argument("target", nargs="?",
                         help="manga URL, or a command: search | info | sources | config | "
                              "stats | history | lock | export | watch | disk | "
                              "trending | genres | health | library | gui | tui | "
-                             "resume")
+                             "menu | resume")
     parser.add_argument("query", nargs="*", help="arguments for search / info")
     parser.add_argument("-c", "--chapters", default="all", metavar="SEL",
                         help="chapter selection: all | 5 | 1-20 | 1,5,10-20 | 50- | latest | first (default: all)")
@@ -125,6 +135,29 @@ def build_parser():
                               help="download compressed pages, MangaDex only")
     source_group.add_argument("-g", "--genre", default=None, metavar="NAME",
                               help="filter by genre (see: mangadl genres)")
+    search_group = parser.add_argument_group("search and listing")
+    search_group.add_argument("--type", default=None, metavar="KIND",
+                              choices=["manga", "manhwa", "manhua", "comic",
+                                       "novel", "any"],
+                              help="only this series type (manga/manhwa/manhua)")
+    search_group.add_argument("--status", default=None, metavar="S",
+                              help="only this status, e.g. Ongoing or Completed")
+    search_group.add_argument("-n", "--limit", type=int, default=0, metavar="N",
+                              help="show at most N results per source")
+    search_group.add_argument("--sort", default=None, metavar="KEY",
+                              choices=["title", "source", "chapters", "year"],
+                              help="sort results by this column")
+    search_group.add_argument("--reverse", action="store_true",
+                              help="reverse the sort order")
+    search_group.add_argument("--json", action="store_true",
+                              help="print results as JSON instead of a table")
+    search_group.add_argument("--urls", action="store_true",
+                              help="print only URLs, one per line (pipe-friendly)")
+    search_group.add_argument("--open", type=int, default=0, metavar="N",
+                              help="after searching, show details for result N")
+    search_group.add_argument("--download", type=int, default=0, metavar="N",
+                              help="after searching, download result N")
+
     parser.add_argument("-y", "--yes", action="store_true", help="skip the confirmation prompt")
     parser.add_argument("--plain", action="store_true", help="plain log output (no fancy progress UI)")
     return parser
@@ -659,8 +692,85 @@ def cmd_disk(args) -> int:
     return 1
 
 
+def _null_status():
+    """A no-op stand-in for console.status() when printing machine output."""
+    import contextlib
+    return contextlib.nullcontext()
+
+
+def _narrow(results, series_type=None, status=None):
+    """Apply the --type / --status narrowing to a result list.
+
+    Series type is derived rather than requested: only one source accepts a
+    type parameter, so classify_type() maps origin language and tags, with a
+    per-source default for single-type catalogues. Results whose type cannot
+    be determined are kept -- dropping them would erase whole sources from a
+    filtered search.
+    """
+    from .sources.base import classify_type
+
+    if series_type and series_type.lower() != "any":
+        want = series_type.lower()
+        kept = []
+        for row in results:
+            kind = (row.get("series_type")
+                    or classify_type(row.get("original_language"),
+                                     row.get("tags")))
+            if not kind:
+                cls = SOURCES.get(row.get("source"))
+                kind = getattr(cls, "default_series_type", None)
+            if not kind or str(kind).lower() == want:
+                kept.append(row)
+        results = kept
+
+    if status and status.lower() != "any":
+        want = status.lower()
+        results = [r for r in results
+                   if not r.get("status")
+                   or str(r["status"]).lower() == want]
+    return results
+
+
+def _sort_results(results, key=None, reverse=False):
+    """Sort by one of the displayed columns. Unknown values sort last."""
+    if not key:
+        return results
+
+    def sort_key(row):
+        if key == "title":
+            return (0, str(row.get("title") or "").lower())
+        if key == "source":
+            return (0, str(row.get("source_name") or row.get("source") or "").lower())
+        if key == "chapters":
+            count = features._chapter_count(row)
+            return (1, 0) if count is None else (0, -count)
+        if key == "year":
+            year = row.get("year")
+            return (1, 0) if not year else (0, -int(year))
+        return (0, 0)
+
+    from . import features
+    return sorted(results, key=sort_key, reverse=reverse)
+
+
+def _emit(results, as_json=False, urls_only=False):
+    """Machine-readable output. Returns True if it handled the printing."""
+    if urls_only:
+        for row in results:
+            print(row.get("url", ""))
+        return True
+    if as_json:
+        import json
+        print(json.dumps(results, indent=2, ensure_ascii=False))
+        return True
+    return False
+
+
 def cmd_search(query: str, source_id: str = "", language: str = "en",
-               genre: str = None):
+               genre: str = None, series_type=None, status=None,
+               limit: int = 0, sort=None, reverse=False, as_json=False,
+               urls_only=False, open_index: int = 0,
+               download_index: int = 0, args=None):
     # An empty query is a request for discovery, not an error.
     if not query:
         with console.status("Fetching trending titles..."):
@@ -676,36 +786,77 @@ def cmd_search(query: str, source_id: str = "", language: str = "en",
         return _print_results(
             results, f"Top {genre}" if genre else "Trending now")
 
+    per_source = limit if limit > 0 else 10
+    quiet = as_json or urls_only          # keep machine output clean
+
     if source_id:
         label = SOURCES[source_id].name
-        with console.status(f"Searching [bold]{label}[/] for [bold]{query}[/]..."):
+        status_ctx = (console.status(f"Searching [bold]{label}[/] for [bold]{query}[/]...")
+                      if not quiet else _null_status())
+        with status_ctx:
             source = get_source(source_id, language=language)
             try:
-                results = source.search(query, genre=genre)
+                results = source.search(query, genre=genre,
+                                        limit=per_source * 3)
             finally:
                 source.close()
     else:
-        with console.status(f"Searching all sources for [bold]{query}[/]..."):
-            results = search_all(query, limit=10, genre=genre)
+        status_ctx = (console.status(f"Searching all sources for [bold]{query}[/]...")
+                      if not quiet else _null_status())
+        with status_ctx:
+            results = search_all(query, limit=per_source, genre=genre)
 
     from . import features
     results = features.apply_filters(results)
+    results = _narrow(results, series_type, status)
+    results = _sort_results(results, sort, reverse)
+    if limit > 0:
+        results = results[:limit] if source_id else results
     features.add_history(query, source_id or "all", len(results))
 
     if not results:
-        console.print("[yellow]No results found.[/]")
+        if not quiet:
+            console.print("[yellow]No results found.[/]")
         return 1
+
+    if _emit(results, as_json, urls_only):
+        return 0
 
     table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
     table.add_column("#", style=DIM, justify="right")
     table.add_column("Source", style=ACCENT)
     table.add_column("Title")
+    table.add_column("Type", style=DIM)
     table.add_column("URL", style=DIM, overflow="fold")
     for i, r in enumerate(results, 1):
         table.add_row(str(i), r.get("source_name") or r.get("source") or "?",
-                      r["title"], r["url"])
+                      r.get("title", "?"), r.get("series_type") or "",
+                      r.get("url", ""))
     console.print(table)
-    console.print(f"[{DIM}]Download with: mangadl <url>[/]")
+
+    # --open N / --download N act on the numbers just printed, so a search
+    # and the thing you wanted from it are one command instead of a
+    # copy-paste of a URL.
+    if open_index:
+        if not 1 <= open_index <= len(results):
+            console.print(f"[yellow]--open must be 1-{len(results)}.[/]")
+            return 1
+        console.print()
+        return cmd_info(results[open_index - 1]["url"], source_id, language)
+
+    if download_index:
+        if not 1 <= download_index <= len(results):
+            console.print(f"[yellow]--download must be 1-{len(results)}.[/]")
+            return 1
+        chosen = results[download_index - 1]
+        console.print(f"[{DIM}]Downloading:[/] {chosen.get('title', '?')}")
+        if args is not None:
+            args.target = chosen["url"]
+            args.source = chosen.get("source") or source_id
+            return cmd_download(args)
+
+    console.print(f"[{DIM}]Download with: mangadl <url>   "
+                  f"or: mangadl search \"{query}\" --download N[/]")
     return 0
 
 
@@ -991,7 +1142,12 @@ def main(argv=None):
         return cmd_library(args)
     if command == "search":
         return cmd_search(" ".join(args.query), args.source, args.language,
-                          args.genre)
+                          args.genre, series_type=args.type,
+                          status=args.status, limit=args.limit,
+                          sort=args.sort, reverse=args.reverse,
+                          as_json=args.json, urls_only=args.urls,
+                          open_index=args.open, download_index=args.download,
+                          args=args)
     if command in ("trending", "browse", "popular"):
         return cmd_trending(args)
     if command in ("genres", "genre"):
@@ -1007,6 +1163,9 @@ def main(argv=None):
     if command == "tui":
         from .tui import run_tui
         return run_tui()
+    if command in ("menu", "i", "interactive"):
+        from .menu import run_menu
+        return run_menu()
     if command == "resume":
         return cmd_resume(args)
 
