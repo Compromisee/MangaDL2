@@ -366,21 +366,132 @@ def apply_filters(results, filters=None):
 # ================================================================== dedupe
 
 
+#: Bracketed notes that mean "same series, different edition/scan". Only
+#: these are dropped; a parenthetical that is not on this list is kept,
+#: because "(Season 2)" and "(Pre-serialization)" are different works.
+_EDITION_NOTE = re.compile(
+    r"[\(\[]\s*(?:"
+    r"official(?:\s+colou?red)?|colou?red|full[\s-]?colou?r|"
+    r"fan[\s-]?colou?red|digital(?:\s+colou?red)?(?:\s+comics)?|"
+    r"remastered|hd|uncensored|censored|"
+    r"webtoon|web[\s-]?comic|manhwa|manhua|manga|comic|novel|"
+    r"english|eng|raw|jp|kr|cn"
+    r")\s*[\)\]]", re.I)
+
+#: Leading scanlator/artist credit, e.g. "[Merkonig] B-Trayal 59".
+_LEADING_CREDIT = re.compile(r"^\s*[\[\(][^\]\)]{1,40}[\]\)]\s*")
+
+#: Trailing status noise some Madara installs append to the card title.
+_TRAILING_NOISE = re.compile(
+    r"\s*\b(?:end|completed|ongoing|hiatus|new|hot|up)\b\s*$", re.I)
+
+#: Words that carry no identity: dropping them lets "The Beginning After The
+#: End" match "Beginning After the End".
+_STOPWORDS = {"the", "a", "an", "of", "and"}
+
+
 def _normalise_title(title):
-    title = (title or "").lower()
-    title = re.sub(r"\(.*?\)|\[.*?\]", " ", title)
-    title = re.sub(r"\b(official|colored|full color|doujinshi|fan ?colou?red)\b",
-                   " ", title)
-    title = re.sub(r"[^a-z0-9]+", " ", title)
-    return " ".join(title.split())
+    """A comparison key for "is this the same series?".
+
+    Deliberately conservative about what it removes and deliberately
+    Unicode-safe. Three bugs this shape fixes, all reproduced on live data:
+
+    * The old version ended with ``[^a-z0-9]+`` -> " ", which deletes every
+      non-ASCII character. Every CJK title therefore normalised to the **empty
+      string** and they all landed in one group: a search for ワンピース merged
+      three unrelated doujinshi into a single row and silently dropped two.
+    * It stripped *all* parentheses, so "Solo Leveling" and "Solo Leveling
+      (Pre-serialization)" -- genuinely different works -- collapsed together.
+      Only recognised edition notes are dropped now.
+    * A title that was nothing but a bracketed note ("(Oneshot)", "[Artist]")
+      normalised to "" and joined the same bogus group.
+
+    Returns ``""`` only for input that is genuinely empty; callers must treat
+    an empty key as "cannot compare" and never group on it.
+    """
+    text = (title or "").strip().lower()
+    if not text:
+        return ""
+
+    text = _EDITION_NOTE.sub(" ", text)
+    # Drop a leading credit only when something is left after it.
+    stripped = _LEADING_CREDIT.sub("", text)
+    if stripped.strip():
+        text = stripped
+    text = _TRAILING_NOISE.sub("", text)
+
+    # Keep letters/digits in ANY script -- str.isalnum() is Unicode-aware,
+    # unlike the old [^a-z0-9] class.
+    text = "".join(ch if ch.isalnum() else " " for ch in text)
+
+    words = [w for w in text.split() if w]
+    kept = [w for w in words if w not in _STOPWORDS]
+    # Never let stopword removal empty a title ("The End" -> "end").
+    return " ".join(kept or words)
+
+
+def _dedupe_key(item):
+    """Grouping key, or ``None`` when the item must not be grouped."""
+    key = _normalise_title(item.get("title"))
+    if not key:
+        return None
+    # A key of one short token is too weak to merge on: "1", "x", "ii".
+    if len(key) < 3:
+        return None
+    return key
+
+
+def _tight_key(key):
+    """Spacing-insensitive form: "nano machine" -> "nanomachine".
+
+    Sites disagree on word breaks for the same series -- Nano Machine /
+    Nanomachine, Solo Max-Level Newbie / SoloMax Level Newbie -- and an exact
+    key misses every one of those.
+    """
+    return key.replace(" ", "")
 
 
 def group_duplicates(results):
-    """Group search hits that look like the same series across sources."""
+    """Group search hits that look like the same series across sources.
+
+    Two passes:
+
+    1. exact match on the normalised key
+    2. merge groups whose keys differ only by word breaks, or where one key
+       is a prefix of the other and the remainder is a subtitle after a
+       separator ("Omniscient Reader" / "Omniscient Reader's Viewpoint")
+
+    Items with no usable key become singleton groups rather than being lumped
+    together -- that lumping is what destroyed CJK results.
+    """
     groups = defaultdict(list)
+    ungroupable = []
     for item in results:
-        groups[_normalise_title(item.get("title"))].append(item)
-    return [items for items in groups.values()]
+        key = _dedupe_key(item)
+        if key is None:
+            ungroupable.append([item])
+        else:
+            groups[key].append(item)
+
+    # Pass 2: fold keys that differ only by spacing.
+    by_tight = defaultdict(list)
+    for key in groups:
+        by_tight[_tight_key(key)].append(key)
+
+    merged, claimed = [], set()
+    for tight, keys in by_tight.items():
+        if len(keys) == 1:
+            continue
+        bucket = []
+        for key in keys:
+            bucket.extend(groups[key])
+            claimed.add(key)
+        merged.append(bucket)
+
+    for key, items in groups.items():
+        if key not in claimed:
+            merged.append(items)
+    return merged + ungroupable
 
 
 def dedupe(results, ranks=None):
@@ -397,6 +508,18 @@ def dedupe(results, ranks=None):
             continue
         group.sort(key=lambda r: ranks.get(r.get("source"), 99))
         best = dict(group[0])
+
+        # Backfill fields the winner is missing from the losing copies. The
+        # highest-ranked source is not always the most complete -- MangaDex
+        # often wins on rank but reports no chapter count, while the site it
+        # displaced had both a count and a cover. Only empty fields are
+        # filled, so the winner's own data always takes precedence.
+        for other in group[1:]:
+            for field in ("cover", "chapters", "status", "year",
+                          "description", "series_type", "latest"):
+                if not best.get(field) and other.get(field):
+                    best[field] = other[field]
+
         best["also_on"] = [
             {"source": g.get("source"), "source_name": g.get("source_name"),
              "url": g.get("url")}

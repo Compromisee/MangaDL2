@@ -20,11 +20,27 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, "mangadl", "sources")
 
+#: The eleven sources v1.4.15 added. Six of them (the Madara-theme sites)
+#: were folded into the single "madaranet" aggregate in v1.4.18, so they are
+#: no longer registered individually -- they are reached as its members.
 NEW_SOURCES = [
-    "witchscans", "writerscans", "manhuatop", "manhuaplus", "setsuscans",
-    "demonicscans", "asurascans", "flamecomics", "toonily", "manhwatop",
-    "mangaread",
+    "witchscans", "writerscans", "demonicscans", "asurascans", "flamecomics",
 ]
+
+#: The Madara-theme sites, now members of the aggregate rather than sources.
+MADARA_MEMBERS = [
+    "madara.toonily", "madara.manhuaplus", "madara.manhuatop",
+    "madara.manhwatop", "madara.mangaread", "madara.setsuscans",
+]
+
+
+def member(member_id):
+    from mangadl.sources.madaranet import MEMBERS
+
+    for cls in MEMBERS:
+        if cls.id == member_id:
+            return cls
+    raise AssertionError(f"no such member: {member_id}")
 
 
 def read(path):
@@ -60,14 +76,23 @@ def test_every_new_source_is_registered():
     assert not missing, missing
 
 
-def test_registry_ids_are_unique_and_growing():
-    """v1.4.15 took the registry to 23; later releases add more. What must
-    always hold is that ids are unique -- a duplicate would silently shadow a
-    source in the SOURCES dict."""
+def test_registry_ids_are_unique():
+    """A duplicate id would silently shadow a source in the SOURCES dict."""
     from mangadl.sources import SOURCE_CLASSES, SOURCES
 
-    assert len(SOURCE_CLASSES) >= 23
-    assert len(SOURCES) == len(SOURCE_CLASSES)   # no duplicate ids
+    assert len(SOURCES) == len(SOURCE_CLASSES)
+
+
+def test_madara_members_are_reachable_but_not_registered():
+    """v1.4.18 folded the six Madara-theme sites into one aggregate. They
+    must still be usable -- just not as separate rows in Settings."""
+    from mangadl.sources import SOURCES
+    from mangadl.sources.madaranet import MEMBERS
+
+    ids = {cls.id for cls in MEMBERS}
+    for member_id in MADARA_MEMBERS:
+        assert member_id in ids, member_id
+        assert member_id not in SOURCES, f"{member_id} leaked into the registry"
 
 
 def test_new_sources_claim_their_domains():
@@ -76,15 +101,16 @@ def test_new_sources_claim_their_domains():
     cases = [
         ("https://witchscans.com/manga/afterlife-diner/", "witchscans"),
         ("https://writerscans.com/series/652beef7274/", "writerscans"),
-        ("https://manhuatop.org/manhua/golden-martial-god/", "manhuatop"),
-        ("https://manhuaplus.com/manga/martial-god-chat-group/", "manhuaplus"),
-        ("https://setsuscans.com/manga/anything/", "setsuscans"),
         ("https://demonicscans.org/manga/Eleceed", "demonicscans"),
         ("https://asuracomic.net/series/emperor-of-solo-play", "asurascans"),
         ("https://flamecomics.xyz/series/165", "flamecomics"),
-        ("https://toonily.com/serie/love-rebooted-dce39162/", "toonily"),
-        ("https://manhwatop.com/manga/complicated-love-in-tokyo/", "manhwatop"),
-        ("https://www.mangaread.org/manga/x/", "mangaread"),
+        # The Madara-theme sites now resolve to the aggregate.
+        ("https://manhuatop.org/manhua/golden-martial-god/", "madaranet"),
+        ("https://manhuaplus.com/manga/martial-god-chat-group/", "madaranet"),
+        ("https://setsuscans.com/manga/anything/", "madaranet"),
+        ("https://toonily.com/serie/love-rebooted-dce39162/", "madaranet"),
+        ("https://manhwatop.com/manga/complicated-love-in-tokyo/", "madaranet"),
+        ("https://www.mangaread.org/manga/x/", "madaranet"),
     ]
     for url, expected in cases:
         assert detect_source(url) == expected, url
@@ -134,7 +160,7 @@ def test_fetch_stops_retrying_when_flaresolverr_is_absent():
     import time
 
     from mangadl.sources.base import ScrapeError
-    from mangadl.sources.setsuscans import SetsuScansSource
+    from mangadl.sources.madaranet import _SetsuScans as SetsuScansSource
 
     class Challenged:
         status_code = 403
@@ -174,7 +200,7 @@ def test_fetch_stops_retrying_when_flaresolverr_is_absent():
 
 def test_solverr_down_is_sticky_per_source_instance():
     """Once the solver is known missing, later calls must not re-probe it."""
-    from mangadl.sources.setsuscans import SetsuScansSource
+    from mangadl.sources.madaranet import _SetsuScans as SetsuScansSource
 
     source = SetsuScansSource()
     try:
@@ -187,11 +213,12 @@ def test_solverr_down_is_sticky_per_source_instance():
 def test_cloudflare_sources_say_they_need_a_solver():
     from mangadl.sources import SOURCES
 
-    assert SOURCES["setsuscans"].needs_flaresolverr is True
+    assert member("madara.setsuscans").needs_flaresolverr is True
     assert SOURCES["weebcentral"].needs_flaresolverr is True
     # ...and the ones that do not, do not.
-    for source_id in ("witchscans", "manhuaplus", "asurascans", "toonily"):
+    for source_id in ("witchscans", "asurascans"):
         assert SOURCES[source_id].needs_flaresolverr is False, source_id
+    assert member("madara.toonily").needs_flaresolverr is False
 
 
 # ============================================================ Madara base
@@ -309,15 +336,15 @@ def test_each_madara_site_declares_its_measured_genre_prefix():
     from mangadl.sources import SOURCES
 
     expected = {
-        "manhuaplus": "manga-genre",
-        "manhuatop": "manhua-genre",
-        "mangaread": "genres",
-        "manhwatop": "manga-genre",
-        "toonily": "webtoon-genre",
-        "setsuscans": "manga-genre",
+        "madara.manhuaplus": "manga-genre",
+        "madara.manhuatop": "manhua-genre",
+        "madara.mangaread": "genres",
+        "madara.manhwatop": "manga-genre",
+        "madara.toonily": "webtoon-genre",
+        "madara.setsuscans": "manga-genre",
     }
-    for source_id, prefix in expected.items():
-        assert SOURCES[source_id].genre_prefix == prefix, source_id
+    for member_id, prefix in expected.items():
+        assert member(member_id).genre_prefix == prefix, member_id
 
 
 def test_manhuatop_browses_the_manga_path_not_manhua():
@@ -325,15 +352,15 @@ def test_manhuatop_browses_the_manga_path_not_manhua():
     -- reproduced four times, three seconds apart. /manga/ is the listing."""
     from mangadl.sources import SOURCES
 
-    assert SOURCES["manhuatop"].series_prefix == "/manhua/"
-    assert SOURCES["manhuatop"].browse_path == "/manga/"
+    assert member("madara.manhuatop").series_prefix == "/manhua/"
+    assert member("madara.manhuatop").browse_path == "/manga/"
 
 
 def test_toonily_uses_the_singular_serie_path():
     from mangadl.sources import SOURCES
 
-    assert SOURCES["toonily"].series_prefix == "/serie/"
-    assert SOURCES["toonily"].browse_path == "/search/"
+    assert member("madara.toonily").series_prefix == "/serie/"
+    assert member("madara.toonily").browse_path == "/search/"
 
 
 # ============================================================ Witch Scans
@@ -644,7 +671,7 @@ def test_toonily_covers_do_not_need_proxying():
     unlike Webtoons this does not need the Python-side proxy."""
     from mangadl.sources import SOURCES
 
-    assert SOURCES["toonily"].cover_needs_referer is False
+    assert member("madara.toonily").cover_needs_referer is False
 
 
 # ============================================================== docs / UI
@@ -671,7 +698,9 @@ def test_landing_page_marks_both_cloudflare_sites():
     for tile in soup.select("a.src"):
         if tile.select_one(".tag-cf"):
             flagged.add(tile.select_one(".src-n").get_text(strip=True))
-    assert flagged == {"Weeb Central", "Setsu Scans"}
+    # Setsu Scans is now a member of the Madara Sites aggregate, so the
+    # aggregate tile carries the badge on its behalf.
+    assert flagged == {"Weeb Central", "Madara Sites"}
 
 
 def test_readme_documents_every_source():

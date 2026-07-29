@@ -77,7 +77,7 @@ def test_genres_all_falls_back_to_offline_lists_on_timeout():
 
     base.Source.fetch = hang
     try:
-        rows = genres_all(source_ids=["manhuaplus"], use_config=False,
+        rows = genres_all(source_ids=["madaranet"], use_config=False,
                           deadline=0.5)
     finally:
         base.Source.fetch = original
@@ -102,11 +102,14 @@ def test_genres_all_does_not_cache_a_partial_result():
 
     base.Source.fetch = hang
     try:
-        genres_all(source_ids=["manhuaplus"], use_config=False, deadline=0.4)
+        # Must be a source that really reaches out in genres(); one that
+        # answers from a constant never times out, so the test would pass
+        # vacuously. flamecomics reads its genre list off the live payload.
+        genres_all(source_ids=["flamecomics"], use_config=False, deadline=0.4)
     finally:
         base.Source.fetch = original
 
-    assert GENRE_CACHE.get(cache_key("genres", "manhuaplus")) is None
+    assert GENRE_CACHE.get(cache_key("genres", "flamecomics")) is None
 
 
 def test_genres_all_still_merges_across_sources():
@@ -482,8 +485,13 @@ def test_madarascans_avoids_the_empty_manga_path():
     assert "/series/" in body
 
 
-def test_registry_has_twenty_four_sources():
+def test_registry_source_count_is_consistent():
+    """v1.4.18 folded ten Madara-theme sites into one aggregate, so the row
+    count in Settings is smaller than the number of sites reachable."""
     from mangadl.sources import SOURCE_CLASSES, SOURCES
+    from mangadl.sources.madaranet import MEMBERS
 
-    assert len(SOURCE_CLASSES) == 24
     assert len(SOURCES) == len(SOURCE_CLASSES)
+    # 18 standalone sources + 1 aggregate standing in for 10 sites
+    assert len(SOURCE_CLASSES) == 19
+    assert len(MEMBERS) == 10

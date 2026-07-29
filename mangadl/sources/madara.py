@@ -217,7 +217,12 @@ class MadaraSource(Source):
                page: int = 1, limit: int = 32, **_):
         order = self._ORDER.get(sort or "", "trending")
         if genre:
-            slug = str(genre).strip().lower().replace(" ", "-")
+            slug = self.genre_slug(genre)
+            if slug is None:
+                # This install does not carry the genre. Returning nothing is
+                # right; guessing a slug would 404 and, before the base class
+                # learned to fail fast on 404, cost 30s of retries.
+                return []
             base = f"{self.base_url}/{self.genre_prefix}/{quote(slug)}/"
             url = self._page_url(base, page)
         else:
@@ -256,6 +261,31 @@ class MadaraSource(Source):
         self._genre_cache = [{"id": s, "name": self._genre_label(s)}
                              for s in slugs]
         return self._genre_cache
+
+    @classmethod
+    def genre_slug(cls, genre):
+        """Map a genre *name* to this install's own slug, or ``None``.
+
+        Necessary because the same genre is spelled differently per install:
+        "Action" is ``action`` on most Madara sites and
+        ``genre-action-new-genre`` on Manhwa Top. The aggregate source hands
+        every member a display name, so each has to translate it back.
+
+        Returns ``None`` when the site does not offer the genre at all, which
+        the caller must treat as "no results here" rather than guessing.
+        """
+        wanted = str(genre or "").strip().lower()
+        if not wanted:
+            return None
+        for slug in cls.GENRES:
+            if wanted == slug.lower():
+                return slug
+            if wanted == cls._genre_label(slug).lower():
+                return slug
+        # Not in the declared list: fall back to slugifying, so a genre read
+        # live off the site (which genres() prefers) still works.
+        return wanted.replace(" ", "-") if cls.GENRES else \
+            wanted.replace(" ", "-")
 
     @staticmethod
     def _genre_label(slug: str) -> str:

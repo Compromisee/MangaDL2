@@ -2,7 +2,7 @@
 
 # MangaDL
 
-**Download manga, manhwa and manhua from 24 sites as CBZ, PDF or EPUB — from a modern CLI, an interactive menu, a full-screen TUI or a minimalist desktop GUI.**
+**Download manga, manhwa and manhua from 28 sites as CBZ, PDF or EPUB — from a modern CLI, an interactive menu, a full-screen TUI or a minimalist desktop GUI.**
 
 [Project landing page](https://compromisee.github.io/WeebDL/) (GitHub Pages, served from `docs/`)
 
@@ -22,7 +22,7 @@
 
 ## Highlights
 
-- **24 sources, one tool.** MangaDex and Asura Scans through their JSON APIs, Flame Comics through its Next.js payload, and nineteen more scraped — manga, manhwa and manhua. The right source is detected from the URL you paste — no flags required. See [Sources](#sources).
+- **19 sources, one tool.** MangaDex and Asura Scans through their JSON APIs, Flame Comics through its Next.js payload, and nineteen more scraped — manga, manhwa and manhua. The right source is detected from the URL you paste — no flags required. See [Sources](#sources).
 - **Search everything at once.** One query fans out across every site in parallel and merges the results, each tagged with where it came from.
 - **Press Search with an empty box** and you get trending titles instead of nothing — the app opens on a discovery feed rather than a blank page.
 - **Browse by genre.** 200+ genres merged across sites, with quick-pick chips, genre-filtered search and per-genre trending.
@@ -420,14 +420,9 @@ mangadl disk orphans        # library entries whose files are gone
 | `madarascans` | [madarascans.org](https://madarascans.org) | HTML + `ts_reader` JSON | Madara **Scans** — the site. Unrelated to the Madara *theme* below |
 | `omegascans` | [omegascans.org](https://omegascans.org) | JSON API | Coin-locked chapters are skipped |
 | `manhwaread` | [manhwaread.com](https://manhwaread.com) | HTML + base64 chapter payload | CDN needs a Referer |
-| `toonily` | [toonily.com](https://toonily.com) | Madara theme | Manhwa. Page CDN needs a Referer; search pages with `&paged=` only |
-| `manhuaplus` | [manhuaplus.com](https://manhuaplus.com) | Madara theme | Manhua |
-| `manhuatop` | [manhuatop.org](https://manhuatop.org) | Madara theme | Manhua. Series at `/manhua/`, listing at `/manga/` |
-| `manhwatop` | [manhwatop.com](https://manhwatop.com) | Madara theme | Manhwa. Genre slugs are SEO-mangled and read live |
-| `mangaread` | [mangaread.org](https://www.mangaread.org) | Madara theme | Mixed manga/manhwa/manhua. Genres at `/genres/` |
+| `madaranet` | *10 sites* | Madara theme, fanned out | **One entry covering every Madara-theme site** — Toonily, Manhua Plus, Manhua Top, Manhwa Top, MangaRead, Coffee Manga, MangaSushi, MangaOwl, MangaGG, Setsu Scans |
 | `witchscans` | [witchscans.com](https://witchscans.com) | HTML + `ts_reader` JSON | Manhua. Genre slugs contain percent-encoded emoji |
 | `writerscans` | [writerscans.com](https://writerscans.com) | HTML, client-side catalogue | 27-title group. Pages rebuilt from `uid` attributes |
-| `setsuscans` | [setsuscans.com](https://setsuscans.com) | Madara theme | **Needs FlareSolverr** — 403 on every request without it |
 | `webtoons` | [webtoons.com](https://www.webtoons.com) | HTML scraping | Official site; covers are proxied (hotlink-protected CDN) |
 | `mangadass` | [mangadass.com](https://mangadass.com) | HTML scraping | **18+** · use `/search?q=`, `/?s=` ignores the query |
 | `manhwa18` | [manhwa18.cc](https://manhwa18.cc) | HTML scraping | **18+** |
@@ -438,19 +433,24 @@ mangadl disk orphans        # library entries whose files are gone
 Adult sources are stamped `content_rating: pornographic` and tagged `Adult`, so
 **Safe mode** in Settings removes them, and each can be disabled individually.
 
-**A note on the name "Madara".** Two unrelated things share it. `madarascans`
-is *Madara Scans*, a site you can search and download from. The **Madara
-WordPress theme** is an engine that six *other* sites run; it lives in
-`mangadl/sources/madara.py`, is not a source, and deliberately never appears
-in Settings or `mangadl sources`. Confusingly, Madara Scans does not run the
-Madara theme.
+**A note on the name "Madara".** Three things share it:
 
-Six of these run the **Madara** WordPress theme, so they share one scraper in
-`mangadl/sources/madara.py` and each site file only declares what differs — the
-series path, the genre prefix and the listing path. All three vary per install
-and a wrong guess is a hard 404, so each was measured rather than assumed.
+| Name | What it is | In Settings? |
+|---|---|---|
+| `madaranet` — "Madara Sites" | **one source that fans out across all ten Madara-theme sites** | Yes |
+| `madarascans` — "Madara Scans" | an unrelated scanlation site that does *not* run the theme | Yes |
+| `mangadl/sources/madara.py` | the scraping engine for the theme | No — engine code |
 
-Sites behind Cloudflare (`weebcentral`, `setsuscans`) need
+The ten Madara sites are one entry rather than ten, because every install is
+the same software with a different skin. A search hits them all in parallel
+and merges the results, with the site each hit came from kept on the row.
+Pasting any member's URL still works and downloads from that site directly.
+
+Each member declares only what differs — the series path, the genre prefix and
+the listing path. All three vary per install and a wrong guess is a hard 404,
+so each was measured rather than assumed.
+
+Sites behind Cloudflare (`weebcentral`, and Setsu Scans inside `madaranet`) need
 [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr). Without it they
 now fail in milliseconds instead of stalling a multi-source search — see the
 v1.4.15 changelog entry.

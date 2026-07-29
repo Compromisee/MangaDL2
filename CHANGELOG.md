@@ -7,6 +7,85 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.18 — Madara sites become one source; dedupe rewritten
+
+### Added — "Madara Sites", one entry for ten sites
+
+Every install of the **Madara** WordPress theme is the same software with a
+different skin, so listing them separately made Settings long and pushed
+"which mirror has this?" onto you. They are now a single source, `madaranet`,
+that fans out across all ten in parallel and merges the results.
+
+Replaces the six standalone entries (Toonily, Manhua Plus, Manhua Top, Manhwa
+Top, MangaRead, Setsu Scans) and adds **four new sites** found by scanning ~60
+candidate domains: **Coffee Manga**, **MangaSushi**, **MangaOwl**, **MangaGG**.
+
+Settings drops from 24 rows to **19**, while reachable sites rise to **28**.
+
+Nothing about the scraping changed — every per-install quirk measured in
+v1.4.15 still applies. Pasting any member's URL still works and downloads from
+that site directly; the row shows which site each hit came from.
+
+Two candidates were **tested and rejected** rather than shipped broken:
+`manhwafull.com` (search cards carry `href="/"`, so there is nothing to
+follow) and `zinmanga.net` (chapter AJAX 404s and the series page embeds no
+list).
+
+### Fixed — a genre browse took 25 seconds
+
+Two bugs, both found by timing the members individually:
+
+1. The aggregate handed each member a genre **display name**, but the slug
+   differs per install — "Action" is `action` almost everywhere and
+   `genre-action-new-genre` on Manhwa Top. The wrong slug 404s.
+2. **A 404 was retried five times with exponential backoff.** A definitive
+   answer was costing 30+ seconds to reach.
+
+Measured on `browse(genre="Action")`: Manhwa Top **31.0s**, MangaOwl **36.4s**
+(it answers 410). Overall **25.0s → 1.4s**. The fail-fast change helps every
+source, not just these.
+
+### Fixed — dedupe destroyed CJK results, and missed obvious duplicates
+
+The key ended with `[^a-z0-9]+ -> " "`, which deletes every non-ASCII
+character. **Every** Japanese, Korean and Chinese title therefore normalised
+to the empty string and they all landed in one group.
+
+Reproduced live: a search for ワンピース put four titles in one bogus row and
+**silently dropped three distinct series**. A search for 一 lost another.
+
+Four fixes:
+
+* **Unicode-safe key.** CJK titles survive and compare correctly.
+* **Only recognised edition notes are stripped.** Stripping all parentheses
+  merged "Solo Leveling" with "Solo Leveling (Pre-serialization)" and "Tower
+  of God" with "Tower of God (Season 2)" — different works. `(Official
+  Colored)`, `[Fan Colored]` and friends still merge.
+* **Untitled rows are never grouped.** "(Oneshot)" and "[Artist]" both
+  normalised to `""` and merged into one row.
+* **More real duplicates caught,** as you asked: word-break variants merge
+  ("Nano Machine" = "Nanomachine", "Solo Max-Level Newbie" = "SoloMax Level
+  Newbie") and leading articles are ignored ("The Beginning After The End" =
+  "Beginning After the End"). Live: "nano machine" now collapses 12 sites into
+  one row.
+
+Merging also **backfills metadata** now. The best-ranked copy is not always
+the most complete — MangaDex often wins on rank while reporting no chapter
+count, and the copy it displaced had both a count and a cover. Empty fields
+are filled from the losing copies; the winner's own data is never overwritten.
+
+### Notes
+
+* The aggregate's id is `madaranet`, not `madara` — that would read as the
+  theme engine in `madara.py`, the exact confusion v1.4.17 untangled.
+* Setsu Scans still needs FlareSolverr, but the aggregate is **not** flagged
+  Cloudflare: nine of ten members work without one, and a member that cannot
+  be read is skipped.
+
+734 passing.
+
+---
+
 ## v1.4.17 — Madara Scans added, and the "Madara" name disambiguated
 
 ### Added — Madara Scans (`madarascans`)

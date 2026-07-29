@@ -4,10 +4,10 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="referrer" content="no-referrer">
-<title>MangaDL — one downloader, 24 sources</title>
-<meta name="description" content="MangaDL downloads manga, manhwa and manhua from 24 sources as CBZ, PDF or EPUB. Desktop app, interactive terminal menu and a scriptable CLI.">
+<title>MangaDL — 19 sources, 28 sites</title>
+<meta name="description" content="MangaDL downloads manga, manhwa and manhua from 28 sites as CBZ, PDF or EPUB. Desktop app, interactive terminal menu and a scriptable CLI.">
 <meta property="og:title" content="MangaDL">
-<meta property="og:description" content="One downloader, 24 sources. CBZ, PDF or EPUB — desktop app, terminal menu, scriptable CLI.">
+<meta property="og:description" content="19 sources, 28 sites. CBZ, PDF or EPUB — desktop app, terminal menu, scriptable CLI.">
 <meta property="og:type" content="website">
 <link rel="icon" href="icon.ico">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -310,8 +310,8 @@ code.i { font-family: JetBrains Mono, monospace; font-size: .9em; background: va
 <header class="hero wrap" id="top">
   <div class="hero-grid">
     <div>
-      <div class="eyebrow"><span class="dot"></span> v1.4.17 · 457 documented features</div>
-      <h1>One downloader,<br><span class="grad">24 sources.</span></h1>
+      <div class="eyebrow"><span class="dot"></span> v1.4.18 · 472 documented features</div>
+      <h1>One downloader,<br><span class="grad">19 sources.</span></h1>
       <p class="lede">
         Paste a link from any supported site and MangaDL works out the rest —
         then packs the chapters into a CBZ, PDF or EPUB. Comes as a desktop
@@ -322,9 +322,9 @@ code.i { font-family: JetBrains Mono, monospace; font-size: .9em; background: va
         <a class="btn btn-ghost" href="#cli">Read the CLI</a>
       </div>
       <div class="hero-stats">
-        <div><div class="hs-n">24</div><div class="hs-k">sources</div></div>
+        <div><div class="hs-n">19</div><div class="hs-k">sources</div></div>
         <div><div class="hs-n">4</div><div class="hs-k">interfaces</div></div>
-        <div><div class="hs-n">707</div><div class="hs-k">tests passing</div></div>
+        <div><div class="hs-n">734</div><div class="hs-k">tests passing</div></div>
         <div><div class="hs-n">4</div><div class="hs-k">output formats</div></div>
       </div>
     </div>
@@ -440,7 +440,7 @@ code.i { font-family: JetBrains Mono, monospace; font-size: .9em; background: va
 
 <section class="wrap" id="sources">
   <div class="sec-head">
-    <div class="sec-tag">Twenty-four sites</div>
+    <div class="sec-tag">Nineteen sources, 28 sites</div>
     <h2>Sources</h2>
     <p>Each one is a small module. Adding another does not touch the CLI, the
        menu or the app — they all read the same registry.</p>
@@ -456,14 +456,9 @@ code.i { font-family: JetBrains Mono, monospace; font-size: .9em; background: va
     <a class="src" href="https://madarascans.org"><span class="src-i">MZ</span><span><span class="src-n">Madara Scans</span><br><span class="src-h">madarascans.org</span></span></a>
     <a class="src" href="https://omegascans.org"><span class="src-i">OS</span><span><span class="src-n">Omega Scans</span><br><span class="src-h">omegascans.org</span></span></a>
     <a class="src" href="https://manhwaread.com"><span class="src-i">MR</span><span><span class="src-n">ManhwaRead</span><br><span class="src-h">manhwaread.com</span></span></a>
-    <a class="src" href="https://toonily.com"><span class="src-i">TN</span><span><span class="src-n">Toonily</span><br><span class="src-h">toonily.com</span></span></a>
-    <a class="src" href="https://manhuaplus.com"><span class="src-i">MP</span><span><span class="src-n">Manhua Plus</span><br><span class="src-h">manhuaplus.com</span></span></a>
-    <a class="src" href="https://manhuatop.org"><span class="src-i">MT</span><span><span class="src-n">Manhua Top</span><br><span class="src-h">manhuatop.org</span></span></a>
-    <a class="src" href="https://manhwatop.com"><span class="src-i">MW</span><span><span class="src-n">Manhwa Top</span><br><span class="src-h">manhwatop.com</span></span></a>
-    <a class="src" href="https://www.mangaread.org"><span class="src-i">MA</span><span><span class="src-n">MangaRead</span><br><span class="src-h">mangaread.org</span></span></a>
+    <a class="src" href="https://mangabooth.com"><span class="src-i">MN</span><span><span class="src-n">Madara Sites</span><br><span class="src-h">10 sites in one</span></span><span class="tag tag-cf">CF</span></a>
     <a class="src" href="https://witchscans.com"><span class="src-i">WI</span><span><span class="src-n">Witch Scans</span><br><span class="src-h">witchscans.com</span></span></a>
     <a class="src" href="https://writerscans.com"><span class="src-i">WR</span><span><span class="src-n">Writers' Scans</span><br><span class="src-h">writerscans.com</span></span></a>
-    <a class="src" href="https://setsuscans.com"><span class="src-i">SS</span><span><span class="src-n">Setsu Scans</span><br><span class="src-h">setsuscans.com</span></span><span class="tag tag-cf">CF</span></a>
     <a class="src" href="https://www.webtoons.com"><span class="src-i">WT</span><span><span class="src-n">Webtoons</span><br><span class="src-h">webtoons.com</span></span></a>
     <a class="src" href="https://mangadass.com"><span class="src-i">MS</span><span><span class="src-n">Mangadass</span><br><span class="src-h">mangadass.com</span></span><span class="tag tag-adult">18+</span></a>
     <a class="src" href="https://manhwa18.cc"><span class="src-i">M18</span><span><span class="src-n">Manhwa18</span><br><span class="src-h">manhwa18.cc</span></span><span class="tag tag-adult">18+</span></a>

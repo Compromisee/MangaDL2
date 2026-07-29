@@ -17,22 +17,17 @@ from .base import BASE_HEADERS, DEFAULT_UA, ScrapeError, Source
 from .demonicscans import DemonicScansSource
 from .flamecomics import FlameComicsSource
 from .hentaiakane import HentaiAkaneSource
+from .madaranet import MadaraNetSource
 from .madarascans import MadaraScansSource
 from .manga18club import Manga18ClubSource
 from .mangadass import MangadassSource
 from .mangadex import MangaDexSource
 from .mangakatana import MangakatanaSource
-from .mangaread import MangaReadSource
-from .manhuaplus import ManhuaPlusSource
-from .manhuatop import ManhuaTopSource
 from .manhwa18 import Manhwa18Source
 from .manhwaread import ManhwaReadSource
-from .manhwatop import ManhwaTopSource
 from .natomanga import NatomangaSource
 from .nhentai import NhentaiSource
 from .omegascans import OmegaScansSource
-from .setsuscans import SetsuScansSource
-from .toonily import ToonilySource
 from .webtoons import WebtoonsSource
 from .weebcentral import WeebCentralSource
 from .witchscans import WitchScansSource
@@ -53,14 +48,9 @@ SOURCE_CLASSES = [
     MadaraScansSource,
     OmegaScansSource,
     ManhwaReadSource,
-    ToonilySource,
-    ManhuaPlusSource,
-    ManhuaTopSource,
-    ManhwaTopSource,
-    MangaReadSource,
+    MadaraNetSource,
     WitchScansSource,
     WriterScansSource,
-    SetsuScansSource,
     WebtoonsSource,
     MangadassSource,
     Manhwa18Source,
@@ -80,10 +70,8 @@ __all__ = [
     "ManhwaReadSource", "Manhwa18Source", "WebtoonsSource",
     "MangadassSource", "Manga18ClubSource", "HentaiAkaneSource",
     "NhentaiSource", "AsuraScansSource", "FlameComicsSource",
-    "DemonicScansSource", "MadaraScansSource", "ToonilySource",
-    "ManhuaPlusSource",
-    "ManhuaTopSource", "ManhwaTopSource", "MangaReadSource",
-    "WitchScansSource", "WriterScansSource", "SetsuScansSource",
+    "DemonicScansSource", "MadaraScansSource", "MadaraNetSource",
+    "WitchScansSource", "WriterScansSource",
     "get_source", "source_for_url", "detect_source", "list_sources",
     "search_all", "browse_all", "browse_multi", "genres_all",
     "split_genres",
@@ -507,12 +495,24 @@ def genres_all(source_ids=None, use_config=True, workers=8,
 
 
 def _offline_genres(source_id):
-    """A source's genre list without touching the network."""
+    """A source's genre list without touching the network.
+
+    Sources normally expose ``GENRES``. Aggregates do not -- their genres are
+    the union of their members' -- so they may publish ``offline_genres()``
+    instead, and that is preferred when present.
+    """
     cls = SOURCES.get(source_id)
+    if cls is None:
+        return []
     try:
-        return [{"id": slug, "name": cls._genre_label(slug)}
-                for slug in getattr(cls, "GENRES", ())] \
-            if hasattr(cls, "_genre_label") else \
-            [{"id": g, "name": g} for g in getattr(cls, "GENRES", ())]
+        offline = getattr(cls, "offline_genres", None)
+        if callable(offline):
+            return list(offline() or [])
+        slugs = getattr(cls, "GENRES", ())
+        if hasattr(cls, "_genre_label"):
+            return [{"id": slug, "name": cls._genre_label(slug)}
+                    for slug in slugs]
+        return [{"id": g, "name": g} for g in slugs]
     except Exception:
+        logger.debug("offline genres failed for %s", source_id, exc_info=True)
         return []

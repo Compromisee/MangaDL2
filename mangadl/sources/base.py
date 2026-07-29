@@ -254,6 +254,16 @@ class Source:
                         break          # no solver: retrying cannot help
                     continue
 
+                # A 404/410 is a definitive answer: the page does not exist
+                # and never will, so retrying five times with exponential
+                # backoff just burns 30+ seconds to reach the same result.
+                # Measured on the Madara aggregate: a genre slug that 404s on
+                # one member cost 31.0s (Manhwa Top) and 36.4s (MangaOwl,
+                # which answers 410), pushing a whole genre browse to 25s.
+                if response.status_code in (404, 410):
+                    raise ScrapeError(
+                        f"{url} returned HTTP {response.status_code}")
+
                 response.raise_for_status()
 
                 # Some sites soft-throttle by answering HTTP 200 with an
