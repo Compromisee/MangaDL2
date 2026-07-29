@@ -28,7 +28,13 @@ from .. import tracking
 
 logger = logging.getLogger(__name__)
 
-SETTINGS_PATH = os.path.join(os.path.expanduser("~"), ".mangadl", "settings.json")
+#: Where settings actually live now. Kept as a name because other modules and
+#: tests import it; it points at config.json, which holds both the app
+#: settings and the per-source config.
+SETTINGS_PATH = appconfig.CONFIG_PATH
+
+#: Pre-1.4.11 location, read once and migrated. Never written again.
+LEGACY_SETTINGS_PATH = appconfig.LEGACY_SETTINGS_PATH
 
 DEFAULT_SETTINGS = {
     "output_dir": os.path.join(os.path.expanduser("~"), "Downloads", "MangaDL"),
@@ -79,14 +85,19 @@ _LEGACY_NAME_TEMPLATES = {
 }
 
 
-def load_settings() -> dict:
-    settings = dict(DEFAULT_SETTINGS)
-    try:
-        with open(SETTINGS_PATH, encoding="utf-8") as f:
-            settings.update(json.load(f))
-    except (OSError, ValueError):
-        pass
+# Settings live in config.json alongside the per-source config, behind that
+# module's lock and atomic write. The old settings.json was written with a
+# bare open()/json.dump: an interrupted write left truncated JSON that
+# load_settings() silently swallowed and replaced with defaults, and two
+# concurrent saves each wrote the state they had read, so the later one
+# erased the earlier one's change. Measured on the old code, four threads
+# saving at once destroyed the theme, accent and output directory in 5 out
+# of 5 runs -- which is what "a lot of settings broke" looked like.
+appconfig.register_settings_defaults(DEFAULT_SETTINGS)
 
+
+def load_settings() -> dict:
+    settings = appconfig.load_settings(DEFAULT_SETTINGS)
     for key, (legacy, replacement) in _LEGACY_NAME_TEMPLATES.items():
         if (settings.get(key) or "").strip() in legacy:
             settings[key] = replacement
@@ -94,9 +105,12 @@ def load_settings() -> dict:
 
 
 def save_settings(settings: dict) -> None:
-    os.makedirs(os.path.dirname(SETTINGS_PATH), exist_ok=True)
-    with open(SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump(settings, f, indent=2)
+    appconfig.save_settings(settings)
+
+
+def update_settings(changes: dict) -> dict:
+    """Merge changes under the config lock, so racing saves cannot clobber."""
+    return appconfig.update_settings(changes, DEFAULT_SETTINGS)
 
 
 def _dialog_types():
@@ -502,9 +516,7 @@ class Api:
             return {"ok": False, "error": f"Not a folder: {root}"}
 
         # remember it as the download location going forward
-        settings = load_settings()
-        settings["output_dir"] = root
-        save_settings(settings)
+        update_settings({"output_dir": root})
 
         proposals = library.find_moved_entries([root])
         result = library.apply_relocations(proposals)
@@ -956,10 +968,9 @@ class Api:
         return load_settings()
 
     def set_settings(self, settings: dict):
-        current = load_settings()
-        current.update(settings or {})
-        save_settings(current)
-        return current
+        # Locked read-modify-write. Doing this in two steps let a concurrent
+        # save (the folder picker, a theme click) overwrite the other's keys.
+        return update_settings(settings or {})
 
     def choose_folder(self):
         try:

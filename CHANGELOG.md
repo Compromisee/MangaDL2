@@ -7,6 +7,63 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.11 — One config.json, and the settings-loss bug behind it
+
+### Fixed — settings resetting themselves
+
+Theme, accent, sources, passcode preferences and the output directory would
+all revert at once. The cause was not the individual settings screens, which
+work: it was the store underneath them.
+
+`settings.json` was the **only** store in the app that wrote without a lock
+and without an atomic replace -- every other file (`config.json`,
+`library.json`, `filters.json`, `progress.json`, `lock.json`) already used
+tmp+`os.replace`. That lost data two ways:
+
+* **An interrupted write** left truncated JSON on disk. `load_settings()`
+  caught the `ValueError` and quietly returned the defaults, so a single bad
+  shutdown reset every preference with no error anywhere.
+* **Concurrent saves clobbered each other.** `set_settings()` did
+  read-modify-write outside any lock, and so did the download-folder picker.
+  Whichever landed last wrote back the state it had read, erasing the other's
+  change. Measured on the old code, four threads saving at once destroyed the
+  theme, accent and output directory in **5 of 5** runs; after the fix,
+  **0 of 5**.
+
+The Save button only posts 17 of the 35 keys, so any save at all could take
+the appearance settings with it. That is now covered by a test.
+
+### Changed — everything lives in config.json
+
+`config.json` already held the per-source ranking and exclusion. It now also
+holds the app settings, in two clearly separated sections::
+
+    { "settings": { "theme": ..., "output_dir": ... },
+      "sources":  { "mangadex": { "enabled": true, "rank": 0 } } }
+
+Both sections share one `RLock` and one atomic write. `save_config()` also
+refuses to drop the settings section, since its callers only ever build the
+sources half.
+
+An existing `settings.json` is folded in on first read and then left alone;
+the per-source config already in `config.json` is preserved. Verified with
+both files present, and with a corrupt legacy file.
+
+### Note
+
+While reproducing this I first wrote a browser probe that injected the
+pywebview bridge after page load. `whenReady()` waits for the
+`pywebviewready` event, so boot never ran and the probe "reproduced" dead
+themes and an empty source list. That was the harness, not the app -- firing
+the event correctly showed the UI working. The real defect was in the
+persistence layer, which is what the measurements above cover.
+
+### Tests
+
+552 offline (up from 534) + 21 live.
+
+---
+
 ## v1.4.10 — Bookmark drag-and-drop actually works
 
 Dragging a bookmark did nothing. The HTML5 wiring itself was fine -- a real

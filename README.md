@@ -202,7 +202,7 @@ mangadl tui        # or: mangadl-tui / python -m mangadl tui
 - Chapter list with checkbox multi-select (`space` toggles), All / None / Latest buttons and a quick-range box (`1-20, 25, 30-40`)
 - Format (CBZ / PDF / EPUB / images) and bundling (single file / per chapter / every N) selectors
 - Live download queue: overall progress bar, per-chapter image counters, colored activity log, stop button
-- Settings shared with the GUI (`~/.mangadl/settings.json`)
+- Settings shared with the GUI (`~/.mangadl/config.json`)
 
 **Keyboard shortcuts**
 
@@ -595,7 +595,7 @@ Everything lives in `~/.mangadl/`:
 
 | File | Purpose |
 |---|---|
-| `settings.json` | GUI/TUI settings (theme, accent, workers, output dir, ...) |
+| `config.json` | Everything configurable: app settings (theme, accent, workers, output dir) under `settings`, and per-source ranking/exclusion under `sources`. Written atomically under one lock. A pre-1.4.11 `settings.json` is migrated in automatically. |
 | `library.json` | every downloaded chapter per manga: name, pages, date, output files |
 | `bookmarks.json` | bookmarked manga (title, URL, cover) |
 | `job.json` | journal of the current download; enables crash resume |

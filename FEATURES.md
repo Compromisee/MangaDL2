@@ -471,6 +471,10 @@ A complete feature reference for MangaDL.
 396. Drop a bookmark back to All bookmarks, or straight into a new folder
 397. Drop highlight survives the pointer crossing child elements
 398. A missed drop never navigates the app away
+399. All configuration in one `config.json` (settings + sources)
+400. Settings written atomically, so a crash cannot reset them
+401. Concurrent saves cannot clobber each other
+402. Pre-1.4.11 `settings.json` migrated automatically
 
 ## Core engine
 

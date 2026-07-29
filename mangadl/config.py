@@ -1,6 +1,28 @@
-"""Per-source configuration: ranking, exclusion and overrides.
+"""Application configuration, stored at ``~/.mangadl/config.json``.
 
-Stored at ``~/.mangadl/config.json``. Every source gets an entry:
+The file has two top-level sections::
+
+    {
+      "settings": { "theme": "midnight", "output_dir": "...", ... },
+      "sources":  { "mangadex": {"enabled": true, "rank": 0, ...}, ... }
+    }
+
+``settings`` holds the app-wide preferences the GUI/TUI share. ``sources``
+holds the per-source ranking and exclusion described below.
+
+Both are read and written through one lock and one atomic write. Settings
+used to live in a separate ``settings.json`` that was written with a plain
+``open(...,"w")`` and no lock, which lost data two ways: an interrupted write
+left truncated JSON that ``load`` silently replaced with defaults, and two
+concurrent saves clobbered each other's read-modify-write. Measured on the
+old code, four threads saving at once destroyed the theme, accent and output
+directory in 5 out of 5 runs. An existing ``settings.json`` is migrated in
+automatically on first read.
+
+Per-source configuration
+------------------------
+
+Every source gets an entry:
 
     {
       "sources": {
@@ -40,6 +62,73 @@ SOURCE_DEFAULTS = {
     "delay": 0.0,             # extra politeness delay, 0 = source default
     "note": "",               # free-text user note
 }
+
+
+#: App-wide preferences. The GUI owns the canonical defaults and passes them
+#: in, so this module does not need to know every key the UI invents.
+_SETTINGS_DEFAULTS = {}
+
+
+def register_settings_defaults(defaults: dict) -> None:
+    """Tell this module the full set of known settings keys."""
+    _SETTINGS_DEFAULTS.clear()
+    _SETTINGS_DEFAULTS.update(defaults or {})
+
+
+#: Old standalone settings file, migrated on first read.
+LEGACY_SETTINGS_PATH = os.path.join(DIR, "settings.json")
+
+
+def _migrate_legacy_settings(data: dict) -> bool:
+    """Fold a pre-1.4.11 settings.json into the config. True if it changed."""
+    if data.get("settings"):
+        return False
+    try:
+        with open(LEGACY_SETTINGS_PATH, encoding="utf-8") as f:
+            legacy = json.load(f)
+    except (OSError, ValueError):
+        return False
+    if not isinstance(legacy, dict) or not legacy:
+        return False
+    data["settings"] = legacy
+    return True
+
+
+def load_settings(defaults: dict = None) -> dict:
+    """Every app setting, defaults backfilled."""
+    base = dict(defaults if defaults is not None else _SETTINGS_DEFAULTS)
+    with _lock:
+        data = _load_raw()
+        if _migrate_legacy_settings(data):
+            _save_raw(data)
+        stored = data.get("settings")
+        if isinstance(stored, dict):
+            base.update(stored)
+        return base
+
+
+def save_settings(settings: dict) -> dict:
+    """Replace the settings section wholesale."""
+    with _lock:
+        data = _load_raw()
+        _migrate_legacy_settings(data)
+        data["settings"] = dict(settings or {})
+        _save_raw(data)
+        return data["settings"]
+
+
+def update_settings(changes: dict, defaults: dict = None) -> dict:
+    """Merge ``changes`` into the stored settings under one lock.
+
+    Read-modify-write has to happen inside the lock or two callers racing --
+    the Save button and an auto-save such as the download folder picker --
+    each write a copy of the state they read, and whichever lands last wipes
+    the other's change.
+    """
+    with _lock:
+        current = load_settings(defaults)
+        current.update(changes or {})
+        return save_settings(current)
 
 
 def _default_config() -> dict:
@@ -100,6 +189,12 @@ def load_config() -> dict:
 
 def save_config(data: dict) -> dict:
     with _lock:
+        # Never drop the settings section: callers here only ever build the
+        # "sources" half, and writing their dict verbatim would erase every
+        # app preference.
+        existing = _load_raw()
+        if "settings" in existing and "settings" not in data:
+            data = {**data, "settings": existing["settings"]}
         _save_raw(data)
         return data
 

@@ -146,16 +146,12 @@ def test_bad_template_falls_back_instead_of_crashing():
 def test_legacy_templates_are_migrated():
     """A stored "{title}" from an older version would otherwise keep
     overriding the improved default."""
-    import json
-
     import mangadl.gui as gui
     importlib.reload(gui)
 
-    os.makedirs(os.path.dirname(gui.SETTINGS_PATH), exist_ok=True)
-    with open(gui.SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump({"name_single": "{title}",
-                   "name_range": "{title} - Chapters {start}-{end}",
-                   "output_dir": "/keep/me"}, f)
+    gui.save_settings({"name_single": "{title}",
+                       "name_range": "{title} - Chapters {start}-{end}",
+                       "output_dir": "/keep/me"})
 
     settings = gui.load_settings()
     assert settings["name_single"] == "{title} - Chapters {chapters}"
@@ -164,15 +160,40 @@ def test_legacy_templates_are_migrated():
 
 
 def test_migration_leaves_custom_templates_alone():
-    import json
-
     import mangadl.gui as gui
     importlib.reload(gui)
 
-    os.makedirs(os.path.dirname(gui.SETTINGS_PATH), exist_ok=True)
-    with open(gui.SETTINGS_PATH, "w", encoding="utf-8") as f:
-        json.dump({"name_single": "MY OWN {title}"}, f)
+    gui.save_settings({"name_single": "MY OWN {title}"})
     assert gui.load_settings()["name_single"] == "MY OWN {title}"
+
+
+def test_a_pre_1_4_11_settings_file_is_migrated():
+    """Settings used to live in their own settings.json. On upgrade they must
+    fold into config.json without losing the per-source config already there.
+    """
+    import json
+
+    import mangadl.config as appconfig
+    import mangadl.gui as gui
+    importlib.reload(appconfig)
+    importlib.reload(gui)
+
+    os.makedirs(appconfig.DIR, exist_ok=True)
+    with open(appconfig.CONFIG_PATH, "w", encoding="utf-8") as f:
+        json.dump({"sources": {"mangadex": {"enabled": True, "rank": 0}}}, f)
+    with open(appconfig.LEGACY_SETTINGS_PATH, "w", encoding="utf-8") as f:
+        json.dump({"theme": "nord", "accent": "rose",
+                   "name_single": "MY OWN {title}"}, f)
+
+    settings = gui.load_settings()
+    assert settings["theme"] == "nord"
+    assert settings["accent"] == "rose"
+    assert settings["name_single"] == "MY OWN {title}"
+
+    with open(appconfig.CONFIG_PATH, encoding="utf-8") as f:
+        stored = json.load(f)
+    assert stored["settings"]["theme"] == "nord"
+    assert "mangadex" in stored["sources"], "source config must survive"
 
 
 # ==================================================== relocation
