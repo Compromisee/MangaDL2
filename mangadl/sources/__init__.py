@@ -407,39 +407,109 @@ def _interleave_by_source(rows):
     return out
 
 
-def genres_all(source_ids=None, use_config=True) -> list:
+#: Hard ceiling on how long ``genres_all`` may block, in seconds. The GUI
+#: awaits this during boot, so it is a startup budget, not a nicety.
+GENRES_DEADLINE = 6.0
+
+
+def genres_all(source_ids=None, use_config=True, workers=8,
+               deadline=GENRES_DEADLINE) -> list:
     """Union of every genre offered by the enabled sources.
 
     Names are matched case-insensitively across sites, so "Sci-Fi" from one
     source and "sci-fi" from another collapse into a single entry that lists
     which sources provide it.
+
+    Runs the sources **in parallel under a deadline**. Some sources answer
+    from a constant, but the six Madara sites read their genre list off the
+    live site, because their slugs are renamed per install and cannot be
+    guessed (Manhwa Top ships ``genre-action-new-genre``). That made this
+    function do network I/O.
+
+    It used to be a serial ``for`` loop with no time limit, which was fine
+    when every source answered from a constant and became a startup hazard
+    the moment they did not. Measured with six sites merely *slow* (4s each,
+    not down): **30.0s of frozen UI** on open, because the GUI awaits this in
+    its boot sequence. Unreachable sites were never the problem -- those fail
+    fast -- it is the slow ones that hurt.
+
+    Now: whatever has answered when the deadline expires is merged, the rest
+    fall back to their hardcoded lists, and the partial result is **not**
+    cached so the next call can still fill it in.
     """
+    import concurrent.futures
+
     ids, _ranks = _enabled_ids(source_ids, use_config)
     ids = [sid for sid in ids if SOURCES[sid].supports_genres]
 
     from ..robust import GENRE_CACHE, cache_key
 
-    cached = GENRE_CACHE.get(cache_key("genres", *sorted(ids)))
+    key = cache_key("genres", *sorted(ids))
+    cached = GENRE_CACHE.get(key)
     if cached is not None:
         return cached
 
-    merged = {}
-    for source_id in ids:
+    def fetch(source_id):
         source = get_source(source_id)
         try:
-            for genre in source.genres() or []:
-                name = (genre.get("name") or "").strip()
-                if not name:
-                    continue
-                key = name.lower()
-                entry = merged.setdefault(key, {"name": name, "sources": {}})
-                entry["sources"][source_id] = genre.get("id", name)
-        except Exception as e:
-            logger.warning("Genre listing failed on %s: %s", source_id, e)
+            return source_id, list(source.genres() or [])
         finally:
             source.close()
 
+    results, complete = [], True
+    if ids:
+        pool = concurrent.futures.ThreadPoolExecutor(
+            max_workers=max(1, min(workers, len(ids))))
+        try:
+            futures = {pool.submit(fetch, sid): sid for sid in ids}
+            done, pending = concurrent.futures.wait(
+                futures, timeout=deadline)
+            for future in done:
+                source_id = futures[future]
+                try:
+                    results.append(future.result())
+                except Exception as e:
+                    logger.warning("Genre listing failed on %s: %s",
+                                   source_id, e)
+                    complete = False
+            for future in pending:
+                source_id = futures[future]
+                logger.warning("Genre listing timed out on %s after %.1fs; "
+                               "using its offline list", source_id, deadline)
+                complete = False
+                # The site was too slow, but the source still knows a
+                # fallback set -- use it rather than dropping the source.
+                results.append((source_id, _offline_genres(source_id)))
+        finally:
+            # Do not join: a straggler thread must not hold the caller.
+            pool.shutdown(wait=False)
+
+    merged = {}
+    for source_id, genres in results:
+        for genre in genres or []:
+            name = (genre.get("name") or "").strip()
+            if not name:
+                continue
+            entry = merged.setdefault(name.lower(),
+                                      {"name": name, "sources": {}})
+            entry["sources"][source_id] = genre.get("id", name)
+
     rows = list(merged.values())
     rows.sort(key=lambda row: (-len(row["sources"]), row["name"].lower()))
-    GENRE_CACHE.set(cache_key("genres", *sorted(ids)), rows)
+    # Only cache a complete answer, so a timeout does not freeze a partial
+    # genre list in place for the next hour.
+    if complete:
+        GENRE_CACHE.set(key, rows)
     return rows
+
+
+def _offline_genres(source_id):
+    """A source's genre list without touching the network."""
+    cls = SOURCES.get(source_id)
+    try:
+        return [{"id": slug, "name": cls._genre_label(slug)}
+                for slug in getattr(cls, "GENRES", ())] \
+            if hasattr(cls, "_genre_label") else \
+            [{"id": g, "name": g} for g in getattr(cls, "GENRES", ())]
+    except Exception:
+        return []

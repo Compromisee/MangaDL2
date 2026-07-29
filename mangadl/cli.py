@@ -26,34 +26,23 @@ if __package__ in (None, ""):
     import mangadl  # noqa: F401
     __package__ = "mangadl"
 
-from rich import box
-from rich.console import Console
-from rich.panel import Panel
-from rich.progress import (
-    BarColumn,
-    MofNCompleteColumn,
-    Progress,
-    SpinnerColumn,
-    TextColumn,
-    TimeElapsedColumn,
-)
-from rich.table import Table
-
+# Rich is optional. It used to be a hard import here, which meant a bare
+# clone -- no `pip install -e .` -- could not run the CLI at all: `py cli.py`
+# died with ImportError before argparse even ran. `mangadl/console.py` uses
+# Rich when it is installed and falls back to ANSI otherwise.
+from .console import (ACCENT, DIM, ERR, HEAD, OK, RICH, WARN, Panel, Table,
+                      box, console, download_progress, strip_markup)
 from .downloader import DownloadEngine, DownloadOptions
 from .sources import (DEFAULT_SOURCE, SOURCES, browse_all, detect_source,
                       genres_all, get_source, list_sources, search_all,
                       source_for_url)
 
-console = Console(highlight=False)
-
-ACCENT = "bright_cyan"
-DIM = "grey58"
-
 
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="mangadl",
-        description="Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as CBZ, PDF or EPUB.",
+        description=(f"Download manga, manhwa and manhua from {len(SOURCES)} "
+                     f"sources as CBZ, PDF or EPUB."),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "examples:\n"
@@ -1042,14 +1031,10 @@ def _run_rich(options, skip_confirm=False) -> int:
             console.print("Cancelled.")
             return 0
 
-    progress = Progress(
-        SpinnerColumn(style=ACCENT),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(bar_width=30, complete_style=ACCENT),
-        MofNCompleteColumn(),
-        TimeElapsedColumn(),
-        console=console,
-    )
+    # Built in console.py so the Rich and no-Rich paths stay in step; it also
+    # adds a percentage and an ETA column, which the elapsed-time-only bar
+    # lacked (an 800-chapter series gave no sense of how long remained).
+    progress = download_progress(console)
     overall = progress.add_task("[bold]Overall", total=len(selected))
     chapter_tasks = {}
     lock = threading.Lock()

@@ -1,0 +1,344 @@
+"""Regression tests for v1.4.16.
+
+Three reported problems and one new document:
+
+* the GUI was "really prone to crashing on opening" -- ``genres_all`` became a
+  serial network loop when the Madara sources started reading their genre
+  lists live, and the GUI awaits it during boot
+* Rich was a hard import in ``cli.py`` and ``menu.py``, so a clone without
+  dependencies installed could not run either at all
+* ``SYNTAX.md`` must document only flags that really exist
+
+Natomanga was reported as "not working" but could not be reproduced -- see
+``test_natomanga_still_scrapes_end_to_end`` in the live suite and the note in
+the changelog.
+"""
+
+import os
+import re
+import subprocess
+import sys
+
+import pytest
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+
+def read(path):
+    with open(path, encoding="utf-8") as f:
+        return f.read()
+
+
+# =================================================== GUI boot: genres_all
+
+
+def test_genres_all_runs_in_parallel_under_a_deadline():
+    """The bug: a serial for-loop with no time limit. Six merely *slow* sites
+    (4s each, not down) froze the UI for 30.0s on open, because the GUI awaits
+    this during boot. Parallel + deadline brings that to ~5s."""
+    import time
+
+    import mangadl.sources.base as base
+    from mangadl.sources import genres_all
+
+    original = base.Source.fetch
+    slowed = {"manhuatop", "manhuaplus", "toonily", "manhwatop", "mangaread",
+              "setsuscans"}
+
+    def slow(self, *args, **kwargs):
+        if self.id in slowed:
+            time.sleep(3)
+        return original(self, *args, **kwargs)
+
+    base.Source.fetch = slow
+    try:
+        started = time.time()
+        rows = genres_all(use_config=False, deadline=1.0)
+        elapsed = time.time() - started
+    finally:
+        base.Source.fetch = original
+
+    # Serially this was 6 x 3s plus the rest; the deadline caps it.
+    assert elapsed < 8, f"took {elapsed:.1f}s"
+    assert rows, "must still return genres"
+
+
+def test_genres_all_falls_back_to_offline_lists_on_timeout():
+    """A source that times out must contribute its hardcoded genres rather
+    than vanishing from the picker."""
+    import mangadl.sources.base as base
+    from mangadl.sources import genres_all
+
+    original = base.Source.fetch
+
+    def hang(self, *args, **kwargs):
+        import time
+        time.sleep(30)
+
+    base.Source.fetch = hang
+    try:
+        rows = genres_all(source_ids=["manhuaplus"], use_config=False,
+                          deadline=0.5)
+    finally:
+        base.Source.fetch = original
+
+    names = {r["name"].lower() for r in rows}
+    assert "action" in names, "offline fallback list was not used"
+
+
+def test_genres_all_does_not_cache_a_partial_result():
+    """Caching a timed-out answer would freeze a short genre list in place for
+    the cache's full hour."""
+    import mangadl.sources.base as base
+    from mangadl.robust import GENRE_CACHE, cache_key
+    from mangadl.sources import genres_all
+
+    GENRE_CACHE.clear() if hasattr(GENRE_CACHE, "clear") else None
+    original = base.Source.fetch
+
+    def hang(self, *args, **kwargs):
+        import time
+        time.sleep(30)
+
+    base.Source.fetch = hang
+    try:
+        genres_all(source_ids=["manhuaplus"], use_config=False, deadline=0.4)
+    finally:
+        base.Source.fetch = original
+
+    assert GENRE_CACHE.get(cache_key("genres", "manhuaplus")) is None
+
+
+def test_genres_all_still_merges_across_sources():
+    """The offline floor: with no network at all every source falls back to a
+    constant, and the merge must still work."""
+    import mangadl.sources.base as base
+    from mangadl.sources import genres_all
+    from mangadl.sources.base import ScrapeError
+
+    original = base.Source.fetch
+
+    def dead(self, *args, **kwargs):
+        raise ScrapeError("offline")
+
+    base.Source.fetch = dead
+    try:
+        rows = genres_all(use_config=False)
+    finally:
+        base.Source.fetch = original
+
+    assert len(rows) > 50
+    action = [r for r in rows if r["name"].lower() == "action"]
+    assert action and len(action[0]["sources"]) > 5
+
+
+# ====================================================== Rich is optional
+
+
+NO_RICH = """
+import sys, builtins
+sys.path.insert(0, %r)
+_real = builtins.__import__
+def _fake(name, *a, **k):
+    if name == "rich" or name.startswith("rich."):
+        raise ImportError("No module named 'rich'")
+    return _real(name, *a, **k)
+builtins.__import__ = _fake
+""" % ROOT
+
+
+def run_without_rich(body, argv=()):
+    """Run a snippet in a subprocess where importing rich fails."""
+    return subprocess.run(
+        [sys.executable, "-c", NO_RICH + body, *argv],
+        capture_output=True, text=True, cwd=ROOT, timeout=180,
+        env={**os.environ, "HOME": os.environ.get("HOME", "/tmp"),
+             "FORCE_COLOR": "1"},
+    )
+
+
+def test_cli_imports_without_rich():
+    """It used to die at import: `from rich import box` -> ImportError, before
+    argparse ran, so not even --help worked from a bare clone."""
+    result = run_without_rich("import mangadl.cli; print('OK')")
+    assert result.returncode == 0, result.stderr[-800:]
+    assert "OK" in result.stdout
+
+
+def test_menu_imports_without_rich():
+    """menu.py had the identical hard import."""
+    result = run_without_rich("import mangadl.menu; print('OK')")
+    assert result.returncode == 0, result.stderr[-800:]
+    assert "OK" in result.stdout
+
+
+def test_cli_help_works_without_rich():
+    result = run_without_rich(
+        "import sys; sys.argv=['mangadl','--help']\n"
+        "from mangadl.cli import main\n"
+        "try: main()\n"
+        "except SystemExit: pass")
+    assert result.returncode == 0, result.stderr[-800:]
+    assert "usage: mangadl" in result.stdout
+
+
+def test_sources_table_renders_without_rich():
+    result = run_without_rich(
+        "from mangadl.cli import cmd_sources; cmd_sources()")
+    assert result.returncode == 0, result.stderr[-800:]
+    for source_id in ("mangadex", "witchscans", "asurascans"):
+        assert source_id in result.stdout
+
+
+def test_fallback_console_emits_ansi_when_colour_is_forced():
+    result = run_without_rich(
+        "import mangadl.console as c\n"
+        "assert c.RICH is False\n"
+        "c.console.print('[bright_cyan]tint[/]')")
+    assert result.returncode == 0, result.stderr[-800:]
+    assert "\x1b[" in result.stdout, "no ANSI emitted with FORCE_COLOR=1"
+
+
+def test_fallback_console_strips_markup_when_colour_is_off():
+    """Piping must never produce raw [bold] tags or escape codes."""
+    result = subprocess.run(
+        [sys.executable, "-c", NO_RICH +
+         "import mangadl.console as c\nc.console.print('[bold]plain[/] text')"],
+        capture_output=True, text=True, cwd=ROOT, timeout=120,
+        env={**os.environ, "NO_COLOR": "1", "HOME": os.environ.get("HOME", "/tmp")},
+    )
+    assert result.returncode == 0, result.stderr[-500:]
+    assert result.stdout.strip() == "plain text"
+    assert "\x1b[" not in result.stdout
+    assert "[bold]" not in result.stdout
+
+
+def test_fallback_table_supports_grid():
+    """Table.grid() is used for the download summary panel; the first shim
+    lacked it and the download crashed with AttributeError after fetching
+    every page."""
+    result = run_without_rich(
+        "from mangadl.console import Table\n"
+        "g = Table.grid(padding=(0, 2))\n"
+        "g.add_row('Source', 'Flame Comics')\n"
+        "g.add_row('Chapters', '1 of 8')\n"
+        "print(g.render(80))")
+    assert result.returncode == 0, result.stderr[-800:]
+    assert "Flame Comics" in result.stdout
+
+
+def test_no_module_imports_rich_at_top_level():
+    """Any new hard import of Rich reintroduces the crash."""
+    offenders = []
+    for name in sorted(os.listdir(os.path.join(ROOT, "mangadl"))):
+        if not name.endswith(".py") or name == "console.py":
+            continue
+        text = read(os.path.join(ROOT, "mangadl", name))
+        if re.search(r"(?m)^(from rich[\. ]|import rich\b)", text):
+            offenders.append(name)
+    assert not offenders, f"import rich directly: {offenders}"
+
+
+def test_console_module_exports_what_the_cli_uses():
+    import mangadl.console as console_module
+
+    for name in ("console", "Table", "Panel", "box", "ACCENT", "DIM",
+                 "download_progress", "strip_markup", "RICH"):
+        assert hasattr(console_module, name), name
+
+
+def test_colour_is_disabled_when_piped():
+    """Redirecting to a file must not produce escape-code soup."""
+    result = subprocess.run(
+        [sys.executable, "-m", "mangadl.cli", "sources"],
+        capture_output=True, text=True, cwd=ROOT, timeout=180,
+        env={k: v for k, v in os.environ.items()
+             if k not in ("FORCE_COLOR", "CLICOLOR_FORCE")},
+    )
+    assert result.returncode == 0
+    assert "\x1b[" not in result.stdout
+
+
+# ============================================================= SYNTAX.md
+
+
+SYNTAX = os.path.join(ROOT, "SYNTAX.md")
+
+
+def test_syntax_doc_exists():
+    assert os.path.exists(SYNTAX)
+
+
+def test_every_documented_flag_exists_in_the_parser():
+    """A documented flag that the parser rejects is worse than no docs."""
+    result = subprocess.run(
+        [sys.executable, "-m", "mangadl.cli", "--help"],
+        capture_output=True, text=True, cwd=ROOT, timeout=180)
+    help_text = result.stdout
+    documented = set(re.findall(r"(?<![\w-])(--[a-z][a-z-]+)", read(SYNTAX)))
+    assert documented, "no flags found in SYNTAX.md"
+    missing = sorted(f for f in documented if f not in help_text)
+    assert not missing, f"documented but not real: {missing}"
+
+
+def test_every_documented_command_is_dispatched():
+    cli = read(os.path.join(ROOT, "mangadl", "cli.py"))
+    dispatch = cli[cli.index("def main("):]
+    for command in ("search", "info", "trending", "genres", "sources",
+                    "config", "library", "watch", "disk", "stats", "history",
+                    "lock", "export", "health", "resume", "menu", "tui",
+                    "gui"):
+        assert f'"{command}"' in dispatch, command
+
+
+def test_syntax_doc_source_count_matches_the_registry():
+    from mangadl.sources import SOURCE_CLASSES
+
+    text = read(SYNTAX)
+    stale = re.findall(r"(\d+)\s+sources", text)
+    for number in stale:
+        assert int(number) == len(SOURCE_CLASSES), \
+            f"SYNTAX.md says {number} sources, registry has {len(SOURCE_CLASSES)}"
+
+
+def test_syntax_doc_documents_colour_control():
+    text = read(SYNTAX)
+    for token in ("NO_COLOR", "FORCE_COLOR", "--plain"):
+        assert token in text, token
+
+
+def test_cli_description_is_not_stale():
+    """It named four sources long after there were twenty-three."""
+    from mangadl.sources import SOURCES
+
+    cli = read(os.path.join(ROOT, "mangadl", "cli.py"))
+    assert "Natomanga and Weeb Central as CBZ" not in cli
+    result = subprocess.run(
+        [sys.executable, "-m", "mangadl.cli", "--help"],
+        capture_output=True, text=True, cwd=ROOT, timeout=180)
+    assert f"{len(SOURCES)} sources" in result.stdout
+
+
+def test_readme_links_the_syntax_doc():
+    assert "SYNTAX.md" in read(os.path.join(ROOT, "README.md"))
+
+
+# ================================================================== TUI
+
+
+def test_tui_module_is_unchanged_and_still_guards_textual():
+    """The brief was to touch the TUI only if it errored. It did not -- it
+    boots, cycles tabs and lists all 23 sources with no exceptions -- so this
+    only pins the guard that lets it degrade without Textual."""
+    text = read(os.path.join(ROOT, "mangadl", "tui.py"))
+    assert "TEXTUAL_AVAILABLE" in text
+    assert "except ImportError:" in text
+
+
+def test_tui_fallback_message_points_at_the_menu():
+    import mangadl.tui as tui
+
+    if tui.TEXTUAL_AVAILABLE:
+        pytest.skip("Textual is installed; the fallback path is not taken")
+    text = read(os.path.join(ROOT, "mangadl", "tui.py"))
+    assert "mangadl menu" in text

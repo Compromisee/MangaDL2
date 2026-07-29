@@ -7,6 +7,110 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.16 — GUI startup fix, Rich made optional, SYNTAX.md
+
+### Fixed — the GUI could freeze on open
+
+Reported as "really prone to crashing on opening UI". Reproduced, and it was
+caused by v1.4.15.
+
+`genres_all()` was a **serial loop with no time limit**. That was harmless
+while every source answered from a hardcoded constant. The six Madara sources
+added last release read their genre list off the live site — they have to,
+because their slugs are renamed per install (Manhwa Top ships
+`genre-action-new-genre`) — so the function started doing network I/O, and the
+GUI `await`s it in its boot sequence.
+
+Measured, with six sites merely **slow** (4s each, not down):
+
+| | before | after |
+|---|---|---|
+| `genres_all()` worst case | **30.0 s** | **5.0 s** |
+| `genres_all()` typical | 6.5 s | 1.1 s |
+| GUI boot to interactive | — | **1.0 s** |
+
+Unreachable sites were never the problem; those fail fast. Slow ones were.
+
+It now runs the sources in parallel under a deadline. Whatever has answered is
+merged, anything still outstanding falls back to its offline list rather than
+vanishing from the picker, and a partial result is **not** cached so the next
+call can fill it in.
+
+### Fixed — the CLI could not start without Rich
+
+`cli.py` and `menu.py` imported Rich at module scope, so on a bare clone —
+no `pip install` — `py cli.py` died with `ImportError: No module named 'rich'`
+before argparse ran. Not even `--help` worked. `tui.py` has guarded its
+optional Textual import since v1.0; these two never did.
+
+New `mangadl/console.py` uses Rich when present and falls back to an ANSI
+renderer when not: tables, panels, rules, prompts and a single-line progress
+bar. Verified by hiding Rich from the import system — `--help`, `sources` and
+a full download all work and stay coloured.
+
+A test now fails if any module imports Rich directly again.
+
+### Added — colour control and a better progress bar
+
+* `NO_COLOR`, `FORCE_COLOR` and `CLICOLOR_FORCE` are honoured.
+* Colour switches off when output is piped, so redirecting to a file no longer
+  produces escape-code soup.
+* Windows ANSI is enabled through the console API; hosts too old for it get
+  plain text instead of literal `←[36m` noise.
+* The download bar gained a **percentage** and an **ETA** column. Elapsed time
+  alone told you nothing on an 800-chapter series.
+
+### Added — `SYNTAX.md`
+
+A full command reference: every command, flag, chapter-selection form,
+template placeholder, environment variable and exit code, plus worked recipes.
+
+Every flag in it is checked against the real parser by a test, every command
+is checked against the dispatch table, and the source count is checked against
+the registry — so it cannot quietly drift.
+
+### Changed
+
+* The CLI's own `--help` description said "MangaDex, Mangakatana, Natomanga
+  and Weeb Central" long after there were 23 sources. It is now derived from
+  the registry.
+
+### Not changed — the TUI
+
+The brief was to touch it **only if it errored**. It does not: booted under
+Textual 8.2.8, cycled all four tabs, listed 23 sources and 61 genres, and
+logged no exceptions. Left alone deliberately.
+
+### Could not reproduce — Natomanga
+
+Tested end to end against the live site and every stage passed:
+
+```
+search    3 results        get_manga_info  OK
+chapters  787              images          46
+download  142,532 bytes    covers          6/6 HTTP 200
+```
+
+Covers came back 200 from all three shard hosts. If it is still failing for
+you, please send the exact URL or search term and what you see — a regional
+block or an ISP-level DNS issue would both look like this and neither is
+visible from here. In the meantime the v1.4.15 Cloudflare fix and this
+release's genre-deadline fix both remove ways a single source could appear to
+hang the app, which may be what was actually being seen.
+
+### Not added — Mantrra
+
+I could not find it. `mantrra.com` is a **GoDaddy parked domain** — it serves a
+114-byte redirect to a for-sale lander, no manga content. `mantrra.in` is also
+a GoDaddy placeholder. `mantra.com`, `mantrra.net/.org/.co/.xyz/.to/.me`,
+`mangatrra.com`, `mantrascans.com` and `mantra-scans.com` do not resolve;
+`manterra.com` is a plastics manufacturer and `mantraa.com` is an M&A firm.
+
+Rather than guess at a spelling and ship a scraper against the wrong site,
+I have left it out — tell me the exact URL you use and I will add it.
+
+---
+
 ## v1.4.15 — Eleven new manhwa/manhua sources, and a Cloudflare timeout fix
 
 ### Added — the six requested sites
