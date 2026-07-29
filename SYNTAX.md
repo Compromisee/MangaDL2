@@ -373,6 +373,25 @@ counts. Use `--plain` in cron jobs and CI.
 
 ---
 
+## Background mode
+
+With **Settings → Background → Minimise to system tray** enabled, closing the
+window hides it and downloads carry on. The tray icon's context menu shows:
+
+* current transfer rate and ETA
+* chapters remaining and how many jobs are queued
+* one line per running download
+* **Open MangaDL** to bring the window back, **Pause queue**, and **Quit**
+
+The tray needs an optional dependency and a desktop session:
+
+```bash
+pip install "mangadl[tray]"
+```
+
+Without it the toggle is disabled and explains why; the window keeps its
+ordinary close-quits behaviour.
+
 ## Exit codes
 
 | Code | Meaning |

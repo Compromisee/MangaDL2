@@ -159,6 +159,10 @@ class Source:
         self.session.headers.update(self.headers())
         self._size_pool(self.session)
         self._solverr = None
+        #: Optional callback invoked with the size of each chunk written to
+        #: disk. Set by the download engine to measure throughput; left None
+        #: everywhere else so there is no cost when nobody is watching.
+        self.on_bytes = None
         #: Set once FlareSolverr is confirmed unreachable, so a Cloudflare
         #: site fails fast instead of sleeping through five backoffs.
         self._solverr_down = False
@@ -405,6 +409,15 @@ class Source:
                         if len(head) < 16:
                             head += block[:16 - len(head)]
                         f.write(block)
+                        # Report bytes as they land so callers can compute a
+                        # live transfer rate. Counting only finished files
+                        # makes the rate lurch between 0 and a spike on slow
+                        # connections, which is exactly when it matters.
+                        if self.on_bytes is not None:
+                            try:
+                                self.on_bytes(len(block))
+                            except Exception:
+                                pass
 
                 if not self._is_image(response, head):
                     ctype = response.headers.get("content-type", "?")

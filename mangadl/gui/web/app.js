@@ -2316,6 +2316,25 @@ $("clearLogBtn").addEventListener("click", async () => {
 
 /* --------------------------------------------------------- crash resume */
 
+async function refreshTrayState() {
+  const hint = $("trayHint");
+  const box = $("setTray");
+  if (!hint || !box || !api().get_tray_state) return;
+  const res = await api().get_tray_state();
+  if (!res || !res.ok) return;
+  if (!res.available) {
+    // Be explicit rather than letting the toggle silently do nothing:
+    // pystray is optional and cannot start without a desktop tray.
+    box.disabled = true;
+    hint.textContent =
+      "No system tray was detected here. Install the tray extra " +
+      "(pip install mangadl[tray]) and run on a desktop session.";
+  } else if (!res.running && res.enabled) {
+    hint.textContent =
+      "Enabled - restart MangaDL to start the tray icon.";
+  }
+}
+
 async function checkPendingJob() {
   const res = await api().get_pending_job();
   if (!res || !res.ok || !res.pending) return;
@@ -2381,6 +2400,9 @@ whenReady(async () => {
   }
   applyRailState(state.settings.rail_expanded === true);
   $("setDedupe").checked = state.settings.dedupe_results !== false;
+  if ($("setTray")) $("setTray").checked = !!state.settings.minimize_to_tray;
+  if ($("setTrayNotify")) $("setTrayNotify").checked = state.settings.tray_notifications !== false;
+  bootStep("trayState", refreshTrayState);
   $("setInterleave").checked = !!state.settings.interleave_results;
 
   await bootStep("sourceConfig", loadSourceConfig);
@@ -2794,6 +2816,8 @@ $("setCorners") && $("setCorners").addEventListener("change", async (e) => {
   $(id).addEventListener("change", async () => {
     await api().set_settings({
       dedupe_results: $("setDedupe").checked,
+      minimize_to_tray: $("setTray") ? $("setTray").checked : false,
+      tray_notifications: $("setTrayNotify") ? $("setTrayNotify").checked : true,
       interleave_results: $("setInterleave").checked,
     });
   }));

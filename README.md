@@ -26,6 +26,8 @@
 - **Search everything at once.** One query fans out across every site in parallel and merges the results, each tagged with where it came from.
 - **Press Search with an empty box** and you get trending titles instead of nothing — the app opens on a discovery feed rather than a blank page.
 - **Browse by genre.** 200+ genres merged across sites, with quick-pick chips, genre-filtered search and per-genre trending.
+- **Runs in the background.** Turn on *Minimise to system tray* and closing the window keeps downloads going. The tray menu shows live speed, ETA, chapters remaining and what is queued — and brings the window back.
+- **Survives a crash.** Every running job is journaled to its own file, atomically. After a power cut or a kill, MangaDL offers to resume each one and skips what is already on disk.
 - **Robust by design.** A circuit breaker skips sites that are down instead of waiting for timeouts, retries use exponential backoff, and discovery listings are cached. One dead site never breaks a search.
 - **One command, one CBZ.** By default the CLI downloads *every* chapter and packs them into a single `.cbz` — no flags needed.
 - **Flexible bundling.** Choose one file for everything, one file per chapter, or one file per every N chapters (`--per 10`).

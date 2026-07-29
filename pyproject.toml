@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mangadl"
-version = "1.4.18"
+version = "1.4.19"
 description = "Download manga, manhwa and manhua from 28 sites as CBZ, PDF or EPUB - CLI, menu, TUI and GUI"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -21,8 +21,9 @@ dependencies = [
 [project.optional-dependencies]
 gui = ["pywebview>=5.0"]
 tui = ["textual>=0.60"]
+tray = ["pystray>=0.19", "Pillow>=10.0"]
 dev = ["pytest>=7.0"]
-all = ["pywebview>=5.0", "textual>=0.60"]
+all = ["pywebview>=5.0", "textual>=0.60", "pystray>=0.19"]
 
 [project.urls]
 Homepage = "https://github.com/Compromisee/MDL"

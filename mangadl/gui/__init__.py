@@ -60,6 +60,8 @@ DEFAULT_SETTINGS = {
     "interleave_results": False,    # round-robin sources instead of grouping
     "interleave_browse": True,      # trending feed mixes sources by default
     "max_concurrent_jobs": 2,       # manga downloading at the same time
+    "minimize_to_tray": False,      # closing the window keeps downloads going
+    "tray_notifications": True,     # notify when a download finishes
     "columns": 0,                   # result grid columns, 0 = fit the window
     "advanced_info": False,         # extra metadata on the manga page
     "confirm_delete": True,
@@ -242,6 +244,8 @@ class Api(metaclass=_SafeApiMeta):
         # enough to make one overwrite the other's progress.
         self._jobs = {}             # job id -> job record
         self._jobs_lock = threading.RLock()
+        self._queue_paused = False  # tray/UI can hold the queue
+        self._tray = None           # TrayController, when one is running
         self._job_seq = 0
         self._cart = []             # queued jobs waiting for a free slot
 
@@ -1004,26 +1008,42 @@ class Api(metaclass=_SafeApiMeta):
             return {"ok": False, "error": str(e)}
 
     def get_pending_job(self):
-        """A crashed/interrupted job that can be resumed, if any."""
-        job = wclogs.read_journal()
-        if not job:
-            return {"ok": True, "pending": None}
-        return {"ok": True, "pending": {
-            "title": job.get("title") or "Unknown manga",
-            "started": job.get("started"),
-            "url": job.get("options", {}).get("url"),
-            "selection": job.get("options", {}).get("selection"),
-        }}
+        """Crashed/interrupted jobs that can be resumed.
 
-    def resume_pending_job(self):
-        """Restart the journaled job; completed chapters are skipped."""
-        job = wclogs.read_journal()
-        if not job:
+        Reports every journaled job, not just one: with concurrent downloads
+        a crash can strand several, and before v1.4.19 the journal was a
+        single file so all but the last were lost outright.
+        """
+        jobs = wclogs.read_journals()
+        if not jobs:
+            return {"ok": True, "pending": None, "pending_all": []}
+
+        def describe(job):
+            return {
+                "job_id": job.get("job_id"),
+                "title": job.get("title") or "Unknown manga",
+                "started": job.get("started"),
+                "url": job.get("options", {}).get("url"),
+                "selection": job.get("options", {}).get("selection"),
+            }
+
+        return {"ok": True,
+                "pending": describe(jobs[0]),       # back-compat
+                "pending_all": [describe(j) for j in jobs]}
+
+    def resume_pending_job(self, job_id: str = None):
+        """Restart journaled job(s); completed chapters are skipped."""
+        jobs = wclogs.read_journals()
+        if not jobs:
             return {"ok": False, "error": "Nothing to resume"}
-        return self.start_download(job["options"])
+        if job_id:
+            jobs = [j for j in jobs if j.get("job_id") == job_id] or jobs[:1]
+        results = [self.add_to_cart(dict(j["options"], title=j.get("title", "")))
+                   for j in jobs]
+        return {"ok": True, "resumed": len(results)}
 
-    def discard_pending_job(self):
-        wclogs.clear_journal()
+    def discard_pending_job(self, job_id: str = None):
+        wclogs.clear_journal(job_id)
         return {"ok": True}
 
     # --------------------------------------------------------- settings
@@ -1205,6 +1225,7 @@ class Api(metaclass=_SafeApiMeta):
                 if result.get("title"):
                     record["title"] = result["title"]
             push({"type": "finished", "result": result})
+            self._notify_finished(record, result)
         except Exception as e:
             logger.exception("Download crashed")
             with self._jobs_lock:
@@ -1215,13 +1236,38 @@ class Api(metaclass=_SafeApiMeta):
         finally:
             self._start_queued()
 
+    def _notify_finished(self, record, result):
+        """Desktop notification when a download ends, if the tray is up."""
+        tray = getattr(self, "_tray", None)
+        if tray is None:
+            return
+        try:
+            if not load_settings().get("tray_notifications", True):
+                return
+            title = record.get("title") or "Download"
+            if result.get("stopped"):
+                return                      # the user asked for it; stay quiet
+            if result.get("ok"):
+                count = result.get("downloaded", 0)
+                tray.notify(f"{title} - {count} chapter"
+                            f"{'s' if count != 1 else ''} downloaded")
+            else:
+                tray.notify(f"{title} - download failed")
+        except Exception:
+            logger.debug("tray notification failed", exc_info=True)
+
     def _spawn(self, entry):
         """Start one queued cart entry immediately. Caller holds the lock."""
         self._job_seq += 1
         job_id = f"job{self._job_seq}"
         opt = self._build_options(entry["options"])
 
-        engine = DownloadEngine(opt, on_event=self._job_event(job_id))
+        # Share the job id so mangadl.progress tracks each concurrent job
+        # separately, and so the crash journal writes one file per job.
+        engine = DownloadEngine(opt, on_event=self._job_event(job_id),
+                                job_id=job_id)
+        from ..progress import REGISTRY
+        REGISTRY.job(job_id, entry.get("title") or opt.url)
         record = {
             "id": job_id,
             "title": entry.get("title") or opt.url,
@@ -1257,6 +1303,8 @@ class Api(metaclass=_SafeApiMeta):
         """
         started = []
         with self._jobs_lock:
+            if getattr(self, "_queue_paused", False):
+                return started
             limit = self.max_concurrent_jobs()
             while self._cart and len(self._active_jobs()) < limit:
                 entry = self._cart.pop(0)
@@ -1270,7 +1318,16 @@ class Api(metaclass=_SafeApiMeta):
                                 "message": f"Could not start {title}: {e}"})
         if started:
             self._flush()
+        self._sync_progress_queue()
         return started
+
+    def _sync_progress_queue(self):
+        """Publish the waiting-job count for the tray menu."""
+        try:
+            from ..progress import REGISTRY
+            REGISTRY.set_queued(len(self._cart))
+        except Exception:
+            logger.debug("could not publish queue depth", exc_info=True)
 
     # ------------------------------------------------------------- cart
 
@@ -1303,6 +1360,42 @@ class Api(metaclass=_SafeApiMeta):
         self._start_queued()
         return {"ok": True, "queued": len(self._cart),
                 "active": len(self._active_jobs())}
+
+    # -------------------------------------------------------- tray api
+
+    def get_progress(self):
+        """Live throughput for the tray menu and the downloads panel.
+
+        Speed, ETA and queue depth were not measured anywhere before v1.4.19
+        -- the engine only totalled bytes after a job finished.
+        """
+        from ..progress import REGISTRY
+        self._sync_progress_queue()
+        summary = REGISTRY.summary()
+        summary["paused"] = bool(getattr(self, "_queue_paused", False))
+        return {"ok": True, **summary}
+
+    def set_queue_paused(self, paused: bool = None):
+        """Pause or resume starting new jobs.
+
+        Deliberately does not interrupt a running download -- stopping one
+        mid-chapter would throw away partial work that resume could reuse.
+        """
+        with self._jobs_lock:
+            if paused is None:
+                paused = not getattr(self, "_queue_paused", False)
+            self._queue_paused = bool(paused)
+        if not self._queue_paused:
+            self._start_queued()
+        return {"ok": True, "paused": self._queue_paused}
+
+    def get_tray_state(self):
+        from ..tray import tray_available
+
+        return {"ok": True,
+                "available": tray_available(),
+                "enabled": bool(load_settings().get("minimize_to_tray")),
+                "running": getattr(self, "_tray", None) is not None}
 
     def get_cart(self):
         """Everything queued or running, for the downloads panel."""
@@ -1434,6 +1527,78 @@ def _show_fatal(message: str):
             pass
 
 
+def _install_tray(api, window):
+    """Start the tray icon when the setting is on and a tray exists.
+
+    Returns the controller, or ``None`` -- in which case the window keeps its
+    ordinary "close quits the app" behaviour. Never raises: a missing tray
+    must not stop the GUI from starting.
+    """
+    try:
+        if not load_settings().get("minimize_to_tray"):
+            return None
+        from ..tray import TrayController, tray_available
+        if not tray_available():
+            logger.info("Minimise-to-tray is on but no system tray is "
+                        "available here; the window will close normally.")
+            return None
+    except Exception:
+        logger.debug("tray setup skipped", exc_info=True)
+        return None
+
+    def show_window():
+        try:
+            window.show()
+            window.restore()
+        except Exception:
+            logger.debug("could not restore the window", exc_info=True)
+
+    def quit_app():
+        api._really_quitting = True
+        try:
+            api.shutdown()
+        except Exception:
+            pass
+        try:
+            window.destroy()
+        except Exception:
+            logger.debug("window.destroy failed", exc_info=True)
+
+    controller = TrayController(callbacks={
+        "show_window": show_window,
+        "quit_app": quit_app,
+        "toggle_pause": lambda: api.set_queue_paused(),
+        "is_paused": lambda: bool(getattr(api, "_queue_paused", False)),
+        "summary": lambda: api.get_progress(),
+    })
+
+    if not controller.start():
+        logger.warning("The system tray could not be started; the window "
+                       "will close normally.")
+        return None
+
+    api._tray = controller
+
+    # Hide instead of close, so downloads survive the window going away.
+    def _on_closing():
+        if getattr(api, "_really_quitting", False):
+            return True                      # let it close for real
+        try:
+            window.hide()
+        except Exception:
+            logger.debug("window.hide failed", exc_info=True)
+            return True
+        controller.notify("Still downloading in the background.")
+        return False                         # veto the close
+
+    try:
+        window.events.closing += _on_closing
+    except Exception:
+        logger.debug("closing event unavailable; tray hide disabled",
+                     exc_info=True)
+    return controller
+
+
 def run_gui():
     wclogs.setup_logging()
     wclogs.quiet_pywebview()
@@ -1487,6 +1652,11 @@ def run_gui():
     except Exception:
         pass
 
+    # ------------------------------------------------------------- tray
+    # With "minimize to tray" on, closing the window hides it and downloads
+    # keep running; the app only exits from the tray's Quit item.
+    tray = _install_tray(api, window)
+
     # Release the flush timer, cached sessions and sockets on close, so a
     # closing window cannot leave background threads alive.
     def _on_closed():
@@ -1497,10 +1667,17 @@ def run_gui():
         swallows the return value; api.shutdown() stays dict-returning for
         the JS bridge, which expects one.
         """
+        # When the tray is holding the app open, the window closing is not
+        # the app closing -- tearing down sessions here would break the
+        # downloads the tray exists to keep running.
+        if tray is not None and not getattr(api, "_really_quitting", False):
+            return
         try:
             api.shutdown()
         except Exception:
             logger.debug("shutdown handler failed", exc_info=True)
+        if tray is not None:
+            tray.stop()
 
     try:
         window.events.closed += _on_closed

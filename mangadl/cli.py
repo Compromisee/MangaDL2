@@ -895,10 +895,25 @@ def cmd_resume(args) -> int:
     from .downloader import DownloadEngine, DownloadOptions
     from .logs import clear_journal, read_journal
 
-    job = read_journal()
-    if not job:
+    from .logs import read_journals
+
+    jobs = read_journals()
+    if not jobs:
         console.print("[yellow]No interrupted download to resume.[/]")
         return 1
+    if len(jobs) > 1:
+        # Concurrent GUI downloads can strand several at once.
+        console.print(f"[{DIM}]{len(jobs)} interrupted jobs found; "
+                      f"resuming the most recent. Run again for the next.[/]")
+        table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+        table.add_column("#", style=DIM, justify="right")
+        table.add_column("Title")
+        table.add_column("Started", style=DIM)
+        for index, entry in enumerate(jobs, 1):
+            table.add_row(str(index), entry.get("title") or "?",
+                          entry.get("started") or "?")
+        console.print(table)
+    job = jobs[0]
     title = job.get("title", "Unknown manga")
     started = job.get("started", "?")
     console.print(Panel(
@@ -913,9 +928,16 @@ def cmd_resume(args) -> int:
             console.print()
             return 130
         if answer and answer not in ("y", "yes"):
-            discard = console.input(f"[{DIM}]Discard this job? \\[y/N][/] ").strip().lower()
+            # The first prompt guards EOF/Ctrl-C; this one did not, so a
+            # piped "n" crashed with EOFError instead of exiting cleanly.
+            try:
+                discard = console.input(
+                    f"[{DIM}]Discard this job? \\[y/N][/] ").strip().lower()
+            except (KeyboardInterrupt, EOFError):
+                console.print()
+                return 0
             if discard in ("y", "yes"):
-                clear_journal()
+                clear_journal(job.get("job_id"))
                 console.print("Discarded.")
             return 0
 

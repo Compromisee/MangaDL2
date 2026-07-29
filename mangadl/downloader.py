@@ -66,7 +66,7 @@ class DownloadOptions:
 class DownloadEngine:
     """Runs one manga download job."""
 
-    def __init__(self, options: DownloadOptions, on_event=None):
+    def __init__(self, options: DownloadOptions, on_event=None, job_id=None):
         self.opt = options
         self.on_event = on_event or (lambda event: None)
         self.source = self._make_source()
@@ -75,6 +75,14 @@ class DownloadEngine:
         self.scraper = self.source
         self._stop = False
         self.failed = []
+
+        # Live throughput, for the tray menu and the GUI. Registered under a
+        # stable id so concurrent jobs are tracked separately.
+        from .progress import REGISTRY
+        self.job_id = job_id or f"job-{id(self):x}"
+        self.progress = REGISTRY.job(self.job_id)
+        # Feed the meter from the source's byte stream.
+        self.source.on_bytes = self.progress.add_bytes
 
     # -------------------------------------------------------------- source
 
@@ -111,6 +119,10 @@ class DownloadEngine:
 
         info = self.source.get_manga_info(opt.url)
         title = sanitize(info["title"])
+        # Name the job so the tray menu shows the series, not "Untitled".
+        # CLI runs have no title until this point; the GUI sets one up front.
+        if not self.progress.title:
+            self.progress.title = info.get("title") or opt.url
         self.emit("manga", info=info)
 
         chapters = self.source.get_chapters(opt.url)
@@ -177,7 +189,7 @@ class DownloadEngine:
         _logs.write_journal(asdict(opt), {
             "title": info["title"], "directory": manga_dir,
             "started": time.strftime("%Y-%m-%d %H:%M:%S"),
-        })
+        }, job_id=self.job_id)
 
         # ------------------------------------------------------- download
         # Total in-flight requests are bounded by this single pool, sized so
@@ -228,6 +240,9 @@ class DownloadEngine:
             referer = chapter.get("referer") or chapter.get("url")
             extra_headers = chapter.get("headers")
 
+            # Now that the page list is known, fold it into the ETA total.
+            self.progress.set_pages(total=self.progress.pages_total + len(urls))
+
             for i, url in enumerate(urls, 1):
                 ext = self.source.guess_extension(url)
                 path = os.path.join(target, f"{i:03d}{ext}")
@@ -246,6 +261,7 @@ class DownloadEngine:
                     break
                 if future.result():
                     got += 1
+                    self.progress.add_page()
                     self.emit("chapter_progress", chapter=name,
                               done=got, total=len(urls))
 
@@ -283,6 +299,8 @@ class DownloadEngine:
                         )
                     except Exception:
                         logger.debug("Failed to record chapter in library", exc_info=True)
+                    self.progress.set_chapters(done=completed,
+                                               total=len(selected))
                     self.emit("chapter_done", chapter=name, pages=got,
                               completed=completed, total=len(selected))
                 elif not self._stop:
@@ -293,8 +311,9 @@ class DownloadEngine:
         self._image_pool.shutdown(wait=True)
 
         if self._stop:
+            self.progress.finish()
             self.emit("stopped")
-            _logs.clear_journal()
+            _logs.clear_journal(self.job_id)
             return {"ok": False, "stopped": True}
 
         # -------------------------------------------------------- package
@@ -345,7 +364,9 @@ class DownloadEngine:
             except Exception:
                 logger.debug("Failed to record outputs in library", exc_info=True)
 
-        _logs.clear_journal()
+        # Only this job's record -- a sibling job may still be running.
+        _logs.clear_journal(self.job_id)
+        self.progress.finish()
 
         self.emit("done", downloaded=completed, failed=len(self.failed),
                   outputs=outputs, directory=manga_dir)

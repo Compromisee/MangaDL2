@@ -96,483 +96,504 @@ A complete feature reference for MangaDL.
 62. Leading articles ignored: "The Beginning After The End"
 63. Merging backfills metadata the best-ranked copy is missing
 
+## Background mode and crash safety (v1.4.19)
+
+64. **Minimise to system tray** — closing the window keeps downloads running
+65. Tray context menu shows live **transfer rate** and **ETA**
+66. Tray menu shows **chapters remaining** and how many jobs are **queued**
+67. Per-job lines in the menu, so concurrent downloads are distinguishable
+68. **Open MangaDL** brings the window back; **Quit** really exits
+69. Pause/resume the queue from the tray without stopping a running chapter
+70. Tray icon changes colour while downloading, with an activity dot
+71. Desktop notification when a download finishes (optional)
+72. Rolling-window rate meter, so the speed reflects now, not the average
+73. ETA projects chapters whose page lists have not been fetched yet
+74. ETA reports `--` honestly when it genuinely cannot be known
+75. `pystray` is optional; a machine with no tray degrades gracefully
+76. **Crash resume now survives concurrent jobs** — one journal file per job
+77. A finishing job no longer erases a still-running job's resume record
+78. Journal writes are atomic and fsynced, so a crash cannot truncate them
+79. A corrupt journal file is dropped rather than breaking every future read
+80. Legacy single-file `job.json` is migrated automatically
+81. `mangadl resume` lists every interrupted job
+
 ## Source ranking and exclusion
 
-64. Drag-and-drop source ranking in the GUI
-65. Move up / down buttons as a keyboard-friendly alternative
-66. Rank order decides which copy wins when a series exists on several sites
-67. Toggle a source off to exclude its results entirely
-68. Excluded sources still work from a direct URL
-69. `search_enabled` — keep a source usable but out of multi-source search
-70. Per-source result limit override
-71. Per-source weight for duplicate scoring
-72. Per-source language override
-73. Per-source extra delay for politeness
-74. Free-text note per source
-75. Ranking is shared by CLI, GUI and TUI
-76. New sources are auto-appended, ranked last
-77. Stale config entries are pruned automatically
-78. `mangadl config` shows the full table
-79. `mangadl config enable|disable <source>`
-80. `mangadl config up|down <source>`
-81. `mangadl config rank <a> <b> ...` to set the whole order
-82. `mangadl config reset`
-83. Sources tab in the TUI with the same controls
+82. Drag-and-drop source ranking in the GUI
+83. Move up / down buttons as a keyboard-friendly alternative
+84. Rank order decides which copy wins when a series exists on several sites
+85. Toggle a source off to exclude its results entirely
+86. Excluded sources still work from a direct URL
+87. `search_enabled` — keep a source usable but out of multi-source search
+88. Per-source result limit override
+89. Per-source weight for duplicate scoring
+90. Per-source language override
+91. Per-source extra delay for politeness
+92. Free-text note per source
+93. Ranking is shared by CLI, GUI and TUI
+94. New sources are auto-appended, ranked last
+95. Stale config entries are pruned automatically
+96. `mangadl config` shows the full table
+97. `mangadl config enable|disable <source>`
+98. `mangadl config up|down <source>`
+99. `mangadl config rank <a> <b> ...` to set the whole order
+100. `mangadl config reset`
+101. Sources tab in the TUI with the same controls
 
 ## Provider attribution
 
-84. Provider shown directly beneath the manga title in the GUI
-85. Colour-coded provider dot per source
-86. "Open on source site" link next to the provider name
-87. Provider line under the title in the TUI
-88. Provider line in `mangadl info`
-89. Source badges on GUI search result cards
-90. Source column in CLI search results
-91. Source tag in TUI search results
-92. Source recorded on every library entry
-93. Source recorded on every bookmark
-94. Source stamped on download results and plan events
+102. Provider shown directly beneath the manga title in the GUI
+103. Colour-coded provider dot per source
+104. "Open on source site" link next to the provider name
+105. Provider line under the title in the TUI
+106. Provider line in `mangadl info`
+107. Source badges on GUI search result cards
+108. Source column in CLI search results
+109. Source tag in TUI search results
+110. Source recorded on every library entry
+111. Source recorded on every bookmark
+112. Source stamped on download results and plan events
 
 ## Passcode lock
 
-95. Optional app passcode
-96. PBKDF2-HMAC-SHA256 with 240,000 rounds
-97. Per-install random salt — identical passcodes hash differently
-98. Constant-time comparison
-99. Passcode never stored in plaintext
-100. One-time recovery key issued at setup
-101. Recovery key is case-insensitive and ignores spacing
-102. Recovery flow built into the lock screen
-103. Change passcode (requires the current one)
-104. Disable lock (requires the passcode)
-105. Attempt throttling after 5 failures
-106. Escalating cooldown, capped at 15 minutes
-107. Auto-lock after N idle minutes
-108. Lock on app start
-109. Optional cover blurring behind the lock screen
-110. Optional passcode hint
-111. Lock file written with owner-only permissions
-112. `mangadl lock status|set|change|off` from the terminal
+113. Optional app passcode
+114. PBKDF2-HMAC-SHA256 with 240,000 rounds
+115. Per-install random salt — identical passcodes hash differently
+116. Constant-time comparison
+117. Passcode never stored in plaintext
+118. One-time recovery key issued at setup
+119. Recovery key is case-insensitive and ignores spacing
+120. Recovery flow built into the lock screen
+121. Change passcode (requires the current one)
+122. Disable lock (requires the passcode)
+123. Attempt throttling after 5 failures
+124. Escalating cooldown, capped at 15 minutes
+125. Auto-lock after N idle minutes
+126. Lock on app start
+127. Optional cover blurring behind the lock screen
+128. Optional passcode hint
+129. Lock file written with owner-only permissions
+130. `mangadl lock status|set|change|off` from the terminal
 
 ## Content filters
 
-113. Blocked tags
-114. Blocked title words
-115. Blocked authors
-116. Safe mode drops adult-rated results
-117. Hide results with no cover
-118. Minimum chapter count filter
-119. Filters apply to both GUI and CLI search
+131. Blocked tags
+132. Blocked title words
+133. Blocked authors
+134. Safe mode drops adult-rated results
+135. Hide results with no cover
+136. Minimum chapter count filter
+137. Filters apply to both GUI and CLI search
 
 ## Duplicate handling
 
-120. Cross-source duplicate detection by normalised title
-121. Decorations stripped when matching (Colored, Official, Doujinshi, brackets)
-122. Best-ranked copy survives a merge
-123. `also_on` lists the other sources carrying the same series
-124. Toggle merging on or off
-125. Interleave mode round-robins sources instead of grouping them
+138. Cross-source duplicate detection by normalised title
+139. Decorations stripped when matching (Colored, Official, Doujinshi, brackets)
+140. Best-ranked copy survives a merge
+141. `also_on` lists the other sources carrying the same series
+142. Toggle merging on or off
+143. Interleave mode round-robins sources instead of grouping them
 
 ## Reading progress
 
-126. Mark individual chapters read or unread
-127. Bulk mark a range
-128. Percentage progress per series
-129. Unread count per series
-130. Jump to next unread chapter
-131. Last-read chapter remembered
-132. Clear progress per series or globally
+144. Mark individual chapters read or unread
+145. Bulk mark a range
+146. Percentage progress per series
+147. Unread count per series
+148. Jump to next unread chapter
+149. Last-read chapter remembered
+150. Clear progress per series or globally
 
 ## Update watching
 
-133. Watch a series for new chapters
-134. Watchlist with per-series known chapter count
-135. Parallel update checking across all watched series
-136. New-chapter counts per series
-137. Acknowledge updates to reset the badge
-138. Progress callback while checking
-139. Failing sites are skipped, not fatal
-140. `mangadl watch list|add|remove|check`
+151. Watch a series for new chapters
+152. Watchlist with per-series known chapter count
+153. Parallel update checking across all watched series
+154. New-chapter counts per series
+155. Acknowledge updates to reset the badge
+156. Progress callback while checking
+157. Failing sites are skipped, not fatal
+158. `mangadl watch list|add|remove|check`
 
 ## Notes, ratings, collections
 
-141. Free-text note per series
-142. 0–5 star rating, clamped
-143. Custom tags per series
-144. Filter by minimum rating
-145. Named collections
-146. Add / remove series in a collection
-147. Duplicate-safe collection inserts
+159. Free-text note per series
+160. 0–5 star rating, clamped
+161. Custom tags per series
+162. Filter by minimum rating
+163. Named collections
+164. Add / remove series in a collection
+165. Duplicate-safe collection inserts
 
 ## Statistics and insights
 
-148. Total chapters, pages, bytes and time
-149. Per-source statistics
-150. Per-day statistics
-151. Average pages per second
-152. Busiest day and top source
-153. Human-readable sizes and durations
-154. Library insights: series, chapters, pages, disk use
-155. Largest and most recent series
-156. Statistics recorded automatically after every download
-157. Stat tiles in GUI settings
-158. `mangadl stats` in the terminal
-159. Reset statistics
+166. Total chapters, pages, bytes and time
+167. Per-source statistics
+168. Per-day statistics
+169. Average pages per second
+170. Busiest day and top source
+171. Human-readable sizes and durations
+172. Library insights: series, chapters, pages, disk use
+173. Largest and most recent series
+174. Statistics recorded automatically after every download
+175. Stat tiles in GUI settings
+176. `mangadl stats` in the terminal
+177. Reset statistics
 
 ## Search history
 
-160. Every search recorded with source and hit count
-161. Duplicate queries collapse to the newest
-162. Type-ahead suggestions from history
-163. Prefix matches ranked above substring matches
-164. Remove a single entry or clear all
-165. Capped at 500 entries
-166. `mangadl history` / `mangadl history clear`
+178. Every search recorded with source and hit count
+179. Duplicate queries collapse to the newest
+180. Type-ahead suggestions from history
+181. Prefix matches ranked above substring matches
+182. Remove a single entry or clear all
+183. Capped at 500 entries
+184. `mangadl history` / `mangadl history clear`
 
 ## Download queue
 
-167. Persistent job queue
-168. Reorder queued jobs
-169. Per-job status: pending, running, done, failed, paused
-170. Progress and error recorded per job
-171. Fetch the next pending job
-172. Remove one job or clear by status
+185. Persistent job queue
+186. Reorder queued jobs
+187. Per-job status: pending, running, done, failed, paused
+188. Progress and error recorded per job
+189. Fetch the next pending job
+190. Remove one job or clear by status
 
 ## Import, export, backup
 
-173. Export library as JSON
-174. Export library as CSV
-175. Export library as Markdown table
-176. Import a previously exported library
-177. Merge or replace on import
-178. Snapshots of library + bookmarks + config
-179. Restore any snapshot
-180. Last 20 snapshots retained
-181. `mangadl export <file> [format]`
+191. Export library as JSON
+192. Export library as CSV
+193. Export library as Markdown table
+194. Import a previously exported library
+195. Merge or replace on import
+196. Snapshots of library + bookmarks + config
+197. Restore any snapshot
+198. Last 20 snapshots retained
+199. `mangadl export <file> [format]`
 
 ## Disk maintenance
 
-182. Per-series disk usage report
-183. Duplicate file scan by SHA-256, size-bucketed for speed
-184. Wasted-space total
-185. Orphan detection for missing files and folders
-186. Bulk delete chosen files
-187. `mangadl disk usage|dupes|orphans`
+200. Per-series disk usage report
+201. Duplicate file scan by SHA-256, size-bucketed for speed
+202. Wasted-space total
+203. Orphan detection for missing files and folders
+204. Bulk delete chosen files
+205. `mangadl disk usage|dupes|orphans`
 
 ## MangaDex specifics
 
-188. Correct cover URLs in three sizes
-189. Per-volume and localised cover listing
-190. Reference expansion so covers arrive in one request
-191. Translation language selection
-192. Preferred scanlation group
-193. Automatic dedupe of multiple releases per chapter
-194. Alternatives recorded on the chosen release
-195. Data-saver mode
-196. Externally hosted chapters filtered out
-197. Paginated feed with the 10k offset cap handled
-198. All content ratings requested explicitly
+206. Correct cover URLs in three sizes
+207. Per-volume and localised cover listing
+208. Reference expansion so covers arrive in one request
+209. Translation language selection
+210. Preferred scanlation group
+211. Automatic dedupe of multiple releases per chapter
+212. Alternatives recorded on the chosen release
+213. Data-saver mode
+214. Externally hosted chapters filtered out
+215. Paginated feed with the 10k offset cap handled
+216. All content ratings requested explicitly
 
 ## Discovery: trending and genres
 
-199. Pressing Search with an empty box shows trending instead of doing nothing
-200. GUI opens on a trending feed rather than a blank page
-201. TUI opens on a trending feed
-202. `mangadl search` with no query lists trending
-203. `mangadl trending` explicit discovery command
-204. `mangadl trending <genre>` for per-genre trending
-205. `mangadl genres` lists every genre and which sites offer it
-206. `-g/--genre` filters any search by genre
-207. Genre dropdown in the GUI filter row
-208. Quick-pick genre chips for the ten most widely supported genres
-209. Genre dropdown in the TUI beside the source picker
-210. Genres merged across every enabled source
-211. Case-insensitive genre matching across sites
-212. Genres ordered by how widely they are supported
-213. Per-source genre id mapping kept alongside the shared label
-214. Genre list reflects only the sources you have enabled
-215. Trending results interleave sources so the first screen is a mix
-216. `Load more` pagination in the GUI
-217. Per-source browse sort options exposed to the UI
-218. MangaDex trending via follower count
-219. MangaDex genre browsing by resolved tag UUID
-220. MangaDex tag names resolved case-insensitively, with partial matching
-221. Raw MangaDex tag UUIDs accepted directly
-222. MangaDex tag list cached per process
-223. Mangakatana genre browsing over 46 genre slugs
-224. Mangakatana pagination via the site's real filter path
-225. Natomanga hot / latest / new discovery feeds
-226. Natomanga genre browsing with paging
-227. Weeb Central trending via popularity sort
-228. Weeb Central genre browsing over 26 tags
-229. Sources that cannot browse are skipped, with a clear message
-230. Type-ahead search suggestions drawn from history
-231. Empty results explain what to try next instead of just saying "none"
-232. Browse honours source ranking and exclusions
-233. Browse results pass through content filters and duplicate merging
+217. Pressing Search with an empty box shows trending instead of doing nothing
+218. GUI opens on a trending feed rather than a blank page
+219. TUI opens on a trending feed
+220. `mangadl search` with no query lists trending
+221. `mangadl trending` explicit discovery command
+222. `mangadl trending <genre>` for per-genre trending
+223. `mangadl genres` lists every genre and which sites offer it
+224. `-g/--genre` filters any search by genre
+225. Genre dropdown in the GUI filter row
+226. Quick-pick genre chips for the ten most widely supported genres
+227. Genre dropdown in the TUI beside the source picker
+228. Genres merged across every enabled source
+229. Case-insensitive genre matching across sites
+230. Genres ordered by how widely they are supported
+231. Per-source genre id mapping kept alongside the shared label
+232. Genre list reflects only the sources you have enabled
+233. Trending results interleave sources so the first screen is a mix
+234. `Load more` pagination in the GUI
+235. Per-source browse sort options exposed to the UI
+236. MangaDex trending via follower count
+237. MangaDex genre browsing by resolved tag UUID
+238. MangaDex tag names resolved case-insensitively, with partial matching
+239. Raw MangaDex tag UUIDs accepted directly
+240. MangaDex tag list cached per process
+241. Mangakatana genre browsing over 46 genre slugs
+242. Mangakatana pagination via the site's real filter path
+243. Natomanga hot / latest / new discovery feeds
+244. Natomanga genre browsing with paging
+245. Weeb Central trending via popularity sort
+246. Weeb Central genre browsing over 26 tags
+247. Sources that cannot browse are skipped, with a clear message
+248. Type-ahead search suggestions drawn from history
+249. Empty results explain what to try next instead of just saying "none"
+250. Browse honours source ranking and exclusions
+251. Browse results pass through content filters and duplicate merging
 
 ## Robust calling
 
-234. Circuit breaker per source, with closed / open / half-open states
-235. Repeated failures open the breaker so a dead site is skipped instantly
-236. Half-open probe after cooldown, closing again on success
-237. Cooldown doubles with each repeated trip, capped
-238. Success resets the failure count
-239. Bounded retries with exponential backoff
-240. Proportional jitter so retries do not synchronise
-241. `retry_if` hook to skip pointless retries such as 404s
-242. `on_retry` callback for progress reporting
-243. TTL cache for discovery listings, five minutes
-244. TTL cache for genre lists, one hour
-245. Cache eviction when full, with hit-rate statistics
-246. `call_safely` runs anything and falls back instead of raising
-247. `gather` runs many calls in parallel and keeps whatever succeeds
-248. Overall timeout support in `gather`, keeping finished work
-249. Rate-limit headers honoured, absolute and relative
-250. Partial results always returned rather than failing the whole request
-251. Every failure logged once with context
-252. `mangadl health` shows breaker state and cache hit rates
-253. Health diagnostics exposed to the GUI
+252. Circuit breaker per source, with closed / open / half-open states
+253. Repeated failures open the breaker so a dead site is skipped instantly
+254. Half-open probe after cooldown, closing again on success
+255. Cooldown doubles with each repeated trip, capped
+256. Success resets the failure count
+257. Bounded retries with exponential backoff
+258. Proportional jitter so retries do not synchronise
+259. `retry_if` hook to skip pointless retries such as 404s
+260. `on_retry` callback for progress reporting
+261. TTL cache for discovery listings, five minutes
+262. TTL cache for genre lists, one hour
+263. Cache eviction when full, with hit-rate statistics
+264. `call_safely` runs anything and falls back instead of raising
+265. `gather` runs many calls in parallel and keeps whatever succeeds
+266. Overall timeout support in `gather`, keeping finished work
+267. Rate-limit headers honoured, absolute and relative
+268. Partial results always returned rather than failing the whole request
+269. Every failure logged once with context
+270. `mangadl health` shows breaker state and cache hit rates
+271. Health diagnostics exposed to the GUI
 
 ## Custom dropdowns
 
-254. Themed dropdowns replacing unstyleable native select popups
-255. Native `<select>` kept in the DOM as the source of truth
-256. Existing code (`sel.value`, `innerHTML`, `appendChild`) keeps working
-257. `value` setter wrapped so programmatic assignment repaints the trigger
-258. MutationObserver picks up rebuilt option lists automatically
-259. Real `change` and `input` events dispatched on selection
-260. No event fired when reselecting the current value
-261. Panel portalled to `<body>`, so no ancestor can clip it
-262. Flips above the trigger when there is no room below
-263. Repositions on scroll and resize
-264. Type-to-filter box appears automatically past eight options
-265. "No matches" state when a filter excludes everything
-266. Full keyboard support: arrows, Home, End, Enter, Escape, Tab
-267. Typeahead on the closed trigger, like a native select
-268. Only one panel open at a time
-269. Closes on outside click
-270. ARIA combobox/listbox roles with active-descendant tracking
-271. Checkmark and accent colour on the selected row
-272. Follows every theme and accent via CSS custom properties
-273. Honours `prefers-reduced-motion`
-274. Disabled selects reflected on the trigger
-275. Enhancement failures are caught so styling can never break the page
-276. Opt out per element with `data-no-custom="true"`
+272. Themed dropdowns replacing unstyleable native select popups
+273. Native `<select>` kept in the DOM as the source of truth
+274. Existing code (`sel.value`, `innerHTML`, `appendChild`) keeps working
+275. `value` setter wrapped so programmatic assignment repaints the trigger
+276. MutationObserver picks up rebuilt option lists automatically
+277. Real `change` and `input` events dispatched on selection
+278. No event fired when reselecting the current value
+279. Panel portalled to `<body>`, so no ancestor can clip it
+280. Flips above the trigger when there is no room below
+281. Repositions on scroll and resize
+282. Type-to-filter box appears automatically past eight options
+283. "No matches" state when a filter excludes everything
+284. Full keyboard support: arrows, Home, End, Enter, Escape, Tab
+285. Typeahead on the closed trigger, like a native select
+286. Only one panel open at a time
+287. Closes on outside click
+288. ARIA combobox/listbox roles with active-descendant tracking
+289. Checkmark and accent colour on the selected row
+290. Follows every theme and accent via CSS custom properties
+291. Honours `prefers-reduced-motion`
+292. Disabled selects reflected on the trigger
+293. Enhancement failures are caught so styling can never break the page
+294. Opt out per element with `data-no-custom="true"`
 
 ## Interface: tabs and landing page
 
-277. Updates tab: watchlist with per-series new-chapter counts
-278. Rail badge showing how many watched series have updates
-279. One-click "Check now" runs every watched series in parallel
-280. Watch / unwatch button on the manga page
-281. Insights tab: six headline metrics at a glance
-282. Per-source bar chart of downloaded chapters
-283. Fourteen-day activity sparkline
-284. Biggest series and recently downloaded lists
-285. Tools tab with five sub-panels
-286. Disk usage per series, largest first
-287. Duplicate file scan with wasted-space total
-288. Orphan detection for library entries whose files vanished
-289. Source health panel showing live circuit-breaker state
-290. Searchable history panel; click an entry to re-run it
-291. `callApi` wrapper so a missing endpoint cannot blank a tab
-292. GitHub-style landing page built on Primer design tokens
-293. Real light and dark modes, remembered in localStorage
-294. Five deep-linkable page tabs with working back/forward
-295. Screenshot gallery with GUI and TUI sub-tabs
-296. Copy-to-clipboard install commands with success feedback
-297. Language breakdown bar computed from the real repository
-298. No fabricated star/fork counts — only verifiable numbers shown
+295. Updates tab: watchlist with per-series new-chapter counts
+296. Rail badge showing how many watched series have updates
+297. One-click "Check now" runs every watched series in parallel
+298. Watch / unwatch button on the manga page
+299. Insights tab: six headline metrics at a glance
+300. Per-source bar chart of downloaded chapters
+301. Fourteen-day activity sparkline
+302. Biggest series and recently downloaded lists
+303. Tools tab with five sub-panels
+304. Disk usage per series, largest first
+305. Duplicate file scan with wasted-space total
+306. Orphan detection for library entries whose files vanished
+307. Source health panel showing live circuit-breaker state
+308. Searchable history panel; click an entry to re-run it
+309. `callApi` wrapper so a missing endpoint cannot blank a tab
+310. GitHub-style landing page built on Primer design tokens
+311. Real light and dark modes, remembered in localStorage
+312. Five deep-linkable page tabs with working back/forward
+313. Screenshot gallery with GUI and TUI sub-tabs
+314. Copy-to-clipboard install commands with success feedback
+315. Language breakdown bar computed from the real repository
+316. No fabricated star/fork counts — only verifiable numbers shown
 
 ## Added sources and UI fixes
 
-299. Omega Scans source via its JSON API
-300. Omega Scans coin-locked chapters detected and skipped
-301. ManhwaRead source, decoding base64 page data
-302. ManhwaRead per-chapter Referer so its CDN serves images
-303. Manhwa18 source, flagged adult-only
-304. Adult sources tagged so Safe mode removes them automatically
-305. `18+` chip on adult sources in the ranking list
-306. Toggle switches render correctly (CSS selector matched no markup)
-307. Both switch markup variants supported, markup normalised
-308. Disabled source rows keep their toggle legible and clickable
-309. Off-state switch has real contrast against the row
-310. Settings text, number and password inputs themed
-311. Focus ring on settings inputs
-312. Number spinners removed for visual consistency
-313. Struck-through name on excluded sources
+317. Omega Scans source via its JSON API
+318. Omega Scans coin-locked chapters detected and skipped
+319. ManhwaRead source, decoding base64 page data
+320. ManhwaRead per-chapter Referer so its CDN serves images
+321. Manhwa18 source, flagged adult-only
+322. Adult sources tagged so Safe mode removes them automatically
+323. `18+` chip on adult sources in the ranking list
+324. Toggle switches render correctly (CSS selector matched no markup)
+325. Both switch markup variants supported, markup normalised
+326. Disabled source rows keep their toggle legible and clickable
+327. Off-state switch has real contrast against the row
+328. Settings text, number and password inputs themed
+329. Focus ring on settings inputs
+330. Number spinners removed for visual consistency
+331. Struck-through name on excluded sources
 
 ## Filenames, relocation and chapter filters
 
-314. Output files are named by the chapters they contain
-315. A single "download all" file reads e.g. "Naruto - Chapters 001-050"
-316. Bundled files name their own range, e.g. "Chapters 011-020"
-317. Non-contiguous selections collapse into runs: "001-003, 007-008, 020"
-318. Half chapters stay inside a run: 10, 10.5, 11 -> "010-011"
-319. Heavily fragmented picks truncate to "001-013 (7 chapters)"
-320. New {chapters} and {count} filename placeholders
-321. Legacy "{title}" templates migrated forward automatically
-322. Custom templates are never overwritten by the migration
-323. Bad templates fall back instead of crashing the download
-324. Library verification reports entries whose files have gone
-325. Moved folders detected by matching folder name under a root
-326. Proposals are inert until confirmed, so a wrong guess is harmless
-327. Re-linking rewrites both the directory and every output path
-328. Download history, title and source survive a re-link
-329. "Pick new downloads folder" adopts a new root and re-links in one step
-330. Moved files panel in the Tools tab
-331. `mangadl library verify|scan|move` from the terminal
-332. Extra library search roots remembered in settings
-333. Minimum and maximum chapter number filters
-334. Filter chapters by name text
-335. Sort chapters newest-first or oldest-first
-336. Hide already-downloaded chapters
-337. Count pill shows "visible / total" while filtering
-338. A note reports how many chapters a filter is hiding
-339. Bulk select buttons act only on visible chapters
-340. "Latest" picks the highest-numbered visible chapter
-341. Filters change only the display, never the selection keys
-342. One-click reset for all chapter filters
+332. Output files are named by the chapters they contain
+333. A single "download all" file reads e.g. "Naruto - Chapters 001-050"
+334. Bundled files name their own range, e.g. "Chapters 011-020"
+335. Non-contiguous selections collapse into runs: "001-003, 007-008, 020"
+336. Half chapters stay inside a run: 10, 10.5, 11 -> "010-011"
+337. Heavily fragmented picks truncate to "001-013 (7 chapters)"
+338. New {chapters} and {count} filename placeholders
+339. Legacy "{title}" templates migrated forward automatically
+340. Custom templates are never overwritten by the migration
+341. Bad templates fall back instead of crashing the download
+342. Library verification reports entries whose files have gone
+343. Moved folders detected by matching folder name under a root
+344. Proposals are inert until confirmed, so a wrong guess is harmless
+345. Re-linking rewrites both the directory and every output path
+346. Download history, title and source survive a re-link
+347. "Pick new downloads folder" adopts a new root and re-links in one step
+348. Moved files panel in the Tools tab
+349. `mangadl library verify|scan|move` from the terminal
+350. Extra library search roots remembered in settings
+351. Minimum and maximum chapter number filters
+352. Filter chapters by name text
+353. Sort chapters newest-first or oldest-first
+354. Hide already-downloaded chapters
+355. Count pill shows "visible / total" while filtering
+356. A note reports how many chapters a filter is hiding
+357. Bulk select buttons act only on visible chapters
+358. "Latest" picks the highest-numbered visible chapter
+359. Filters change only the display, never the selection keys
+360. One-click reset for all chapter filters
 
 ## Stability and polish
 
-343. Window close no longer crashes with "unhashable type: 'dict'"
-344. Cover mirrors: a failing CDN host falls back to a sibling automatically
-345. Covers walk every mirror before showing a fallback tile
-346. Passcode gates the app before any data is fetched or painted
-347. Boot pauses until the lock screen is dismissed
-348. Corner radii snap to a four-step scale instead of 13 ad-hoc values
-349. Download location saved to settings.json when chosen
-350. Download location saved when typed directly
-351. Both folder fields stay in sync
+361. Window close no longer crashes with "unhashable type: 'dict'"
+362. Cover mirrors: a failing CDN host falls back to a sibling automatically
+363. Covers walk every mirror before showing a fallback tile
+364. Passcode gates the app before any data is fetched or painted
+365. Boot pauses until the lock screen is dismissed
+366. Corner radii snap to a four-step scale instead of 13 ad-hoc values
+367. Download location saved to settings.json when chosen
+368. Download location saved when typed directly
+369. Both folder fields stay in sync
 
 ## Square mode, rail and lock polish
 
-352. Square corners mode: turn off all rounding in one switch
-353. Square mode flattens pills, fields, dropdowns and switches
-354. True circles (spinner, lock badge) stay round in square mode
-355. Corner preference saved and restored
-356. Side rail is narrower by default
-357. Expand button widens the rail and reveals labels
-358. Rail state remembered between runs
-359. Lock overlay paints on the very first frame
-360. Remembered lock state avoids a needless overlay flash
-361. Fail-safe timer means the overlay can never strand the app
-362. Show/hide passcode button
-363. Remaining-attempts counter with warning colours
-364. Wrong passcode shakes the panel
-365. Live cooldown countdown that disables the field
-366. Enter reliably submits a search
-367. Themed suggestion list replacing the native datalist
+370. Square corners mode: turn off all rounding in one switch
+371. Square mode flattens pills, fields, dropdowns and switches
+372. True circles (spinner, lock badge) stay round in square mode
+373. Corner preference saved and restored
+374. Side rail is narrower by default
+375. Expand button widens the rail and reveals labels
+376. Rail state remembered between runs
+377. Lock overlay paints on the very first frame
+378. Remembered lock state avoids a needless overlay flash
+379. Fail-safe timer means the overlay can never strand the app
+380. Show/hide passcode button
+381. Remaining-attempts counter with warning colours
+382. Wrong passcode shakes the panel
+383. Live cooldown countdown that disables the field
+384. Enter reliably submits a search
+385. Themed suggestion list replacing the native datalist
 
 ## Aggregator fix, chapter limits and two more sources
 
-368. Empty-but-200 throttle responses are retried instead of accepted
-369. Multi-source search no longer loses sources silently
-370. Minimum chapter-count filter
-371. Maximum chapter-count filter
-372. Chapter counts read from count, last_chapter or the newest label
-373. Unknown chapter counts are never filtered out
-374. Webtoons source with episode paging
-375. Webtoons per-chapter Referer for its hotlink-protected CDN
-376. nhentai source, flagged adult-only
-377. nhentai thumbnails resolved to full-size pages
-378. Twenty-three sources total
-379. nhentai browses `/popular` (the site root lists no galleries at all)
-380. nhentai genre slugs verified against the live site
-381. nhentai covers follow the site's own `data-fallbacks` chain
-382. Cover proxy for hotlink-protected CDNs, inlined as data URIs
-383. Webtoons covers load in the GUI despite the global `no-referrer`
-384. Natomanga cover host is never rewritten (shards, not mirrors)
-385. Transient cover failures retry the same URL instead of another host
-386. Mangadass source, flagged adult-only
-387. Mangadass real `/search?q=` endpoint (`/?s=` ignores the query)
-388. Mangadass chapters sorted numerically, not by document order
-389. Manga18.club source, flagged adult-only
-390. Manga18.club `?search=` endpoint plus an autocomplete-JSON fallback
-391. Manga18.club pages decoded from the base64 `slides_p_path` array
-392. HentaiAkane source, flagged adult-only
-393. HentaiAkane pages read from the `ts_reader.run` payload
-394. ManhwaRead decodes base64 page lists that ship without padding
-395. Connection pool sized to the worker count (no discarded connections)
-396. Download cart: queue several manga and keep browsing
-397. Concurrent downloads of different manga, configurable 1-5
-398. Every progress event is stamped with its job, so chapters never mix
-399. Chapter rows show the owning manga when several downloads run
-400. Queue panel with per-job status and removable pending entries
-401. Stop one download without touching the others
-402. A cancelled job reports "stopped", not "failed"
-403. Multi-genre search: combine genres with AND or OR
-404. Genre chips toggle, building a selection instead of replacing it
-405. Picked genres shown as removable chips with a Clear button
-406. Genre intersection computed per source, never across sites
-407. Library keys normalised (scheme, www, query, fragment)
-408. Downloaded chapters matched by number, tolerating changed dates
-409. Downloaded pill and highlighted rows can no longer disagree
-410. URLs with tracking parameters no longer return zero chapters
-411. Manhwa18 genre browsing fixed (/webtoon-genre/)
-412. nhentai falls back to search for genres it does not have as tags
-413. Content fills the window instead of a fixed centred column
-414. Keyboard shortcuts with a searchable `?` help overlay
-415. Two-key navigation chords (g s, g d, g b, g l, g u, g ,)
-416. Shortcuts ignored while typing and while the lock screen is up
-417. Invert chapter selection, on visible rows only
-418. Copy title and link, with a clipboard fallback for WebView2
-419. Refresh the current view with `r`
-420. Bookmark and library covers load through the proxy (hotlinked CDNs)
-421. Bookmarks store an openable URL, not the normalised key
-422. Download queue visible before any job starts
-423. Series type classified from origin language and tags
-424. Type filter (Manga / Manhwa / Manhua) actually narrows results
-425. Per-source default type for sites with a single-type catalogue
-426. Square corners reach progress bars, the search box and every pill
-427. Strict chapter range option, for hiding unknown chapter counts
-428. Source picker removed from search filters (it lives in Settings)
-429. Advanced info panel: year, status, type, language, demographic, authors
-430. Custom result column count, 0 = fit the window
-431. Bookmark folders with create, rename and delete
-432. File bookmarks by dragging them onto a folder
-433. Folder picker when bookmarking, or save straight to the root
-434. Optional per-folder lock and blurred covers
-435. Folder cover is the first book added to it
-436. Deleting a folder keeps its bookmarks, moving them back to the root
-437. Text-input modal that distinguishes cancel from an empty value
-438. Keyboard shortcuts listed in Settings, not only in a popup
-439. Overlay buttons bind reliably (markup declared before the script)
-440. Dialog text inputs themed to match the rest of the app
-441. Lock screen and recovery fields use the app font
-442. Bookmark covers no longer hijack the drag gesture
-443. Floating drop zones appear while dragging a bookmark
-444. Drop a bookmark back to All bookmarks, or straight into a new folder
-445. Drop highlight survives the pointer crossing child elements
-446. A missed drop never navigates the app away
-447. All configuration in one `config.json` (settings + sources)
-448. Settings written atomically, so a crash cannot reset them
-449. Concurrent saves cannot clobber each other
-450. Pre-1.4.11 `settings.json` migrated automatically
-451. Every bridge endpoint returns errors as data, never raises
-452. A malformed queue entry cannot kill the download worker thread
-453. Download options coerced from UI values instead of trusted
-454. Cover cache bounded by bytes with LRU eviction
-455. Global JS error handlers clear spinners and surface a message
-456. Search/browse failures show a retry instead of a dead screen
-457. `mangadl menu` — progressive numbered interface, no extra dependencies
-458. Every menu prompt accepts a number; `b` = back, `q` = quit at any depth
-459. Menu covers search, trending, URLs, library, bookmarks, settings, tools
-460. Menu exits cleanly on EOF or a non-terminal stdin
-461. `mangadl search --type` narrows by manga / manhwa / manhua
-462. `mangadl search --status` narrows by publication status
-463. `mangadl search -n/--limit` caps the number of results
-464. `mangadl search --sort` by title, source, chapters or year, `--reverse`
-465. `mangadl search --urls` prints one URL per line for pipes
-466. `mangadl search --json` prints machine-readable results
-467. `mangadl search --open N` shows details for a numbered result
-468. `mangadl search --download N` downloads a numbered result
-469. `mangadl tui` explains itself instead of a traceback without Textual
-470. Every module runs directly (`py menu.py`) without an import error
-471. Redesigned landing page with an original identity, not a code-host clone
-472. Landing page ships light and dark themes, remembered between visits
+386. Empty-but-200 throttle responses are retried instead of accepted
+387. Multi-source search no longer loses sources silently
+388. Minimum chapter-count filter
+389. Maximum chapter-count filter
+390. Chapter counts read from count, last_chapter or the newest label
+391. Unknown chapter counts are never filtered out
+392. Webtoons source with episode paging
+393. Webtoons per-chapter Referer for its hotlink-protected CDN
+394. nhentai source, flagged adult-only
+395. nhentai thumbnails resolved to full-size pages
+396. Twenty-three sources total
+397. nhentai browses `/popular` (the site root lists no galleries at all)
+398. nhentai genre slugs verified against the live site
+399. nhentai covers follow the site's own `data-fallbacks` chain
+400. Cover proxy for hotlink-protected CDNs, inlined as data URIs
+401. Webtoons covers load in the GUI despite the global `no-referrer`
+402. Natomanga cover host is never rewritten (shards, not mirrors)
+403. Transient cover failures retry the same URL instead of another host
+404. Mangadass source, flagged adult-only
+405. Mangadass real `/search?q=` endpoint (`/?s=` ignores the query)
+406. Mangadass chapters sorted numerically, not by document order
+407. Manga18.club source, flagged adult-only
+408. Manga18.club `?search=` endpoint plus an autocomplete-JSON fallback
+409. Manga18.club pages decoded from the base64 `slides_p_path` array
+410. HentaiAkane source, flagged adult-only
+411. HentaiAkane pages read from the `ts_reader.run` payload
+412. ManhwaRead decodes base64 page lists that ship without padding
+413. Connection pool sized to the worker count (no discarded connections)
+414. Download cart: queue several manga and keep browsing
+415. Concurrent downloads of different manga, configurable 1-5
+416. Every progress event is stamped with its job, so chapters never mix
+417. Chapter rows show the owning manga when several downloads run
+418. Queue panel with per-job status and removable pending entries
+419. Stop one download without touching the others
+420. A cancelled job reports "stopped", not "failed"
+421. Multi-genre search: combine genres with AND or OR
+422. Genre chips toggle, building a selection instead of replacing it
+423. Picked genres shown as removable chips with a Clear button
+424. Genre intersection computed per source, never across sites
+425. Library keys normalised (scheme, www, query, fragment)
+426. Downloaded chapters matched by number, tolerating changed dates
+427. Downloaded pill and highlighted rows can no longer disagree
+428. URLs with tracking parameters no longer return zero chapters
+429. Manhwa18 genre browsing fixed (/webtoon-genre/)
+430. nhentai falls back to search for genres it does not have as tags
+431. Content fills the window instead of a fixed centred column
+432. Keyboard shortcuts with a searchable `?` help overlay
+433. Two-key navigation chords (g s, g d, g b, g l, g u, g ,)
+434. Shortcuts ignored while typing and while the lock screen is up
+435. Invert chapter selection, on visible rows only
+436. Copy title and link, with a clipboard fallback for WebView2
+437. Refresh the current view with `r`
+438. Bookmark and library covers load through the proxy (hotlinked CDNs)
+439. Bookmarks store an openable URL, not the normalised key
+440. Download queue visible before any job starts
+441. Series type classified from origin language and tags
+442. Type filter (Manga / Manhwa / Manhua) actually narrows results
+443. Per-source default type for sites with a single-type catalogue
+444. Square corners reach progress bars, the search box and every pill
+445. Strict chapter range option, for hiding unknown chapter counts
+446. Source picker removed from search filters (it lives in Settings)
+447. Advanced info panel: year, status, type, language, demographic, authors
+448. Custom result column count, 0 = fit the window
+449. Bookmark folders with create, rename and delete
+450. File bookmarks by dragging them onto a folder
+451. Folder picker when bookmarking, or save straight to the root
+452. Optional per-folder lock and blurred covers
+453. Folder cover is the first book added to it
+454. Deleting a folder keeps its bookmarks, moving them back to the root
+455. Text-input modal that distinguishes cancel from an empty value
+456. Keyboard shortcuts listed in Settings, not only in a popup
+457. Overlay buttons bind reliably (markup declared before the script)
+458. Dialog text inputs themed to match the rest of the app
+459. Lock screen and recovery fields use the app font
+460. Bookmark covers no longer hijack the drag gesture
+461. Floating drop zones appear while dragging a bookmark
+462. Drop a bookmark back to All bookmarks, or straight into a new folder
+463. Drop highlight survives the pointer crossing child elements
+464. A missed drop never navigates the app away
+465. All configuration in one `config.json` (settings + sources)
+466. Settings written atomically, so a crash cannot reset them
+467. Concurrent saves cannot clobber each other
+468. Pre-1.4.11 `settings.json` migrated automatically
+469. Every bridge endpoint returns errors as data, never raises
+470. A malformed queue entry cannot kill the download worker thread
+471. Download options coerced from UI values instead of trusted
+472. Cover cache bounded by bytes with LRU eviction
+473. Global JS error handlers clear spinners and surface a message
+474. Search/browse failures show a retry instead of a dead screen
+475. `mangadl menu` — progressive numbered interface, no extra dependencies
+476. Every menu prompt accepts a number; `b` = back, `q` = quit at any depth
+477. Menu covers search, trending, URLs, library, bookmarks, settings, tools
+478. Menu exits cleanly on EOF or a non-terminal stdin
+479. `mangadl search --type` narrows by manga / manhwa / manhua
+480. `mangadl search --status` narrows by publication status
+481. `mangadl search -n/--limit` caps the number of results
+482. `mangadl search --sort` by title, source, chapters or year, `--reverse`
+483. `mangadl search --urls` prints one URL per line for pipes
+484. `mangadl search --json` prints machine-readable results
+485. `mangadl search --open N` shows details for a numbered result
+486. `mangadl search --download N` downloads a numbered result
+487. `mangadl tui` explains itself instead of a traceback without Textual
+488. Every module runs directly (`py menu.py`) without an import error
+489. Redesigned landing page with an original identity, not a code-host clone
+490. Landing page ships light and dark themes, remembered between visits
 
 ## Core engine
 

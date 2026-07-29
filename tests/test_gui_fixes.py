@@ -42,7 +42,10 @@ def test_closed_handler_returns_nothing():
     handler = source[source.index("def _on_closed():"):]
     handler = handler[:handler.index("window.events.closed")]
     body = re.sub(r'""".*?"""', "", handler, flags=re.S)
-    assert not re.search(r"^\s+return\s+\S", body, re.M)
+    # [^\S\n] = whitespace except newline. Plain \s spans newlines, so a bare
+    # "return" followed by the next statement matched and the test failed on
+    # correct code -- an early bare return is exactly what a guard clause is.
+    assert not re.search(r"^[^\S\n]+return[^\S\n]+\S", body, re.M)
 
 
 def test_shutdown_result_would_break_the_event_system():

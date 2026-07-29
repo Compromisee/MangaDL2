@@ -7,6 +7,104 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.19 — Background downloads in the system tray, crash-safe resume
+
+### Added — minimise to the system tray
+
+**Settings → Background → Minimise to system tray.** With it on, closing the
+window hides it and downloads keep running; the app only exits from the tray's
+**Quit**.
+
+The tray context menu is rebuilt every time it opens, so the numbers are live:
+
+```
+↓  2.4 MB/s     ETA 4m 12s
+Chapters:  7/40  (33 left)
+Pages:  812/4100
+Downloaded:  318.4 MB
+Queued:  3 waiting
+   • Solo Leveling (4/20)
+   • Nano Machine (3/20)
+   ────────────────────────
+   Open MangaDL
+   Pause queue
+   Quit
+```
+
+The hover tooltip carries the same summary in one line, and the icon turns
+mint with an activity dot while anything is downloading. A desktop
+notification fires when a download finishes (switchable).
+
+**Pause queue** stops *new* jobs starting; it deliberately does not interrupt
+a chapter already in flight, since that would throw away partial work resume
+could reuse.
+
+`pystray` is an optional extra:
+
+```bash
+pip install "mangadl[tray]"
+```
+
+It is optional for a real reason: **importing pystray raises on a machine with
+no display** — on a headless box `import pystray` dies with
+`Xlib.error.DisplayNameError` before any of our code runs. The import is
+therefore guarded and probed lazily, the tray never blocks startup, and if it
+cannot start the window keeps its ordinary close-quits behaviour. The Settings
+toggle disables itself and says why rather than silently doing nothing.
+
+### Added — transfer rate, ETA and queue depth
+
+Nothing measured throughput before this: the engine only totalled bytes
+*after* a job finished, which is no use while one is running.
+
+* **Rolling-window rate**, not a lifetime average. A cumulative figure keeps
+  reporting a high speed long after a transfer slows — precisely when the
+  number matters. Bytes are counted as chunks land, not per finished file,
+  which otherwise makes the rate lurch between zero and a spike.
+* **ETA from pages.** Total byte size is unknowable up front (no source
+  reports image sizes), but page counts arrive with each chapter. Chapters
+  whose page lists have not been fetched yet are projected from the average
+  so far — and only once at least one chapter has completed, so the average
+  is grounded in real data.
+* **Honest `--`.** When the remaining work genuinely cannot be known, the ETA
+  says so instead of inventing a number.
+
+New `Api.get_progress()` exposes all of it to the GUI as well.
+
+### Fixed — crash resume lost concurrent downloads
+
+The journal that backs "resume after a crash" was **a single file**. That was
+fine when one download ran at a time and wrong the moment the GUI grew
+concurrent jobs. Both bugs were reproduced before being fixed:
+
+* starting job B **overwrote** job A's record — A could never be resumed;
+* whichever job finished first called `clear_journal()` and **wiped the record
+  of the one still running**.
+
+Each job now owns `~/.mangadl/jobs/<id>.json` and clears only its own. Writes
+are atomic and fsynced, so a crash mid-write cannot leave a truncated file
+that reads back as "no job", and a corrupt file is dropped rather than
+breaking every future read. A pre-1.4.19 `job.json` is migrated automatically.
+
+Verified end to end: two concurrent downloads, `os._exit(137)` mid-run — both
+journals survived, both resumed, and each skipped what was already on disk
+(one refetched 5 images, not 368).
+
+`mangadl resume` now lists every interrupted job. It also no longer crashes
+with `EOFError` on piped input — the second prompt lacked the guard the first
+one had.
+
+### Fixed — a test that failed on correct code
+
+`test_closed_handler_returns_nothing` used `^\s+return\s+\S`, and `\s` spans
+newlines, so a bare `return` followed by the next statement matched. An early
+bare return is exactly what a guard clause is. Tightened to `[^\S\n]`, and
+re-verified that it still catches a real `return api.shutdown()`.
+
+769 passing.
+
+---
+
 ## v1.4.18 — Madara sites become one source; dedupe rewritten
 
 ### Added — "Madara Sites", one entry for ten sites
