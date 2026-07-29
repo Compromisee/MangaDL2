@@ -475,6 +475,12 @@ A complete feature reference for MangaDL.
 400. Settings written atomically, so a crash cannot reset them
 401. Concurrent saves cannot clobber each other
 402. Pre-1.4.11 `settings.json` migrated automatically
+403. Every bridge endpoint returns errors as data, never raises
+404. A malformed queue entry cannot kill the download worker thread
+405. Download options coerced from UI values instead of trusted
+406. Cover cache bounded by bytes with LRU eviction
+407. Global JS error handlers clear spinners and surface a message
+408. Search/browse failures show a retry instead of a dead screen
 
 ## Core engine
 

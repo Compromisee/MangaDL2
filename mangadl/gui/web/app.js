@@ -40,6 +40,35 @@ async function callApi(name, ...args) {
   }
 }
 
+/* Last line of defence. Without these a rejected bridge call vanished into
+   the console: measured, a failing get_manga left the loading spinner up
+   forever and showed the user nothing at all. These do not paper over bugs
+   -- everything is still logged -- but the UI always returns to a usable
+   state and says something. */
+window.__mangadlErrorHandler = true;
+
+function reportFailure(what, detail) {
+  try {
+    console.error(what, detail);
+    // Clear any spinner that a failed step left behind.
+    document.querySelectorAll(".loading:not(.hidden), #mangaLoading:not(.hidden)")
+      .forEach((el) => el.classList.add("hidden"));
+    if (typeof toast === "function") toast(what);
+  } catch (e) { /* never throw from the error handler */ }
+}
+
+window.addEventListener("unhandledrejection", (e) => {
+  e.preventDefault();
+  reportFailure("Something went wrong", e.reason);
+});
+
+window.addEventListener("error", (e) => {
+  // Resource errors (a cover that 404s) bubble here too and are handled
+  // elsewhere; only report genuine script errors.
+  if (e.target && e.target !== window) return;
+  reportFailure("Something went wrong", e.error || e.message);
+});
+
 function whenReady(fn) {
   if (api()) return fn();
   window.addEventListener("pywebviewready", fn, { once: true });
@@ -292,7 +321,7 @@ let sourceById = {};
 
 async function loadSources() {
   if (!api() || !api().get_sources) return;
-  const res = await api().get_sources();
+  const res = await callApi("get_sources");
   if (!res || !res.ok) return;
   SOURCES = res.sources || [];
   sourceById = {};
@@ -435,7 +464,7 @@ async function loadGenres() {
   if (!api() || !api().get_genres) return;
   const sel = $("fGenre");
   const picked = sel.value;
-  const res = await api().get_genres($("fSource").value || "all");
+  const res = await callApi("get_genres", $("fSource").value || "all");
   if (!res || !res.ok) return;
   GENRES = res.genres || [];
 
@@ -723,7 +752,7 @@ async function doSearch(rerun = false, append = false) {
   const seq = ++searchSeq;
   let res;
   if (browseMode) {
-    res = await api().browse({
+    res = await callApi("browse", {
       source: filters.source,
       genre: filters.genre,
       genres: filters.genres,
@@ -733,9 +762,21 @@ async function doSearch(rerun = false, append = false) {
       page: browsePage,
     });
   } else {
-    res = await api().search(query, { ...filters, page: browsePage });
+    res = await callApi("search", query, { ...filters, page: browsePage });
   }
   if (seq !== searchSeq) return;   // a newer request superseded this one
+
+  // A null here means the bridge rejected. Surface it instead of falling
+  // through and throwing on res.ok, which aborted the whole handler and
+  // left the spinner and the disabled Load more button behind.
+  if (!res) {
+    $("loadMoreBtn").disabled = false;
+    $("loadMoreBtn").textContent = "Load more";
+    showState("error", "Search failed",
+              "The app could not reach that source. Try again.",
+              [{ label: "Retry", onClick: () => doSearch(true) }]);
+    return;
+  }
 
   $("loadMoreBtn").disabled = false;
   $("loadMoreBtn").textContent = "Load more";
@@ -860,9 +901,15 @@ async function openManga(url, sourceId) {
   $("mangaLoading").classList.remove("hidden");
   $("mangaLayout").classList.add("hidden");
 
-  const res = await api().get_manga(url, sourceId || null);
+  const res = await callApi("get_manga", url, sourceId || null);
   $("mangaLoading").classList.add("hidden");
 
+  // callApi returns null when the bridge is missing or the call rejected.
+  if (!res) {
+    toast("Could not load that manga");
+    showView("search");
+    return;
+  }
   if (!res.ok) {
     toast("Failed to load manga: " + res.error);
     showView("search");
@@ -994,7 +1041,7 @@ $("bookmarkBtn").addEventListener("click", async () => {
   // folders exist -- otherwise the prompt is pure friction.
   const already = $("bookmarkBtn").classList.contains("on");
   if (already) {
-    const res = await api().toggle_bookmark(state.manga.info);
+    const res = await callApi("toggle_bookmark", state.manga.info);
     if (res.ok) { setBookmarkIcon(res.bookmarked); toast("Bookmark removed"); }
     return;
   }
@@ -3211,7 +3258,7 @@ $("selectInvertBtn") && $("selectInvertBtn").addEventListener("click", () => {
   const next = new Set(state.selected);
   shown.forEach((i) => (next.has(i) ? next.delete(i) : next.add(i)));
   state.selected = next;
-  renderChapters();
+  renderChapterList();
   updateDownloadButton();
 });
 

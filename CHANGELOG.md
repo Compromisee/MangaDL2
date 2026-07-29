@@ -7,6 +7,71 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.12 — GUI crash hardening
+
+The GUI was described as very prone to crashing. Four measured causes, plus
+one plain bug the audit turned up.
+
+### Fixed — 87 of 102 bridge endpoints could raise into pywebview
+
+Every public method on the API object is called from JavaScript. An exception
+gets marshalled across the native bridge, which surfaces as a rejected promise
+at best and can tear the view down at worst -- and the JS side cannot tell
+"the endpoint blew up" from "the endpoint returned nothing". Only 15 methods
+guarded themselves.
+
+A metaclass now wraps every public method, so failures come back as
+``{"ok": false, "error": ...}`` -- the shape ``callApi()`` already understands.
+Measured after: 102 of 102 guarded, and 0 of 8 hostile-argument calls raise.
+Doing it by hand is what decayed to 15 in the first place, so a method added
+later is protected automatically.
+
+### Fixed — a bad queue entry killed the download thread
+
+``_start_queued()`` runs in the *finally* of a finished job's thread. A cart
+entry with a non-numeric option (``retries: "not-an-int"``) made ``int()``
+raise out of ``_spawn`` on that thread, with no handler: the job reported
+done, the worker died, and the queue silently stalled. Verified with
+``threading.excepthook`` -- before, one escaped exception; after, none.
+
+Download options are now coerced and clamped rather than trusted, and a
+malformed entry is dropped with an error event instead of taking the queue
+with it.
+
+### Fixed — the cover cache was bounded by count, not bytes
+
+A proxied cover is a base64 data URI: 116 KB measured for one Webtoons cover.
+The 240-entry cap therefore held ~28 MB, and scaled without any ceiling for a
+source with larger art. It is now capped at 24 MB with proper LRU eviction --
+the old code called ``clear()``, throwing away every cover the moment it
+filled. Oversized items are served but not retained.
+
+### Fixed — a rejected call left the UI hung and silent
+
+There were no ``unhandledrejection`` or ``error`` handlers. Measured with a
+failing endpoint: the loading spinner ran forever, **no message was shown at
+all**, and the failure escaped to the console. There are now global handlers
+that clear stranded spinners and surface a message, and the hot paths --
+``search``, ``browse``, ``get_manga``, ``get_sources`` -- go through the
+guarded wrapper. A failed search shows a retry action instead of a dead
+screen. Measured after: 0 unhandled rejections, spinner cleared, message
+shown.
+
+### Fixed — Invert never worked
+
+The audit found ``renderChapters()`` being called although no such function
+exists; the real name is ``renderChapterList()``. Invert has thrown a
+``ReferenceError`` on every click since it was added in v1.4.6 -- the
+selection changed in state but the rows never repainted and the handler
+aborted before updating the download button. A test now scans for any helper
+that is called but never defined.
+
+### Tests
+
+583 offline (up from 552) + 21 live.
+
+---
+
 ## v1.4.11 — One config.json, and the settings-loss bug behind it
 
 ### Fixed — settings resetting themselves

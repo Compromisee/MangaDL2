@@ -5,6 +5,8 @@ small JSON API to JavaScript; download progress is pushed back with
 window.evaluate_js.
 """
 
+import collections
+import functools
 import json
 import logging
 import os
@@ -180,7 +182,48 @@ def _narrow_by_genres(results, extra_genres, match="all"):
     return kept
 
 
-class Api:
+def _safe_endpoint(func):
+    """Wrap a bridge method so it can never raise into pywebview.
+
+    Every public method here is called from JavaScript. pywebview marshals an
+    exception across the native bridge, which on WebView2 surfaces as a
+    rejected promise at best and can tear the view down at worst -- and the
+    JS side has no way to distinguish "endpoint blew up" from "endpoint
+    returned nothing". Of 102 public methods only 15 guarded themselves.
+
+    Failures now come back as ``{"ok": False, "error": ...}``, which is the
+    shape callApi() on the JS side already understands.
+    """
+    @functools.wraps(func)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return func(self, *args, **kwargs)
+        except Exception as e:                      # noqa: BLE001 - deliberate
+            logger.exception("API call %s failed", func.__name__)
+            return {"ok": False, "error": f"{type(e).__name__}: {e}"}
+    wrapper.__wrapped__ = func
+    return wrapper
+
+
+class _SafeApiMeta(type):
+    """Apply :func:`_safe_endpoint` to every public method of the class.
+
+    Done with a metaclass rather than by hand so a method added later is
+    protected automatically -- the previous state of the file, where 87 of
+    102 endpoints were unguarded, is exactly what hand-wrapping decays into.
+    """
+
+    def __new__(mcls, name, bases, namespace):
+        for key, value in list(namespace.items()):
+            if key.startswith("_") or not callable(value):
+                continue
+            if isinstance(value, (staticmethod, classmethod, property)):
+                continue
+            namespace[key] = _safe_endpoint(value)
+        return super().__new__(mcls, name, bases, namespace)
+
+
+class Api(metaclass=_SafeApiMeta):
     """Methods callable from JavaScript via window.pywebview.api.*"""
 
     def __init__(self):
@@ -538,8 +581,29 @@ class Api:
     # request that does not carry a webtoons.com Referer. The two demands
     # are mutually exclusive in one document, so those covers are fetched
     # here -- with the right Referer -- and handed back as a data URI.
-    _COVER_CACHE = {}
-    _COVER_CACHE_MAX = 240
+    # Bounded by BYTES, not entry count. A proxied cover is a base64 data URI
+    # -- measured 116 KB for one Webtoons cover -- so the old 240-entry cap
+    # held ~28 MB of RSS, and a source with larger art scaled that without
+    # any ceiling. An OrderedDict gives proper LRU eviction instead of the
+    # previous clear(), which threw away every cover the moment it filled.
+    _COVER_CACHE = collections.OrderedDict()
+    _COVER_CACHE_MAX_BYTES = 24 * 1024 * 1024
+    #: Refuse to cache anything absurd; still returned, just not retained.
+    _COVER_MAX_ITEM_BYTES = 4 * 1024 * 1024
+    _COVER_LOCK = threading.Lock()
+
+    @classmethod
+    def _cache_cover(cls, url, data):
+        """Store a cover, evicting least-recently-used entries by size."""
+        if len(data) > cls._COVER_MAX_ITEM_BYTES:
+            return
+        with cls._COVER_LOCK:
+            cls._COVER_CACHE.pop(url, None)
+            cls._COVER_CACHE[url] = data
+            total = sum(len(v) for v in cls._COVER_CACHE.values())
+            while total > cls._COVER_CACHE_MAX_BYTES and len(cls._COVER_CACHE) > 1:
+                _key, dropped = cls._COVER_CACHE.popitem(last=False)
+                total -= len(dropped)
 
     def proxy_cover(self, url: str, source_id: str = None):
         """Fetch a hotlink-protected cover and return it as a data URI."""
@@ -549,7 +613,10 @@ class Api:
         if not url.startswith(("http://", "https://")):
             return {"ok": False, "error": "unsupported url"}
 
-        cached = self._COVER_CACHE.get(url)
+        with self._COVER_LOCK:
+            cached = self._COVER_CACHE.get(url)
+            if cached is not None:
+                self._COVER_CACHE.move_to_end(url)   # keep it warm
         if cached:
             return {"ok": True, "data": cached, "cached": True}
 
@@ -567,10 +634,7 @@ class Api:
                 mime = "image/jpeg"
             data = f"data:{mime};base64," + base64.b64encode(blob).decode("ascii")
 
-            # Bounded so a long browse session cannot grow without limit.
-            if len(self._COVER_CACHE) >= self._COVER_CACHE_MAX:
-                self._COVER_CACHE.clear()
-            self._COVER_CACHE[url] = data
+            self._cache_cover(url, data)
             return {"ok": True, "data": data}
         except Exception as e:
             logger.warning("Cover proxy failed for %s: %s", url, e)
@@ -1034,6 +1098,36 @@ class Api:
 
     # --------------------------------------------------------- download
 
+    @staticmethod
+    def _as_int(value, default, low=None, high=None):
+        """Coerce a UI value to int, clamping. Never raises.
+
+        Values arrive from JavaScript, where a cleared field is "" and a
+        stale handler can send a string. int("abc") used to escape all the
+        way out of _spawn() and kill the worker thread.
+        """
+        try:
+            number = int(float(value))
+        except (TypeError, ValueError):
+            number = int(default)
+        if low is not None:
+            number = max(low, number)
+        if high is not None:
+            number = min(high, number)
+        return number
+
+    @staticmethod
+    def _as_float(value, default, low=None, high=None):
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            number = float(default)
+        if low is not None:
+            number = max(low, number)
+        if high is not None:
+            number = min(high, number)
+        return number
+
     def _build_options(self, options: dict):
         """Turn a raw options dict from JS into validated DownloadOptions."""
         settings = load_settings()
@@ -1042,11 +1136,11 @@ class Api:
             selection=options.get("selection", "all"),
             output_dir=options.get("output_dir") or DEFAULT_SETTINGS["output_dir"],
             format=options.get("format", "cbz"),
-            bundle=int(options.get("bundle", 0) or 0),
-            chapter_workers=max(1, min(8, int(options.get("chapter_workers", 3)))),
-            image_workers=max(1, min(10, int(options.get("image_workers", 6)))),
-            delay=max(0.0, float(options.get("delay", 0.5))),
-            retries=max(1, min(10, int(options.get("retries", 5)))),
+            bundle=self._as_int(options.get("bundle"), 0, 0),
+            chapter_workers=self._as_int(options.get("chapter_workers"), 3, 1, 8),
+            image_workers=self._as_int(options.get("image_workers"), 6, 1, 10),
+            delay=self._as_float(options.get("delay"), 0.5, 0.0, 60.0),
+            retries=self._as_int(options.get("retries"), 5, 1, 10),
             keep_images=bool(options.get("keep_images", False)),
             extra_formats=list(options.get("extra_formats", []) or []),
             name_single=options.get("name_single") or DEFAULT_SETTINGS["name_single"],
@@ -1155,12 +1249,25 @@ class Api:
         return record
 
     def _start_queued(self):
-        """Promote cart entries into running jobs while slots are free."""
+        """Promote cart entries into running jobs while slots are free.
+
+        A malformed entry is dropped with an error event rather than allowed
+        to raise: this runs in the finally of a finished job's thread, so an
+        escaping exception killed that thread and stalled the whole queue.
+        """
         started = []
         with self._jobs_lock:
             limit = self.max_concurrent_jobs()
             while self._cart and len(self._active_jobs()) < limit:
-                started.append(self._spawn(self._cart.pop(0)))
+                entry = self._cart.pop(0)
+                try:
+                    started.append(self._spawn(entry))
+                except Exception as e:
+                    logger.exception("Could not start a queued download")
+                    title = entry.get("title") or (
+                        entry.get("options") or {}).get("url") or "download"
+                    self._push({"type": "error",
+                                "message": f"Could not start {title}: {e}"})
         if started:
             self._flush()
         return started
