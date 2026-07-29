@@ -7,6 +7,50 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.10 — Bookmark drag-and-drop actually works
+
+Dragging a bookmark did nothing. The HTML5 wiring itself was fine -- a real
+mouse drag from the card body onto a folder tile did fire `dragstart` ->
+`dragover` -> `drop` and call `move_bookmark`. The v1.4.7 test that "passed"
+had dispatched a synthetic `drop` event, which skips the whole drag gesture,
+so it never exercised the paths that were broken. Four real blockers:
+
+**The cover swallowed the gesture.** An `<img>` is natively draggable, so
+starting the drag on the artwork -- which is most of the card's surface, and
+where anyone would naturally grab -- dragged the *picture* instead of the
+card. Measured payload: `text/uri-list, text/html, Files`, none of which the
+folder tile accepts. The cover is now `draggable = false`.
+
+**There was often nothing to drop onto.** The folder grid is hidden when no
+folders exist, so on a fresh install the drag had no target anywhere on
+screen. Dragging genuinely did nothing, and there was no way to tell why.
+Two floating drop zones now appear *while* a drag is in progress: **All
+bookmarks** and **new folder**.
+
+**A filed bookmark could not come back.** Once inside a folder there was no
+root drop target, so filing was one-way.
+
+**The highlight flickered off mid-drag.** `dragleave` fires when the pointer
+crosses onto a *child* element, so the naive handler cleared the drop state
+while the pointer was still over the tile. Enter/leave pairs are now counted.
+
+One more, found while verifying: the first version of the drop zones toggled
+`display` on an in-flow element, which reflowed the grid and **shifted the
+cards out from under the pointer** the instant the drag began -- it hung the
+test harness. The zones are now `position: fixed` and fade in, so the class
+alone causes zero layout change (measured: card Y identical before/after).
+
+A missed drop is also swallowed now; the browser would otherwise treat it as
+"open this link" and navigate the whole app away.
+
+### Tests
+
+534 offline (up from 529) + 21 live. The drag tests now use real mouse
+gestures rather than synthetic events, which is what let the original bug
+through.
+
+---
+
 ## v1.4.9 — Dialog inputs themed
 
 ### Fixed — the folder name field was unstyled

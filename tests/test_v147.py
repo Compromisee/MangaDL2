@@ -424,11 +424,17 @@ def test_bookmark_cards_are_draggable():
 
 
 def test_folder_tiles_accept_drops():
+    """The inline drop handler was refactored into the shared
+    makeDropTarget() helper, which also fixed the child-dragleave flicker."""
     js = web("app.js")
     body = js[js.index("function renderFolderGrid"):]
     body = body[:body.index("async function openFolder")]
-    assert '"drop"' in body
+    assert "makeDropTarget(tile" in body
     assert "move_bookmark" in body
+    # the helper it delegates to must genuinely handle a drop
+    helper = js[js.index("function makeDropTarget"):]
+    helper = helper[:helper.index("\n}\n")]
+    assert '"drop"' in helper
 
 
 def test_prompt_modal_distinguishes_cancel_from_empty():
@@ -596,3 +602,61 @@ def test_lock_inputs_use_the_app_font():
     block = css[css.index(".lock-input {"):]
     block = block[:block.index("}")]
     assert "font-family: inherit" in block
+
+
+# ================================== v1.4.10: bookmark drag-and-drop blockers
+
+
+def test_cover_image_does_not_hijack_the_drag():
+    """An <img> is natively draggable, so grabbing the artwork dragged the
+    picture (text/uri-list + Files) instead of the bookmark card -- and the
+    cover is most of the card's surface, so that is where a user grabs."""
+    js = web("app.js")
+    body = js[js.index("function renderBookmarkCards"):]
+    body = body[:body.index("function makeDropTarget")]
+    assert "coverImg.draggable = false" in body
+
+    css = web("style.css")
+    assert "-webkit-user-drag: none" in css
+
+
+def test_drop_targets_survive_child_dragleave():
+    """dragleave fires when the pointer crosses onto a child element, so a
+    naive handler drops the highlight -- and the styling -- mid-drag."""
+    js = web("app.js")
+    body = js[js.index("function makeDropTarget"):]
+    body = body[:body.index("\n}\n")]
+    assert "dragenter" in body
+    assert "depth" in body, "enter/leave pairs must be counted"
+    assert 'dropEffect = "move"' in body
+
+
+def test_drop_zones_exist_for_the_empty_and_filed_cases():
+    """With no folders yet there was nothing on screen to drop onto, and a
+    filed bookmark had no way back out."""
+    html = web("index.html")
+    for node in ("dropZones", "rootDropZone", "newFolderDropZone"):
+        assert f'id="{node}"' in html, node
+
+    js = web("app.js")
+    assert 'callApi("move_bookmark", url, "")' in js       # back to the root
+    assert 'create_bookmark_folder' in js                   # straight to a new folder
+
+
+def test_drop_zones_do_not_reflow_the_grid():
+    """Toggling an in-flow block on dragstart pushed the cards down out from
+    under the pointer. Measured: the class alone now moves nothing."""
+    css = web("style.css")
+    block = css[css.index(".drop-zones {"):]
+    block = block[:block.index("}")]
+    assert "position: fixed" in block
+    assert "display: none" not in block
+    assert "opacity: 0" in block
+
+
+def test_page_does_not_navigate_on_a_missed_drop():
+    """A drop outside a zone is treated by the browser as "open this link",
+    which would navigate the whole app away."""
+    js = web("app.js")
+    assert 'dragging-bookmark' in js
+    assert '["dragover", "drop"].forEach' in js

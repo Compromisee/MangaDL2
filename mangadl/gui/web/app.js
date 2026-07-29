@@ -1769,14 +1769,23 @@ function renderBookmarkCards(grid, items) {
         <span class="material-symbols-rounded">bookmark_remove</span>
       </button>`;
     // attachCover, not a raw src: proxied and sharded covers need it.
-    attachCover(card.querySelector("img"), card, b);
+    const coverImg = card.querySelector("img");
+    // An <img> is natively draggable, so starting the gesture on the cover
+    // dragged the *picture* (text/uri-list + Files) instead of the card.
+    coverImg.draggable = false;
+    attachCover(coverImg, card, b);
 
     card.addEventListener("dragstart", (e) => {
       e.dataTransfer.setData("text/plain", b.url || "");
       e.dataTransfer.effectAllowed = "move";
       card.classList.add("dragging");
+      // Reveals the drop zones, which are otherwise invisible or absent.
+      document.body.classList.add("dragging-bookmark");
     });
-    card.addEventListener("dragend", () => card.classList.remove("dragging"));
+    card.addEventListener("dragend", () => {
+      card.classList.remove("dragging");
+      document.body.classList.remove("dragging-bookmark");
+    });
 
     card.addEventListener("click", () => openManga(b.url));
     card.querySelector(".rc-remove").addEventListener("click", async (e) => {
@@ -1788,6 +1797,44 @@ function renderBookmarkCards(grid, items) {
     grid.appendChild(card);
   });
 }
+
+/* Attach drop behaviour to any tile.
+   dragleave fires when the pointer crosses onto a *child*, so a naive
+   handler flickers the highlight off mid-drag. Counting enter/leave pairs
+   keeps it stable. */
+function makeDropTarget(el, onDrop) {
+  let depth = 0;
+  el.addEventListener("dragenter", (e) => {
+    e.preventDefault();
+    depth += 1;
+    el.classList.add("drop-target");
+  });
+  el.addEventListener("dragover", (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  });
+  el.addEventListener("dragleave", () => {
+    depth = Math.max(0, depth - 1);
+    if (!depth) el.classList.remove("drop-target");
+  });
+  el.addEventListener("drop", async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    depth = 0;
+    el.classList.remove("drop-target");
+    document.body.classList.remove("dragging-bookmark");
+    const url = e.dataTransfer.getData("text/plain");
+    if (!url) return;
+    await onDrop(url);
+  });
+}
+
+/* Without this the browser treats a missed drop as "open this link", which
+   navigates the whole app away. */
+["dragover", "drop"].forEach((type) =>
+  document.addEventListener(type, (e) => {
+    if (document.body.classList.contains("dragging-bookmark")) e.preventDefault();
+  }));
 
 function renderFolderGrid() {
   const grid = $("folderGrid");
@@ -1813,16 +1860,7 @@ function renderFolderGrid() {
     if (img) attachCover(img, null, { cover: f.cover, cover_mirrors: f.cover_mirrors,
                                       source: f.cover_source });
 
-    tile.addEventListener("dragover", (e) => {
-      e.preventDefault();
-      tile.classList.add("drop-target");
-    });
-    tile.addEventListener("dragleave", () => tile.classList.remove("drop-target"));
-    tile.addEventListener("drop", async (e) => {
-      e.preventDefault();
-      tile.classList.remove("drop-target");
-      const url = e.dataTransfer.getData("text/plain");
-      if (!url) return;
+    makeDropTarget(tile, async (url) => {
       await callApi("move_bookmark", url, f.id);
       toast(`Moved to ${f.name}`);
       loadBookmarks();
@@ -1831,6 +1869,32 @@ function renderFolderGrid() {
     tile.addEventListener("click", () => openFolder(f));
     grid.appendChild(tile);
   });
+
+  // A bookmark filed into a folder had nowhere to go back to, and with no
+  // folders yet there was no drop target on screen at all -- so dragging
+  // simply did nothing. Both cases now have a real zone.
+  const root = $("rootDropZone");
+  if (root && !root.dataset.wired) {
+    root.dataset.wired = "1";
+    makeDropTarget(root, async (url) => {
+      await callApi("move_bookmark", url, "");
+      toast("Moved to All bookmarks");
+      loadBookmarks();
+    });
+  }
+  const maker = $("newFolderDropZone");
+  if (maker && !maker.dataset.wired) {
+    maker.dataset.wired = "1";
+    makeDropTarget(maker, async (url) => {
+      const name = await promptModal("New folder", "Folder name");
+      if (!name) return;
+      const res = await callApi("create_bookmark_folder", name, {});
+      if (!res || !res.ok) { toast((res && res.error) || "Could not create"); return; }
+      await callApi("move_bookmark", url, res.folder.id);
+      toast(`Moved to ${name}`);
+      loadBookmarks();
+    });
+  }
 }
 
 async function openFolder(folder) {

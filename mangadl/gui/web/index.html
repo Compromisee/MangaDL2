@@ -434,6 +434,18 @@
       <span class="hint" id="bmHint">Drag a bookmark onto a folder to file it</span>
     </div>
     <div class="folder-grid" id="folderGrid"></div>
+    <!-- Drop zones. Hidden until a drag begins, so they add no clutter but
+         are always available the moment one starts. -->
+    <div class="drop-zones" id="dropZones">
+      <div class="drop-zone" id="rootDropZone">
+        <span class="material-symbols-rounded">bookmarks</span>
+        <span>Drop here for All bookmarks</span>
+      </div>
+      <div class="drop-zone" id="newFolderDropZone">
+        <span class="material-symbols-rounded">create_new_folder</span>
+        <span>Drop here for a new folder</span>
+      </div>
+    </div>
     <div class="folder-open hidden" id="folderOpen">
       <div class="fo-head">
         <button class="icon-btn" id="folderBackBtn" title="Back to all bookmarks">

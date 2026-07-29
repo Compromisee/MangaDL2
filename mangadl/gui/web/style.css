@@ -2503,3 +2503,61 @@ kbd {
 /* The shortcut list is reused verbatim inside a settings card, where it
    needs no overlay chrome of its own. */
 .settings-card .sc-body { margin-top: 4px; }
+
+/* --------------------------------------------------- bookmark drop zones */
+
+/* Only visible while a bookmark is being dragged: with no folders created
+   there was previously nothing on screen to drop onto, so dragging looked
+   broken rather than merely pointless. */
+/* Fixed to the viewport rather than inserted into the flow: toggling
+   display on an in-flow block reflowed the grid and shifted the cards out
+   from under the pointer the instant the drag began. A floating bar also
+   stays reachable no matter how far the list is scrolled. */
+.drop-zones {
+  position: fixed;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%) translateY(14px);
+  z-index: 800;
+  display: flex;
+  gap: 14px;
+  width: min(720px, calc(100vw - 120px));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .15s, transform .15s;
+}
+body.dragging-bookmark .drop-zones {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.drop-zone {
+  flex: 1 1 0;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .38);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  padding: 18px 16px;
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 600;
+  transition: border-color .15s, background .15s, color .15s;
+}
+.drop-zone.drop-target {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  color: var(--text-1);
+}
+
+/* The cover must not swallow the gesture: an <img> is draggable by default,
+   so grabbing the artwork dragged the picture instead of the card. */
+.result-card img { -webkit-user-drag: none; user-select: none; }
+
+/* Make the folder tiles read as targets while a drag is in progress. */
+body.dragging-bookmark .folder-tile { border-style: dashed; }

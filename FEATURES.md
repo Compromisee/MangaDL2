@@ -466,6 +466,11 @@ A complete feature reference for MangaDL.
 391. Overlay buttons bind reliably (markup declared before the script)
 392. Dialog text inputs themed to match the rest of the app
 393. Lock screen and recovery fields use the app font
+394. Bookmark covers no longer hijack the drag gesture
+395. Floating drop zones appear while dragging a bookmark
+396. Drop a bookmark back to All bookmarks, or straight into a new folder
+397. Drop highlight survives the pointer crossing child elements
+398. A missed drop never navigates the app away
 
 ## Core engine
 
