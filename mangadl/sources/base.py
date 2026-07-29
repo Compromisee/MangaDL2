@@ -159,6 +159,9 @@ class Source:
         self.session.headers.update(self.headers())
         self._size_pool(self.session)
         self._solverr = None
+        #: Set once FlareSolverr is confirmed unreachable, so a Cloudflare
+        #: site fails fast instead of sleeping through five backoffs.
+        self._solverr_down = False
 
     @classmethod
     def _size_pool(cls, session):
@@ -244,7 +247,11 @@ class Source:
                     solved = self._solve_challenge(url, attempt)
                     if solved is not None:
                         return solved
-                    last_exc = ScrapeError("Cloudflare challenge not solved")
+                    last_exc = ScrapeError(
+                        "Cloudflare challenge not solved (start FlareSolverr "
+                        "to read this site)")
+                    if self._solverr_down:
+                        break          # no solver: retrying cannot help
                     continue
 
                 response.raise_for_status()
@@ -318,13 +325,32 @@ class Source:
         return None
 
     def _solve_challenge(self, url, attempt):
-        """Route a Cloudflare-protected URL through FlareSolverr."""
+        """Route a Cloudflare-protected URL through FlareSolverr.
+
+        Returns ``None`` when the challenge could not be solved. Sets
+        :attr:`_solverr_down` when the solver is not reachable at all, which
+        tells :meth:`fetch` to stop retrying -- see below.
+        """
+        if self._solverr_down:
+            return None
+
         logger.warning("[%s] Cloudflare challenge, trying FlareSolverr", self.id)
         try:
             from ..flaresolverr import FlareSolverrSession
             if self._solverr is None:
                 self._solverr = FlareSolverrSession()
             return self._solverr.get(url)
+        except (ConnectionError, TimeoutError, OSError) as e:
+            # No solver is running. Retrying cannot help: one will not appear
+            # mid-request, and the backoff is exponential, so a Cloudflare
+            # site burned 2+4+8+16+32 = 62 seconds per call before giving up.
+            # Measured on Setsu Scans: 67.5s for one search, which dragged a
+            # whole 20-source search from ~4s to 66s because every other
+            # source finished while that one thread slept.
+            self._solverr_down = True
+            logger.error("[%s] FlareSolverr is not reachable (%s); "
+                         "giving up on this site for now", self.id, e)
+            return None
         except Exception as e:
             logger.error("[%s] FlareSolverr fallback failed: %s", self.id, e)
             time.sleep(self._backoff(attempt))

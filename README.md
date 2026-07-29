@@ -2,7 +2,7 @@
 
 # MangaDL
 
-**Download manga from MangaDex, Mangakatana, Natomanga and Weeb Central as CBZ, PDF or EPUB — from a modern CLI, a full-screen TUI or a minimalist desktop GUI.**
+**Download manga, manhwa and manhua from 23 sites as CBZ, PDF or EPUB — from a modern CLI, an interactive menu, a full-screen TUI or a minimalist desktop GUI.**
 
 [Project landing page](https://compromisee.github.io/WeebDL/) (GitHub Pages, served from `docs/`)
 
@@ -20,10 +20,10 @@
 
 ## Highlights
 
-- **Four sources, one tool.** MangaDex (official JSON API), Mangakatana, Natomanga and Weeb Central. The right source is detected from the URL you paste — no flags required. See [Sources](#sources).
+- **23 sources, one tool.** MangaDex and Asura Scans through their JSON APIs, Flame Comics through its Next.js payload, and nineteen more scraped — manga, manhwa and manhua. The right source is detected from the URL you paste — no flags required. See [Sources](#sources).
 - **Search everything at once.** One query fans out across every site in parallel and merges the results, each tagged with where it came from.
 - **Press Search with an empty box** and you get trending titles instead of nothing — the app opens on a discovery feed rather than a blank page.
-- **Browse by genre.** 99 genres merged across sites, with quick-pick chips, genre-filtered search and per-genre trending.
+- **Browse by genre.** 200+ genres merged across sites, with quick-pick chips, genre-filtered search and per-genre trending.
 - **Robust by design.** A circuit breaker skips sites that are down instead of waiting for timeouts, retries use exponential backoff, and discovery listings are cached. One dead site never breaks a search.
 - **One command, one CBZ.** By default the CLI downloads *every* chapter and packs them into a single `.cbz` — no flags needed.
 - **Flexible bundling.** Choose one file for everything, one file per chapter, or one file per every N chapters (`--per 10`).
@@ -195,7 +195,7 @@ base install; `mangadl tui` needs Textual, which is an optional extra
     --plain            plain log output (for scripts / CI)
 
 sources:
--s, --source ID        force a source: mangadex | mangakatana | natomanga | weebcentral
+-s, --source ID        force a source (see `mangadl sources` for all 23)
                        (default: detected from the URL)
 -l, --language LANG    translation language, MangaDex only (default: en)
     --scanlator NAME   preferred scanlation group, MangaDex only
@@ -412,8 +412,19 @@ mangadl disk orphans        # library entries whose files are gone
 | `mangakatana` | [mangakatana.com](https://mangakatana.com) | HTML scraping | Large back catalogue, no account needed |
 | `natomanga` | [natomanga.com](https://www.natomanga.com) | HTML + JSON chapter endpoint | Manganato / Mangakakalot successor |
 | `weebcentral` | [weebcentral.com](https://weebcentral.com) | HTML scraping | May need FlareSolverr |
+| `asurascans` | [asuracomic.net](https://asuracomic.net) | JSON API (`api.asurascans.com`) | Site is an SPA that serves one document for every URL; the API is used instead. Pages with `offset`, not `page` |
+| `flamecomics` | [flamecomics.xyz](https://flamecomics.xyz) | Next.js `__NEXT_DATA__` | Whole 167-title catalogue in one request |
+| `demonicscans` | [demonicscans.org](https://demonicscans.org) | HTML scraping | MangaDemon. Genre filter is POST-only with numeric ids |
 | `omegascans` | [omegascans.org](https://omegascans.org) | JSON API | Coin-locked chapters are skipped |
 | `manhwaread` | [manhwaread.com](https://manhwaread.com) | HTML + base64 chapter payload | CDN needs a Referer |
+| `toonily` | [toonily.com](https://toonily.com) | Madara theme | Manhwa. Page CDN needs a Referer; search pages with `&paged=` only |
+| `manhuaplus` | [manhuaplus.com](https://manhuaplus.com) | Madara theme | Manhua |
+| `manhuatop` | [manhuatop.org](https://manhuatop.org) | Madara theme | Manhua. Series at `/manhua/`, listing at `/manga/` |
+| `manhwatop` | [manhwatop.com](https://manhwatop.com) | Madara theme | Manhwa. Genre slugs are SEO-mangled and read live |
+| `mangaread` | [mangaread.org](https://www.mangaread.org) | Madara theme | Mixed manga/manhwa/manhua. Genres at `/genres/` |
+| `witchscans` | [witchscans.com](https://witchscans.com) | HTML + `ts_reader` JSON | Manhua. Genre slugs contain percent-encoded emoji |
+| `writerscans` | [writerscans.com](https://writerscans.com) | HTML, client-side catalogue | 27-title group. Pages rebuilt from `uid` attributes |
+| `setsuscans` | [setsuscans.com](https://setsuscans.com) | Madara theme | **Needs FlareSolverr** — 403 on every request without it |
 | `webtoons` | [webtoons.com](https://www.webtoons.com) | HTML scraping | Official site; covers are proxied (hotlink-protected CDN) |
 | `mangadass` | [mangadass.com](https://mangadass.com) | HTML scraping | **18+** · use `/search?q=`, `/?s=` ignores the query |
 | `manhwa18` | [manhwa18.cc](https://manhwa18.cc) | HTML scraping | **18+** |
@@ -424,7 +435,17 @@ mangadl disk orphans        # library entries whose files are gone
 Adult sources are stamped `content_rating: pornographic` and tagged `Adult`, so
 **Safe mode** in Settings removes them, and each can be disabled individually.
 
-Two requested sites were deliberately left out:
+Six of these run the **Madara** WordPress theme, so they share one scraper in
+`mangadl/sources/madara.py` and each site file only declares what differs — the
+series path, the genre prefix and the listing path. All three vary per install
+and a wrong guess is a hard 404, so each was measured rather than assumed.
+
+Sites behind Cloudflare (`weebcentral`, `setsuscans`) need
+[FlareSolverr](https://github.com/FlareSolverr/FlareSolverr). Without it they
+now fail in milliseconds instead of stalling a multi-source search — see the
+v1.4.15 changelog entry.
+
+Three requested sites were deliberately left out:
 
 * **Comick** (`comick.io`) — the API returns an empty `md_images` array for
   every title, so no pages can be read.

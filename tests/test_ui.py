@@ -118,6 +118,54 @@ def test_stated_counters_match_the_repository():
     assert f"{features} documented features" in html
     assert f'<div class="hs-n">{sources}</div>' in html
 
+    # Tests passing: never claim more tests than the suite actually has.
+    # Counting "def test_" is not enough -- 30 parametrize decorators expand
+    # 595 functions into 694 cases -- so ask pytest itself.
+    collected = _collect_count()
+    claimed = int(re.search(r'<div class="hs-n">(\d+)</div>\s*'
+                            r'<div class="hs-k">tests passing</div>',
+                            html).group(1))
+    assert claimed <= collected, f"page claims {claimed}, suite has {collected}"
+
+
+def _collect_count():
+    """How many test cases pytest collects, parametrisation included."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", "--collect-only",
+         "-p", "no:cacheprovider", os.path.join(ROOT, "tests")],
+        capture_output=True, text=True, cwd=ROOT, timeout=300,
+        env={**os.environ, "MANGADL_UI_COLLECT_GUARD": "1"},
+    )
+    match = re.search(r"(\d+) tests? collected", result.stdout)
+    if not match:
+        pytest.skip("could not collect the suite to verify the count")
+    return int(match.group(1))
+
+
+def test_no_stale_source_count_in_prose():
+    """The hero headline, <title> and social meta all state a source count in
+    prose. Those are not covered by the .hs-n stat check, and were left
+    reading "twelve sources" after the registry grew to 23."""
+    from mangadl.sources import SOURCE_CLASSES
+
+    html = read(SITE)
+    stale = ["twelve", "nine sources", "four sources", "12 sources"]
+    for word in stale:
+        assert word.lower() not in html.lower(), word
+    # and the real number must actually appear in the headline
+    assert f"{len(SOURCE_CLASSES)} sources" in html
+
+
+def test_no_stat_the_page_cannot_verify():
+    """The merged-genre total is a live property -- 86 with every site
+    unreachable (hardcoded fallbacks), 207 with all 23 answering. A static
+    page cannot know it, so it must not state one."""
+    html = read(SITE)
+    assert "merged genres" not in html
+
 
 def test_source_tiles_match_the_registry():
     """The grid lists sites by hand, so it can drift from the code."""

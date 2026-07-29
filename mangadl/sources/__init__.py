@@ -12,19 +12,30 @@ Nothing else in the codebase hardcodes a site.
 import logging
 import re
 
+from .asurascans import AsuraScansSource
 from .base import BASE_HEADERS, DEFAULT_UA, ScrapeError, Source
+from .demonicscans import DemonicScansSource
+from .flamecomics import FlameComicsSource
 from .hentaiakane import HentaiAkaneSource
 from .manga18club import Manga18ClubSource
 from .mangadass import MangadassSource
 from .mangadex import MangaDexSource
 from .mangakatana import MangakatanaSource
+from .mangaread import MangaReadSource
+from .manhuaplus import ManhuaPlusSource
+from .manhuatop import ManhuaTopSource
 from .manhwa18 import Manhwa18Source
 from .manhwaread import ManhwaReadSource
+from .manhwatop import ManhwaTopSource
 from .natomanga import NatomangaSource
 from .nhentai import NhentaiSource
 from .omegascans import OmegaScansSource
+from .setsuscans import SetsuScansSource
+from .toonily import ToonilySource
 from .webtoons import WebtoonsSource
 from .weebcentral import WeebCentralSource
+from .witchscans import WitchScansSource
+from .writerscans import WriterScansSource
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +46,19 @@ SOURCE_CLASSES = [
     MangakatanaSource,
     NatomangaSource,
     WeebCentralSource,
+    AsuraScansSource,
+    FlameComicsSource,
+    DemonicScansSource,
     OmegaScansSource,
     ManhwaReadSource,
+    ToonilySource,
+    ManhuaPlusSource,
+    ManhuaTopSource,
+    ManhwaTopSource,
+    MangaReadSource,
+    WitchScansSource,
+    WriterScansSource,
+    SetsuScansSource,
     WebtoonsSource,
     MangadassSource,
     Manhwa18Source,
@@ -55,7 +77,10 @@ __all__ = [
     "NatomangaSource", "WeebCentralSource", "OmegaScansSource",
     "ManhwaReadSource", "Manhwa18Source", "WebtoonsSource",
     "MangadassSource", "Manga18ClubSource", "HentaiAkaneSource",
-    "NhentaiSource",
+    "NhentaiSource", "AsuraScansSource", "FlameComicsSource",
+    "DemonicScansSource", "ToonilySource", "ManhuaPlusSource",
+    "ManhuaTopSource", "ManhwaTopSource", "MangaReadSource",
+    "WitchScansSource", "WriterScansSource", "SetsuScansSource",
     "get_source", "source_for_url", "detect_source", "list_sources",
     "search_all", "browse_all", "browse_multi", "genres_all",
     "split_genres",

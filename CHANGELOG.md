@@ -7,6 +7,106 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.15 — Eleven new manhwa/manhua sources, and a Cloudflare timeout fix
+
+### Added — the six requested sites
+
+| Source | Site | Notes |
+|---|---|---|
+| `witchscans` | witchscans.com | Manhua; `ts_reader` page lists |
+| `writerscans` | writerscans.com | 27-title group; client-side catalogue |
+| `manhuatop` | manhuatop.org | Manhua; Madara |
+| `setsuscans` | setsuscans.com | **Cloudflare — needs FlareSolverr** |
+| `manhuaplus` | manhuaplus.com | Manhua; Madara |
+| `demonicscans` | demonicscans.org | MangaDemon / Demonic Scans |
+
+### Added — five more, for "more manhwa and manhua sources"
+
+`asurascans` (asuracomic.net), `flamecomics` (flamecomics.xyz), `toonily`,
+`manhwatop` (manhwatop.com) and `mangaread` (mangaread.org). The registry now
+holds **23** sources.
+
+Every one was verified end to end before shipping: search, series info,
+chapter list, page list, and two real page images plus the cover downloaded
+through the engine's own code path. Ten of the eleven produced valid CBZ
+archives with no corrupt entries; the eleventh is Setsu Scans, which cannot be
+read at all without a solver (below).
+
+### Added — a shared Madara scraper
+
+Six of the new sites run the Madara WordPress theme, so the scraping lives
+once in `mangadl/sources/madara.py` and each site file declares only what
+differs. That is not cosmetic: the parts that differ are exactly the parts
+that are wrong if you guess them.
+
+* **Genre prefix** varies per install and a wrong one is a hard 404 —
+  `/manga-genre/` on Manhua Plus and Manhwa Top, `/manhua-genre/` on Manhua
+  Top's namesake, `/genres/` on MangaRead, `/webtoon-genre/` on Toonily.
+* **Genre slugs are read off each site's own search form**, not guessed.
+  Manhwa Top ships `genre-action-new-genre` and `adventure-genre-hot`; no
+  guess produces those. Labels are cleaned for display, the request uses the
+  real slug.
+* **Search pages with `&paged=`, never `/page/N/`.** On Toonily the path form
+  returns page one — 18 results, all 18 identical to page one — so "next page"
+  would have looped forever there while appearing to work elsewhere.
+* **The chapter AJAX call sends an explicit empty body.** A bare POST answers
+  400 with zero bytes; the same request with `Content-Length: 0` answers 200
+  with the full list.
+* **Manhua Top browses `/manga/`, not `/manhua/`,** even though its series
+  live under `/manhua/` — `/manhua/?m_orderby=views` returns zero cards, which
+  was reproduced four times, three seconds apart.
+
+### Fixed — a Cloudflare site could stall an entire multi-source search
+
+Adding Setsu Scans exposed a pre-existing bug in the retry path rather than
+introducing one.
+
+When a site answers with a Cloudflare challenge and no FlareSolverr instance
+is running, `Source.fetch` treated the failed hand-off as a transient error
+and retried with exponential backoff: 2 + 4 + 8 + 16 + 32 seconds. Retrying
+cannot possibly help — a solver does not appear mid-request — so every call
+to such a site burned about a minute before failing.
+
+Measured on Setsu Scans with no solver running:
+
+| | before | after |
+|---|---|---|
+| one search on that site | **67.5 s** | **0.1 s** |
+| `search_all` across every source | **66.1 s** | **3.7 s** |
+
+The whole 23-source search was being held hostage by the one site that could
+not answer. `_solve_challenge` now distinguishes "the solver said no" from
+"there is no solver", sets a sticky per-source flag in the latter case, and
+`fetch` stops retrying. The error message now names FlareSolverr instead of
+failing silently. This also speeds up Weeb Central for anyone without a solver.
+
+### Changed
+
+* README's source table, the landing page tiles and `FEATURES.md` all list the
+  new sites; the landing page hero now reads **23 sources**.
+* Two more landing-page numbers are now test-enforced. The "tests passing"
+  figure is checked against what pytest actually collects — a static count of
+  `def test_` reads 595, because 30 `parametrize` decorators expand it to 694,
+  so the test asks pytest rather than grepping.
+* The "merged genres" stat was **removed** rather than updated. It is 86 with
+  every site unreachable and 207 with all 23 answering, so a static page
+  cannot state it as fact. A test now fails if it comes back.
+
+### Notes
+
+* **Setsu Scans cannot be verified from here.** It answers 403 with
+  `cf-mitigated: challenge` to every request — root, `/manga/`, `www.`, with a
+  full set of browser headers. The scraper was built against the Internet
+  Archive snapshot of 2025-07-09, which confirms the Madara theme and the
+  `/manga/<slug>/` layout. Its genre path is the theme default and is the one
+  thing in this release that is **unverified**; if you run FlareSolverr and
+  genres 404, that is the line to change.
+* **HentaiRead** was not added: it is Cloudflare-gated like Setsu Scans, but
+  no archived copy exists to build against, so guessing would be dishonest.
+* Comick and Comix remain excluded for the reasons in v1.4.4.
+
+---
+
 ## v1.4.14 — Direct execution fixed, landing page redesigned
 
 ### Fixed — `py menu.py` crashed with an ImportError
