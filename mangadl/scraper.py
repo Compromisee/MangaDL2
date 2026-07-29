@@ -12,6 +12,18 @@ New code should use the registry instead::
     source = source_for_url("https://mangadex.org/title/<uuid>")
     chapters = source.get_chapters(url)
 """
+import os
+import sys
+
+# Allow running this file directly (python mangadl/scraper.py, or an IDE's
+# "Run file"). Without this the relative imports below have no parent package
+# and raise ImportError before the module can do anything.
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import mangadl  # noqa: F401
+    __package__ = "mangadl"
+
+
 
 from .sources import (  # noqa: F401  (re-exported for compatibility)
     BASE_HEADERS as HEADERS,

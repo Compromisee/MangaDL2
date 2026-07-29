@@ -1,4 +1,15 @@
 """Packaging downloaded chapters into CBZ / PDF / EPUB volumes."""
+import sys
+
+# Allow running this file directly (python mangadl/packager.py, or an IDE's
+# "Run file"). Without this the relative imports below have no parent package
+# and raise ImportError before the module can do anything.
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import mangadl  # noqa: F401
+    __package__ = "mangadl"
+
+
 
 import logging
 import os

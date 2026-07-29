@@ -2,8 +2,58 @@
 
 All notable changes to **MangaDL**, newest first.
 
-This changelog starts fresh at v1.0.0 for the [Compromisee/WeebDL](https://github.com/Compromisee/WeebDL)
+This changelog starts fresh at v1.0.0 for the [Compromisee/MDL](https://github.com/Compromisee/MDL)
 fork. Earlier upstream history is not carried over.
+
+---
+
+## v1.4.14 — Direct execution fixed, landing page redesigned
+
+### Fixed — `py menu.py` crashed with an ImportError
+
+Running the file directly from inside the package raised
+`attempted relative import with no known parent package`. `cli.py` and
+`tui.py` already carried a self-bootstrap block for exactly this; `menu.py`
+was added in v1.4.13 without one, so its relative imports had no parent
+package to resolve against.
+
+Rather than patch the one file, the same guard was applied to every module
+that uses a relative import — `config.py`, `downloader.py`, `packager.py` and
+`scraper.py` were all in the same position. A test now scans the package and
+fails if any module using relative imports lacks the guard, so the next file
+added cannot repeat it. `menu.py` also gained a `__main__` block, so running
+it directly starts the menu instead of doing nothing.
+
+Verified: all eleven modules now execute directly without an import error.
+
+### Changed — the landing page has its own identity
+
+The page had been built to imitate a code host, down to the repository tabs,
+language bar and star/fork/watch chrome. That was a poor fit: it framed the
+project as a repository listing rather than a tool, and half the furniture
+described things the page could not actually know.
+
+Rebuilt from scratch:
+
+* **New visual language** — deep plum-navy ground, warm coral-to-violet
+  gradient, Sora for text and JetBrains Mono for code. Nothing borrowed.
+* **A hero that shows the product** — a terminal mock running a real command,
+  with four honest stats beside it.
+* **Sections that answer questions** — why it exists, the three interfaces,
+  the twelve sources as a scannable grid, the CLI as tabbed reference,
+  screenshots, and a two-line install.
+* **Light and dark themes**, remembered between visits.
+
+Every number on the page is checked against the repository by a test, and the
+source grid is checked against the registry, so neither can drift.
+
+The repository is referenced as **Compromisee/MDL** throughout.
+
+### Tests
+
+611 offline + 21 live. The landing-page suite was rewritten for the new
+structure; it also runs in 8 seconds rather than 309, because the old
+history-navigation tests are gone with the tabs they tested.
 
 ---
 

@@ -39,6 +39,17 @@ you can exclude a site from discovery without losing the ability to use a link
 someone sends you. ``search_enabled`` is the softer variant: keep the source
 usable but leave it out of "all sources" searches.
 """
+import sys
+
+# Allow running this file directly (python mangadl/config.py, or an IDE's
+# "Run file"). Without this the relative imports below have no parent package
+# and raise ImportError before the module can do anything.
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import mangadl  # noqa: F401
+    __package__ = "mangadl"
+
+
 
 import json
 import os

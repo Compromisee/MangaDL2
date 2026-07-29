@@ -109,7 +109,7 @@ class MangaDexSource(Source):
         from .. import __version__
         h["User-Agent"] = (
             f"MangaDL/{__version__} "
-            "(+https://github.com/Compromisee/WeebDL)"
+            "(+https://github.com/Compromisee/MDL)"
         )
         return h
 

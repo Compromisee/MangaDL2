@@ -494,6 +494,9 @@ A complete feature reference for MangaDL.
 419. `mangadl search --open N` shows details for a numbered result
 420. `mangadl search --download N` downloads a numbered result
 421. `mangadl tui` explains itself instead of a traceback without Textual
+422. Every module runs directly (`py menu.py`) without an import error
+423. Redesigned landing page with an original identity, not a code-host clone
+424. Landing page ships light and dark themes, remembered between visits
 
 ## Core engine
 

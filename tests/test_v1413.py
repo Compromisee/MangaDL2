@@ -327,3 +327,51 @@ class _FakeConsole:
     def status(self, *_args, **_kwargs):
         import contextlib
         return contextlib.nullcontext()
+
+
+# ============================ v1.4.14: direct execution / landing page redesign
+
+
+def test_menu_can_be_run_as_a_bare_file():
+    """`py menu.py` from inside the package raised ImportError.
+
+    cli.py and tui.py already self-bootstrap; menu.py was added without that
+    block, so its relative imports had no parent package.
+    """
+    result = subprocess.run(
+        [sys.executable, "menu.py"],
+        cwd=os.path.join(ROOT, "mangadl"),
+        capture_output=True, text=True, timeout=120,
+    )
+    assert "attempted relative import" not in result.stderr
+    assert "Traceback" not in result.stderr
+
+
+@pytest.mark.parametrize("module", [
+    "cli", "tui", "menu", "config", "downloader", "packager", "scraper",
+])
+def test_every_relative_import_module_self_bootstraps(module):
+    """Generalises the fix, so the next added module cannot repeat it."""
+    src = open(os.path.join(ROOT, "mangadl", f"{module}.py"),
+               encoding="utf-8").read()
+    assert '__package__ in (None, "")' in src, f"{module}.py cannot run directly"
+
+
+def test_no_module_using_relative_imports_is_left_unguarded():
+    import re
+
+    unguarded = []
+    package = os.path.join(ROOT, "mangadl")
+    for name in sorted(os.listdir(package)):
+        if not name.endswith(".py") or name.startswith("__"):
+            continue
+        src = open(os.path.join(package, name), encoding="utf-8").read()
+        if re.search(r"^from \.", src, re.M) and '__package__ in (None, "")' not in src:
+            unguarded.append(name)
+    assert unguarded == [], f"cannot be run directly: {unguarded}"
+
+
+def test_menu_runs_the_menu_when_executed_directly():
+    src = open(os.path.join(ROOT, "mangadl", "menu.py"), encoding="utf-8").read()
+    assert '__name__ == "__main__"' in src
+    assert "run_menu()" in src

@@ -336,10 +336,12 @@ def test_hentaiakane_documents_the_domain_correction():
 
 
 def test_landing_page_source_count_matches_the_registry():
+    """The redesigned page shows this as a hero stat rather than a tab
+    counter, but the number still has to track the registry."""
     from mangadl.sources import SOURCE_CLASSES
 
     html = read(os.path.join(ROOT, "docs", "index.html"))
-    assert f'counter">{len(SOURCE_CLASSES)}<' in html
+    assert f'<div class="hs-n">{len(SOURCE_CLASSES)}</div>' in html
 
 
 def test_adult_sources_are_all_rating_stamped():

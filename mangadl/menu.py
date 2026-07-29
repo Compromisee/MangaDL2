@@ -23,6 +23,14 @@ Design notes
 import os
 import sys
 
+# Allow running this file directly (python mangadl/menu.py, or PyCharm's
+# "Run file"). Without this the relative imports below have no parent
+# package and raise ImportError before anything else can happen.
+if __package__ in (None, ""):
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    import mangadl  # noqa: F401
+    __package__ = "mangadl"
+
 from rich import box
 from rich.console import Console
 from rich.panel import Panel
@@ -618,3 +626,7 @@ def run_menu(argv=None):
                 pause()
             except Quit:
                 return 0
+
+
+if __name__ == "__main__":
+    sys.exit(run_menu())
