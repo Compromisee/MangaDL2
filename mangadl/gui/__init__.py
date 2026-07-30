@@ -245,6 +245,8 @@ class Api(metaclass=_SafeApiMeta):
         self._jobs = {}             # job id -> job record
         self._jobs_lock = threading.RLock()
         self._queue_paused = False  # tray/UI can hold the queue
+        self._smart_thread = None   # background smart-cover scan
+        self._smart_stop = False
         self._tray = None           # TrayController, when one is running
         self._job_seq = 0
         self._cart = []             # queued jobs waiting for a free slot
@@ -573,6 +575,91 @@ class Api(metaclass=_SafeApiMeta):
                 failed.append({"title": group["title"], "error": str(e)})
         return {"ok": True, "root": root, "moved": moved,
                 "folders": folders, "failed": failed}
+
+    def smart_covers(self, root: str = None, overwrite: bool = False,
+                     organise: bool = True):
+        """One button: scan, choose and apply covers for a whole folder.
+
+        For each series it searches every enabled source and takes the best
+        candidate by the rules in :func:`mangadl.covers.auto_pick` -- exact
+        title first, then the source order from Settings, then resolution to
+        avoid picking a list thumbnail.
+
+        Runs in the background and reports progress through the normal event
+        stream, because a large library means one search per series and that
+        is far too slow to block the UI on.
+        """
+        from .. import covers
+
+        root = root or load_settings().get("output_dir")
+        if getattr(self, "_smart_thread", None) is not None \
+                and self._smart_thread.is_alive():
+            return {"ok": False, "error": "A smart scan is already running"}
+
+        self._smart_stop = False
+
+        def run():
+            done = failed = moved = 0
+            try:
+                groups = covers.plan(root, overwrite=bool(overwrite))
+                self._push({"type": "smart_start", "total": len(groups),
+                            "root": root})
+                for index, group in enumerate(groups, 1):
+                    if self._smart_stop:
+                        break
+                    self._push({"type": "smart_progress", "done": index - 1,
+                                "total": len(groups),
+                                "title": group["title"]})
+                    directory = group["directory"]
+                    try:
+                        if organise and group.get("needs_move"):
+                            directory = covers.isolate(group)
+                            moved += len(group["archives"])
+                        elif group.get("needs_move"):
+                            # Not organising: the archives share a folder, so
+                            # a cover here would be wrong for the others.
+                            failed += 1
+                            self._push({"type": "smart_item", "ok": False,
+                                        "title": group["title"],
+                                        "error": "shares a folder"})
+                            continue
+                        result = covers.auto_cover(group["title"], directory)
+                    except Exception as e:
+                        logger.exception("smart cover failed")
+                        result = {"ok": False, "error": str(e)}
+
+                    if result.get("ok"):
+                        done += 1
+                        chosen = result.get("chosen") or {}
+                        self._push({
+                            "type": "smart_item", "ok": True,
+                            "title": group["title"],
+                            "source": chosen.get("source_name")
+                            or chosen.get("source"),
+                            "width": result.get("width"),
+                            "height": result.get("height"),
+                            "directory": directory,
+                        })
+                    else:
+                        failed += 1
+                        self._push({"type": "smart_item", "ok": False,
+                                    "title": group["title"],
+                                    "error": result.get("error")})
+            finally:
+                self._push({"type": "smart_done", "done": done,
+                            "failed": failed, "moved": moved,
+                            "stopped": bool(self._smart_stop)})
+                self._flush()
+
+        self._smart_thread = threading.Thread(
+            target=run, daemon=True, name="mangadl-smart-covers")
+        self._smart_thread.start()
+        return {"ok": True, "started": True}
+
+    def stop_smart_covers(self):
+        """Ask a running smart scan to stop after the current series."""
+        self._smart_stop = True
+        return {"ok": True}
 
     def cover_candidates(self, title: str, limit: int = 6):
         """Ranked cover options for one title, for the user to choose from."""

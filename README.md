@@ -26,6 +26,7 @@
 - **Search everything at once.** One query fans out across every site in parallel and merges the results, each tagged with where it came from.
 - **Press Search with an empty box** and you get trending titles instead of nothing — the app opens on a discovery feed rather than a blank page.
 - **Browse by genre.** 200+ genres merged across sites, with quick-pick chips, genre-filtered search and per-genre trending.
+- **Smart search for covers.** One button scans a whole folder, searches every source and picks each cover itself using your source ranking — exact title first, then your preferred site, then the largest image so it never grabs a thumbnail.
 - **Rebuild missing covers.** Point *Tools → Rebuild covers* at a folder of loose CBZs: it recovers the series from each filename, offers covers from every source, and saves `cover.jpg` beside the archive — splitting mixed folders so each cover belongs to the right book.
 - **Runs in the background.** Turn on *Minimise to system tray* and closing the window keeps downloads going. The tray menu shows live speed, ETA, chapters remaining and what is queued — and brings the window back.
 - **Survives a crash.** Every running job is journaled to its own file, atomically. After a power cut or a kill, MangaDL offers to resume each one and skips what is already on disk.

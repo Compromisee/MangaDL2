@@ -346,3 +346,154 @@ def save_cover(url, directory, source_id=None, referer=None,
     if not ok:
         return None
     return destination
+
+# ------------------------------------------------------------ auto-pick
+#
+# "Smart search": one button that scans, chooses and applies, without the
+# user picking each cover by hand.
+
+#: Below this many pixels a cover is a list thumbnail, not artwork. Measured
+#: across sources: the same series ships at 175x238 on one site and
+#: 800x1164 on another, so rank alone picks a thumbnail surprisingly often.
+MIN_GOOD_PIXELS = 300 * 400
+
+
+def measure_cover(url, source_id=None, referer=None, timeout=20):
+    """``(width, height, bytes)`` for a cover, or ``None`` if unreadable.
+
+    Downloads the image once. Callers cache the result rather than fetching
+    twice, since the auto-picker measures every candidate.
+    """
+    from io import BytesIO
+
+    from .sources import get_source, source_for_url
+
+    source = None
+    try:
+        source = get_source(source_id) if source_id else source_for_url(url)
+    except Exception:
+        try:
+            source = source_for_url(url)
+        except Exception:
+            source = None
+    if source is None:
+        from .sources import get_source as _default
+        source = _default()
+
+    try:
+        headers = {"Referer": referer} if referer else None
+        response = source.fetch(url, max_retries=2, headers=headers,
+                                timeout=timeout)
+        blob = response.content
+    except Exception as e:
+        logger.debug("could not measure %s: %s", url, e)
+        return None
+    finally:
+        try:
+            source.close()
+        except Exception:
+            pass
+
+    try:
+        from PIL import Image
+
+        with Image.open(BytesIO(blob)) as image:
+            width, height = image.size
+    except Exception:
+        return None
+    return width, height, len(blob), blob
+
+
+def auto_pick(rows, measure=True, limit=8):
+    """Choose the best cover from ranked candidates.
+
+    Ordering, most significant first:
+
+    1. **title match** -- an exact match always beats a fuzzy one; a cover
+       for the wrong series is a failure however pretty it is;
+    2. **source rank** -- the order set in Settings, which is the user
+       saying which sites they trust;
+    3. **resolution** -- but only to separate a real cover from a list
+       thumbnail, not to override the ranking.
+
+    Rank is honoured *within* each quality tier rather than globally,
+    because the alternative is silently ignoring the ranking whenever a
+    lower-ranked site happens to serve a bigger JPEG. Measured across three
+    titles, the rank-1 candidate was 6x-15x smaller in pixels than the best
+    available, so ignoring size entirely is equally wrong.
+
+    Returns ``(chosen, measurements)``; ``chosen`` is ``None`` when nothing
+    usable was found.
+    """
+    from .config import rank_of
+
+    if not rows:
+        return None, {}
+
+    measurements = {}
+    considered = rows[:max(1, int(limit))]
+
+    if measure:
+        for row in considered:
+            result = measure_cover(row.get("cover"), row.get("source"),
+                                   row.get("url"))
+            if result:
+                width, height, size, blob = result
+                measurements[row["cover"]] = {
+                    "width": width, "height": height, "bytes": size,
+                    "pixels": width * height, "blob": blob,
+                }
+
+    def sort_key(row):
+        info = measurements.get(row.get("cover"))
+        pixels = info["pixels"] if info else 0
+        # Unmeasured covers are treated as "probably fine" rather than
+        # worst: a source that blocks a HEAD is not necessarily low quality.
+        good = 1 if (not measurements or pixels >= MIN_GOOD_PIXELS
+                     or (not info and measure)) else 0
+        return (
+            -int(row.get("score", 0)),        # exact title first
+            -good,                            # real artwork before thumbnails
+            rank_of(row.get("source") or ""),  # then the Settings order
+            -pixels,                          # then simply the biggest
+        )
+
+    ordered = sorted(considered, key=sort_key)
+    return ordered[0], measurements
+
+
+def auto_cover(title, directory, sources=None, limit=6, measure=True):
+    """Search, choose and save a cover in one call.
+
+    Returns ``{"ok", "cover"|"error", "chosen"}``. Reuses the bytes fetched
+    while measuring, so a cover is never downloaded twice.
+    """
+    rows = candidates(title, sources=sources, limit=limit)
+    if not rows:
+        return {"ok": False, "error": "No cover found", "chosen": None}
+
+    chosen, measurements = auto_pick(rows, measure=measure)
+    if chosen is None:
+        return {"ok": False, "error": "No usable cover", "chosen": None}
+
+    info = measurements.get(chosen.get("cover")) or {}
+    blob = info.get("blob")
+    if blob:
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, "cover.jpg")
+        try:
+            with open(path + ".part", "wb") as handle:
+                handle.write(blob)
+            os.replace(path + ".part", path)
+        except OSError as e:
+            return {"ok": False, "error": str(e), "chosen": chosen}
+    else:
+        path = save_cover(chosen["cover"], directory,
+                          source_id=chosen.get("source"),
+                          referer=chosen.get("url"))
+        if not path:
+            return {"ok": False, "error": "Download failed",
+                    "chosen": chosen}
+
+    return {"ok": True, "cover": path, "chosen": chosen,
+            "width": info.get("width"), "height": info.get("height")}

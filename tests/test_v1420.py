@@ -556,3 +556,214 @@ def test_cli_has_dedicated_cover_flags():
         capture_output=True, text=True, cwd=ROOT, timeout=180)
     for flag in ("--dry-run", "--sort-only", "--replace"):
         assert flag in result.stdout, flag
+
+
+# ============================================ v1.4.22: smart search auto-pick
+
+
+def _rows(*specs):
+    """Build candidate rows: (source, score, title)."""
+    return [{"title": t, "cover": f"http://x/{s}.jpg", "source": s,
+             "source_name": s, "url": f"http://x/{s}", "score": sc}
+            for s, sc, t in specs]
+
+
+def test_auto_pick_prefers_an_exact_title_over_a_bigger_image():
+    """A cover for the wrong series is a failure however pretty it is."""
+    from mangadl.covers import auto_pick
+
+    rows = _rows(("a", 30, "Something Else"), ("b", 100, "Real Title"))
+    chosen, _ = auto_pick(rows, measure=False)
+    assert chosen["source"] == "b"
+
+
+def test_auto_pick_follows_the_settings_ranking():
+    """The whole point: the button uses the order set in Settings."""
+    from mangadl.config import reorder
+    from mangadl.covers import auto_pick
+
+    rows = _rows(("mangadex", 100, "T"), ("natomanga", 100, "T"))
+
+    reorder(["mangadex", "natomanga"])
+    first, _ = auto_pick(rows, measure=False)
+    reorder(["natomanga", "mangadex"])
+    second, _ = auto_pick(rows, measure=False)
+
+    assert first["source"] == "mangadex"
+    assert second["source"] == "natomanga"
+
+
+def test_auto_pick_skips_list_thumbnails():
+    """Measured across three titles, the rank-1 candidate was 6x-15x smaller
+    in pixels than the best available -- often a 175x238 list thumbnail."""
+    from mangadl.config import reorder
+    from mangadl.covers import MIN_GOOD_PIXELS, auto_pick
+
+    # The thumbnail source is ranked FIRST, so only the size rule can save us.
+    reorder(["natomanga", "mangadex"])
+    rows = _rows(("natomanga", 100, "T"), ("mangadex", 100, "T"))
+    measurements = {
+        "http://x/natomanga.jpg": {"width": 175, "height": 238,
+                                   "pixels": 175 * 238, "bytes": 9000},
+        "http://x/mangadex.jpg": {"width": 800, "height": 1164,
+                                  "pixels": 800 * 1164, "bytes": 64000},
+    }
+    # Patch in measurements without hitting the network.
+    import mangadl.covers as covers_module
+
+    original = covers_module.measure_cover
+    covers_module.measure_cover = lambda url, *a, **k: (
+        measurements[url]["width"], measurements[url]["height"],
+        measurements[url]["bytes"], b"")
+    try:
+        chosen, _ = auto_pick(rows)
+    finally:
+        covers_module.measure_cover = original
+
+    assert 175 * 238 < MIN_GOOD_PIXELS <= 800 * 1164
+    assert chosen["source"] == "mangadex", "picked a list thumbnail"
+
+
+def test_ranking_still_wins_between_two_good_covers():
+    """Resolution separates artwork from thumbnails; it must not override
+    the user's ranking when both are real covers."""
+    from mangadl.config import reorder
+    from mangadl.covers import auto_pick
+    import mangadl.covers as covers_module
+
+    # Real source ids: rank_of() returns the default 100 for anything not in
+    # the registry, so invented names all tie and resolution decides -- which
+    # would make this test pass for the wrong reason.
+    reorder(["natomanga", "mangadex"])
+    rows = _rows(("natomanga", 100, "T"), ("mangadex", 100, "T"))
+    sizes = {"http://x/natomanga.jpg": (600, 900),
+             "http://x/mangadex.jpg": (2000, 3000)}
+    original = covers_module.measure_cover
+    covers_module.measure_cover = lambda url, *a, **k: (
+        sizes[url][0], sizes[url][1], 1000, b"")
+    try:
+        chosen, _ = auto_pick(rows)
+    finally:
+        covers_module.measure_cover = original
+
+    assert chosen["source"] == "natomanga", \
+        "resolution overrode the user's ranking between two good covers"
+
+
+def test_auto_pick_of_nothing_is_none():
+    from mangadl.covers import auto_pick
+
+    chosen, measurements = auto_pick([], measure=False)
+    assert chosen is None and measurements == {}
+
+
+def test_auto_pick_survives_unmeasurable_covers():
+    """A source that blocks the fetch must not crash the picker, and must
+    not be treated as worst -- it may simply be strict."""
+    import mangadl.covers as covers_module
+    from mangadl.covers import auto_pick
+
+    rows = _rows(("a", 100, "T"), ("b", 100, "T"))
+    original = covers_module.measure_cover
+    covers_module.measure_cover = lambda *a, **k: None
+    try:
+        chosen, measurements = auto_pick(rows)
+    finally:
+        covers_module.measure_cover = original
+    assert chosen is not None
+    assert measurements == {}
+
+
+def test_smart_covers_endpoint_exists_and_is_async():
+    from mangadl.gui import Api
+
+    api = Api()
+    assert callable(getattr(api, "smart_covers", None))
+    assert callable(getattr(api, "stop_smart_covers", None))
+
+
+def test_smart_covers_reports_progress_and_saves(tmp_path):
+    """End to end with the network stubbed: one call sorts a flat folder and
+    writes a cover per series."""
+    import mangadl.covers as covers_module
+    from mangadl.gui import Api
+
+    root = make(tmp_path,
+                "Close Family Ch.001-036.cbz",
+                "Close Family Ch.037-072.cbz",
+                "Eleceed Ch.200.cbz")
+
+    def fake_auto_cover(title, directory, **kwargs):
+        os.makedirs(directory, exist_ok=True)
+        with open(os.path.join(directory, "cover.jpg"), "wb") as handle:
+            handle.write(b"\xff\xd8\xff\xe0fake")
+        return {"ok": True, "cover": os.path.join(directory, "cover.jpg"),
+                "chosen": {"source": "stub", "source_name": "Stub"},
+                "width": 800, "height": 1200}
+
+    original = covers_module.auto_cover
+    covers_module.auto_cover = fake_auto_cover
+    api = Api()
+    events = []
+    api._push = events.append
+    api._flush = lambda: None
+    try:
+        assert api.smart_covers(root)["ok"] is True
+        api._smart_thread.join(timeout=60)
+    finally:
+        covers_module.auto_cover = original
+
+    kinds = [e["type"] for e in events]
+    assert "smart_start" in kinds and "smart_done" in kinds
+    done = [e for e in events if e["type"] == "smart_done"][0]
+    assert done["done"] == 2          # Close Family + Eleceed
+    assert done["moved"] == 3         # all three archives sorted
+    assert os.path.isfile(os.path.join(root, "Close Family", "cover.jpg"))
+    assert os.path.isfile(os.path.join(root, "Eleceed", "cover.jpg"))
+
+
+def test_smart_covers_refuses_to_run_twice(tmp_path):
+    import threading
+
+    import mangadl.covers as covers_module
+    from mangadl.gui import Api
+
+    root = make(tmp_path, "A Series Ch.001.cbz")
+    gate = threading.Event()
+
+    original = covers_module.auto_cover
+    covers_module.auto_cover = lambda *a, **k: (
+        gate.wait(10), {"ok": False, "error": "stub"})[1]
+    api = Api()
+    api._push = lambda e: None
+    api._flush = lambda: None
+    try:
+        assert api.smart_covers(root)["ok"] is True
+        second = api.smart_covers(root)
+        assert second["ok"] is False
+        assert "already running" in second["error"]
+    finally:
+        gate.set()
+        if api._smart_thread:
+            api._smart_thread.join(timeout=30)
+        covers_module.auto_cover = original
+
+
+def test_ui_has_the_smart_search_button():
+    html = read(os.path.join(ROOT, "mangadl", "gui", "web", "index.html"))
+    app = read(os.path.join(ROOT, "mangadl", "gui", "web", "app.js"))
+
+    assert 'id="smartCoversBtn"' in html
+    assert 'id="stopSmartBtn"' in html
+    assert "smart_covers" in app
+    # progress events must actually be routed somewhere
+    assert "handleSmartEvent(event)" in app
+    assert "smart_done" in app
+
+
+def test_ui_says_the_ranking_drives_the_choice():
+    """The button makes the decision, so the panel must say on what basis."""
+    html = read(os.path.join(ROOT, "mangadl", "gui", "web", "index.html"))
+    panel = html[html.index('id="tool-covers"'):]
+    panel = panel[:panel.index('id="tool-history"')]
+    assert "ranking in Settings" in panel

@@ -683,28 +683,29 @@ def cmd_covers(args) -> int:
 
     saved = failed = 0
     for group in groups:
-        picks = covers.candidates(group["title"], limit=4)
-        if not picks:
-            console.print(f"  [{WARN}]no cover found[/] {group['title']}")
-            failed += 1
-            continue
-        best = picks[0]
         try:
             directory = covers.isolate(group)
-            path = covers.save_cover(best["cover"], directory,
-                                     source_id=best.get("source"),
-                                     referer=best.get("url"))
         except OSError as e:
             console.print(f"  [{ERR}]failed[/] {group['title']}: {e}")
             failed += 1
             continue
-        if path:
+
+        # auto_cover measures each candidate and applies the same rules the
+        # GUI's Smart search uses: exact title, then the Settings ranking,
+        # then resolution so a list thumbnail is never chosen.
+        result = covers.auto_cover(group["title"], directory)
+        if result.get("ok"):
             saved += 1
+            chosen = result.get("chosen") or {}
+            size = ""
+            if result.get("width"):
+                size = f" {result['width']}x{result['height']}"
             console.print(f"  [{OK}]saved[/] {group['title']} "
-                          f"[{DIM}]from {best['source_name']}[/]")
+                          f"[{DIM}]from {chosen.get('source_name')}{size}[/]")
         else:
             failed += 1
-            console.print(f"  [{ERR}]download failed[/] {group['title']}")
+            console.print(f"  [{ERR}]{result.get('error', 'failed')}[/] "
+                          f"{group['title']}")
 
     console.print(f"\n{saved} cover(s) written"
                   + (f", {failed} failed" if failed else ""))

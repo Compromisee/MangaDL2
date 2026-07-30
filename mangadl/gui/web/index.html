@@ -613,6 +613,22 @@
 
     <div class="tool-panel" id="tool-covers">
       <div class="tool-bar">
+        <button class="btn primary" id="smartCoversBtn">
+          <span class="material-symbols-rounded">auto_awesome</span>Smart search
+        </button>
+        <button class="btn danger" id="stopSmartBtn" style="display:none">
+          <span class="material-symbols-rounded">stop</span>Stop
+        </button>
+        <span class="tool-note" id="smartNote"></span>
+      </div>
+      <p class="tool-note" style="margin:-6px 0 12px">
+        One button: finds every series, searches all sources, and picks a
+        cover itself using your <b>source ranking in Settings</b> — an exact
+        title match first, then your preferred source, then the largest image
+        so it never settles for a list thumbnail. Loose archives are sorted
+        into folders on the way.
+      </p>
+      <div class="tool-bar">
         <button class="btn" id="pickCoverFolderBtn">
           <span class="material-symbols-rounded">folder_open</span>Choose folder
         </button>
@@ -644,6 +660,7 @@
         </button>
         <span class="tool-note">Move every loose archive into a folder named after its series, without downloading covers.</span>
       </div>
+      <div class="rank-list" id="smartLog"></div>
       <div class="rank-list" id="coverList"></div>
     </div>
 

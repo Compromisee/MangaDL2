@@ -1554,6 +1554,13 @@ window.onEngineEvents = function (events) {
 };
 
 window.onEngineEvent = function (event) {
+  /* Smart-cover events belong to the Tools tab, not to a download job, so
+     they are handled before the job lookup below (which would register a
+     phantom job for them). */
+  if (typeof handleSmartEvent === "function" && handleSmartEvent(event)) {
+    return;
+  }
+
   /* Every event carries a job id so concurrent downloads never interfere.
      Aggregate counters are summed across jobs rather than overwritten. */
   const job = event.job ? (jobs.get(event.job) || registerJob(event.job, {})) : null;
@@ -3090,6 +3097,67 @@ $("scanOrphansBtn").addEventListener("click", async () => {
 
 let coverGroups = [];
 let coverRoot = null;          // null = use the configured downloads folder
+
+$("smartCoversBtn").addEventListener("click", async () => {
+  $("smartLog").innerHTML = "";
+  $("smartNote").textContent = "Starting\u2026";
+  const res = await callApi("smart_covers", coverRoot,
+                            $("coverOverwrite").checked, true);
+  if (!res || !res.ok) {
+    $("smartNote").textContent = (res && res.error) || "Could not start";
+    return;
+  }
+  $("smartCoversBtn").disabled = true;
+  $("stopSmartBtn").style.display = "";
+});
+
+$("stopSmartBtn").addEventListener("click", async () => {
+  $("smartNote").textContent = "Stopping after this series\u2026";
+  await callApi("stop_smart_covers");
+});
+
+function smartLogRow(html) {
+  const box = $("smartLog");
+  box.insertAdjacentHTML("beforeend", html);
+  box.scrollTop = box.scrollHeight;
+}
+
+function handleSmartEvent(ev) {
+  if (ev.type === "smart_start") {
+    $("smartNote").textContent = `Scanning ${ev.total} series\u2026`;
+    return true;
+  }
+  if (ev.type === "smart_progress") {
+    $("smartNote").textContent =
+      `${ev.done}/${ev.total} \u00b7 ${ev.title}`;
+    return true;
+  }
+  if (ev.type === "smart_item") {
+    smartLogRow(`
+      <div class="rank-row">
+        <div class="r-main">
+          <div class="r-title">${escapeHtml(ev.title || "")}</div>
+          <div class="r-meta">${ev.ok
+            ? `chose ${escapeHtml(ev.source || "")} \u00b7 ${ev.width || "?"}\u00d7${ev.height || "?"}`
+            : escapeHtml(ev.error || "no cover found")}</div>
+        </div>
+        <span class="cap">${ev.ok ? "saved" : "skipped"}</span>
+      </div>`);
+    return true;
+  }
+  if (ev.type === "smart_done") {
+    $("smartCoversBtn").disabled = false;
+    $("stopSmartBtn").style.display = "none";
+    $("smartNote").textContent =
+      `${ev.done} cover(s) saved` +
+      (ev.moved ? `, ${ev.moved} archive(s) sorted` : "") +
+      (ev.failed ? `, ${ev.failed} skipped` : "") +
+      (ev.stopped ? " (stopped)" : "");
+    toast(`Smart search finished: ${ev.done} cover(s)`);
+    return true;
+  }
+  return false;
+}
 
 $("pickCoverFolderBtn").addEventListener("click", async () => {
   const folder = await callApi("choose_folder");

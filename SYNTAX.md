@@ -397,6 +397,13 @@ Filename styles understood include `Chapters 001-050`, `Ch.001-036`,
 Chainsaw Man, Case Closed, Cells at Work -- survive intact, because a marker
 only counts when a number follows it.
 
+**Smart search** (the GUI button, and what `mangadl covers` now does) picks
+for you: exact title match first, then your **source ranking from Settings**,
+then image size so it never settles for a list thumbnail. Measured across
+three titles, the top-ranked candidate was 6-15x smaller in pixels than the
+best available, which is why size is considered at all — but between two real
+covers your ranking still wins.
+
 The GUI version (**Tools → Rebuild covers**) adds a **Choose folder** button so
 you can point it anywhere, and a **Sort into folders** button that splits a
 flat folder without downloading anything. It shows candidates as thumbnails so

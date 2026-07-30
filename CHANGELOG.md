@@ -7,6 +7,70 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.22 — Smart search: one button, covers chosen for you
+
+### Added — Smart search
+
+One button in Tools → Rebuild covers. It walks the folder, works out every
+series, searches all enabled sources, **chooses a cover itself**, and applies
+it — sorting loose archives into folders on the way. Progress is reported per
+series: what it picked, from which source, at what resolution.
+
+Verified end to end on a flat folder of four archives: *"3 cover(s) saved,
+4 archive(s) sorted"*, no console errors.
+
+### How it chooses
+
+In order of priority:
+
+1. **Exact title match.** A cover for the wrong series is a failure however
+   good it looks.
+2. **Your source ranking from Settings.** This is the user saying which sites
+   they trust, so it decides between equally valid covers.
+3. **Resolution**, but only to reject a list thumbnail.
+
+That third rule exists because ranking alone picks badly. Measured across
+three titles, the top-ranked candidate was **6–15× smaller in pixels** than
+the best available:
+
+| Series | Rank-1 pick | Largest available |
+|---|---|---|
+| Solo Leveling | 230×310 | 800×1080 (12.1×) |
+| Nano Machine | 512×742 | 2000×2898 (15.3×) |
+| Close Family | 512×683 | 1280×1707 (6.2×) |
+
+The same series ships at 175×238 on one site and 800×1164 on another, so a
+rank-only auto-pick lands on a list thumbnail surprisingly often.
+
+But size is deliberately *not* the primary key. Between two genuine covers the
+ranking wins — letting resolution override it would mean silently ignoring the
+Settings order whenever some lower-ranked site served a bigger JPEG. Both
+rules have a test that fails if the other is allowed to dominate.
+
+A source that blocks measuring is not penalised for it; being strict about
+hotlinking says nothing about cover quality.
+
+### Details
+
+* Runs on a background thread — a large library is one search per series,
+  far too slow to block the UI on.
+* **Stop** halts cleanly after the current series.
+* A second scan is refused while one is running.
+* The bytes fetched while measuring are reused when saving, so a cover is
+  never downloaded twice.
+* `mangadl covers` now uses the same logic and prints the chosen resolution.
+
+### Note
+
+The ranking was already respected before this — `search_all` merges in rank
+order and the score sort is stable — so the existing manual picker listed
+candidates in your preferred order too. What is new is that the choice no
+longer needs a human.
+
+853 passing.
+
+---
+
 ## v1.4.21 — Cover rebuilder: pick a folder, sort a flat library
 
 Three questions, three answers: **yes, yes, and yes** — one of them already
