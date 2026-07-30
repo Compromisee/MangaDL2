@@ -547,6 +547,7 @@
       <button class="tool-tab" data-tool="orphans">Orphans</button>
       <button class="tool-tab" data-tool="moved">Moved files</button>
       <button class="tool-tab" data-tool="health">Source health</button>
+      <button class="tool-tab" data-tool="covers">Rebuild covers</button>
       <button class="tool-tab" data-tool="history">History</button>
     </div>
 
@@ -608,6 +609,26 @@
         <span class="tool-note">Sources that fail repeatedly are skipped until they recover.</span>
       </div>
       <div class="rank-list" id="healthList"></div>
+    </div>
+
+    <div class="tool-panel" id="tool-covers">
+      <div class="tool-bar">
+        <button class="btn" id="scanCoversBtn">
+          <span class="material-symbols-rounded">image_search</span>Scan for missing covers
+        </button>
+        <label class="inline-check">
+          <input type="checkbox" id="coverOverwrite"> Replace existing covers
+        </label>
+        <span class="tool-note" id="coverNote"></span>
+      </div>
+      <p class="tool-note" style="margin:-6px 0 12px">
+        Finds every <code>.cbz</code> below your downloads folder, works out the
+        series from the filename, and offers covers from all sources. You pick;
+        it saves <code>cover.jpg</code> next to that archive. Where several
+        series share one folder, each is moved into its own first so the cover
+        belongs to the right book. Nothing is changed until you choose.
+      </p>
+      <div class="rank-list" id="coverList"></div>
     </div>
 
     <div class="tool-panel" id="tool-history">

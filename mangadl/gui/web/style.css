@@ -2561,3 +2561,24 @@ body.dragging-bookmark .drop-zones {
 
 /* Make the folder tiles read as targets while a drag is in progress. */
 body.dragging-bookmark .folder-tile { border-style: dashed; }
+
+/* ------------------------------------------- cover rebuilder picker */
+.cover-picks { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
+.cover-pick {
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  width: 92px; padding: 6px; cursor: pointer;
+  background: var(--panel-2, #1b1b26); color: inherit;
+  border: 1px solid var(--edge-c, #2a2a38); border-radius: var(--radius-sm);
+  transition: border-color .15s, transform .15s;
+}
+.cover-pick:hover { border-color: var(--accent, #6ea8fe); transform: translateY(-2px); }
+.cover-pick:disabled { opacity: .5; cursor: default; transform: none; }
+.cover-pick img {
+  width: 78px; height: 110px; object-fit: cover;
+  border-radius: var(--radius-sm); background: #11111a;
+}
+.cover-pick span {
+  font-size: 11px; opacity: .75; text-align: center;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 78px;
+}
+.inline-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; opacity: .85; }

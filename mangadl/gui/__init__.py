@@ -257,6 +257,21 @@ class Api(metaclass=_SafeApiMeta):
         if not source_id and url:
             source_id = detect_source(url)
         source_id = source_id or settings.get("default_source") or DEFAULT_SOURCE
+
+        # Aggregate members ("madara.toonily") are real sources but are not
+        # in the registry -- only their parent is. Without this, proxying a
+        # cover from one failed with "Unknown source" and the thumbnail
+        # rendered blank (measured: 3 of 15 in the cover picker).
+        if source_id not in SOURCES and "." in source_id:
+            parent = source_id.split(".", 1)[0]
+            if parent == "madara":
+                parent = "madaranet"
+            if parent in SOURCES:
+                aggregate = get_source(parent)
+                member = aggregate.member(source_id)
+                if member is not None:
+                    return member
+
         if source_id not in SOURCES:
             raise ValueError(f"Unknown source: {source_id}")
 
@@ -510,6 +525,95 @@ class Api(metaclass=_SafeApiMeta):
         groups = tracking.scan_duplicates(root)
         return {"ok": True, "groups": groups,
                 "wasted": sum(g["wasted"] for g in groups)}
+
+    # ------------------------------------------------- cover rebuilder
+
+    def scan_covers(self, root: str = None, overwrite: bool = False):
+        """Find CBZ folders that need a cover. Read-only."""
+        from .. import covers
+
+        root = root or load_settings().get("output_dir")
+        groups = covers.plan(root, overwrite=bool(overwrite))
+        return {"ok": True, "root": root, "groups": [
+            {
+                "key": g["key"],
+                "title": g["title"],
+                "directory": g["directory"],
+                "target_dir": g["target_dir"],
+                "archives": g["archives"],
+                "count": len(g["archives"]),
+                "needs_move": g["needs_move"],
+                "has_cover": g["has_cover"],
+            }
+            for g in groups
+        ]}
+
+    def cover_candidates(self, title: str, limit: int = 6):
+        """Ranked cover options for one title, for the user to choose from."""
+        from .. import covers
+
+        rows = covers.candidates(title, limit=int(limit or 6))
+        for row in rows:
+            # Proxy anything whose CDN refuses hotlinks, so the picker can
+            # actually render the thumbnail.
+            row["preview"] = self._cover_preview(row)
+        return {"ok": True, "title": title, "candidates": rows}
+
+    def _cover_preview(self, row):
+        """A data URI the web view can display for a candidate.
+
+        Every preview is proxied, not just the Referer-gated ones. Measured
+        in the picker: three of twelve thumbnails rendered blank with
+        ERR_BLOCKED_BY_RESPONSE.NotSameOrigin -- the images fetch fine from
+        Python (all 200) but the embedded browser refuses them cross-origin.
+        Picking a cover you cannot see is not a choice, so the bytes come
+        through Python and the browser only ever sees a data: URI.
+        """
+        try:
+            proxied = self.proxy_cover(row["cover"], row.get("source"))
+            if isinstance(proxied, dict) and proxied.get("data"):
+                return proxied["data"]
+        except Exception:
+            logger.debug("cover preview failed", exc_info=True)
+        # Fall back to the direct URL: a blank tile beats no tile, and some
+        # CDNs do serve cross-origin happily.
+        return row.get("cover")
+
+    def apply_cover(self, group: dict, candidate: dict):
+        """Write the chosen cover into the group's own folder.
+
+        Archives sharing a directory with other series are moved into a
+        folder of their own first, so the cover sits beside its CBZ rather
+        than in a parent shared with unrelated series.
+        """
+        from .. import covers
+
+        group = group or {}
+        candidate = candidate or {}
+        url = (candidate.get("cover") or "").strip()
+        if not url:
+            return {"ok": False, "error": "No cover chosen"}
+        if not group.get("directory"):
+            return {"ok": False, "error": "No folder for this series"}
+
+        try:
+            directory = covers.isolate({
+                "directory": group["directory"],
+                "target_dir": group.get("target_dir") or group["directory"],
+                "archives": group.get("archives") or [],
+                "needs_move": bool(group.get("needs_move")),
+            })
+        except OSError as e:
+            return {"ok": False, "error": f"Could not move archives: {e}"}
+
+        saved = covers.save_cover(url, directory,
+                                  source_id=candidate.get("source"),
+                                  referer=candidate.get("url"))
+        if not saved:
+            return {"ok": False,
+                    "error": "The cover could not be downloaded"}
+        return {"ok": True, "cover": saved, "directory": directory,
+                "moved": bool(group.get("needs_move"))}
 
     def find_orphans(self):
         return {"ok": True, "orphans": tracking.find_orphans()}

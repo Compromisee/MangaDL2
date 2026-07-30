@@ -373,6 +373,26 @@ counts. Use `--plain` in cron jobs and CI.
 
 ---
 
+## Rebuilding CBZ covers
+
+```bash
+mangadl covers --urls          # dry run: show the plan, change nothing
+mangadl covers                 # rebuild, taking the best-ranked cover
+mangadl covers -o ~/Manga      # a specific folder
+```
+
+Walks the tree, works out the series behind each `.cbz` from its filename
+(stripping `Chapters 001-050`, `[Group]`, `v03`, `c045` and the rest), searches
+every enabled source, and writes `cover.jpg` **next to that archive**.
+
+Where several different series sit loose in one folder, each is moved into a
+folder of its own first — otherwise a single `cover.jpg` there would be wrong
+for all but one of them. A folder that already holds one series is left alone.
+
+The GUI version (**Tools → Rebuild covers**) shows the candidates as
+thumbnails so you can pick; the CLI takes the best-ranked match, since a
+terminal cannot show them.
+
 ## Background mode
 
 With **Settings → Background → Minimise to system tray** enabled, closing the

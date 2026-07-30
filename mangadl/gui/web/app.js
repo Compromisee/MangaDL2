@@ -3086,6 +3086,89 @@ $("scanOrphansBtn").addEventListener("click", async () => {
     </div>`).join("");
 });
 
+/* ------------------------------------------------- rebuild CBZ covers */
+
+let coverGroups = [];
+
+$("scanCoversBtn").addEventListener("click", async () => {
+  $("coverNote").textContent = "Scanning\u2026";
+  $("coverList").innerHTML = "";
+  const res = await callApi("scan_covers", null,
+                            $("coverOverwrite").checked);
+  if (!res || !res.ok) {
+    $("coverNote").textContent = (res && res.error) || "Scan failed";
+    return;
+  }
+  coverGroups = res.groups || [];
+  $("coverNote").textContent = coverGroups.length
+    ? `${coverGroups.length} series need a cover`
+    : "Every archive already has a cover.";
+  renderCoverGroups();
+});
+
+function renderCoverGroups() {
+  $("coverList").innerHTML = coverGroups.map((g, i) => `
+    <div class="rank-row" id="coverRow${i}">
+      <div class="r-main">
+        <div class="r-title">${escapeHtml(g.title)}</div>
+        <div class="r-meta">
+          ${g.count} archive${g.count === 1 ? "" : "s"}
+          &middot; ${escapeHtml(g.directory)}
+          ${g.needs_move
+            ? ` &middot; <span class="cap">will move into ${escapeHtml(g.title)}/</span>`
+            : ""}
+          ${g.has_cover ? ' &middot; <span class="cap">has a cover</span>' : ""}
+        </div>
+        <div class="cover-picks" id="coverPicks${i}"></div>
+      </div>
+      <button class="btn" data-cover-find="${i}">Find covers</button>
+    </div>`).join("");
+}
+
+$("coverList").addEventListener("click", async (event) => {
+  const findBtn = event.target.closest("[data-cover-find]");
+  if (findBtn) {
+    const index = Number(findBtn.dataset.coverFind);
+    const group = coverGroups[index];
+    const box = $(`coverPicks${index}`);
+    box.innerHTML = '<span class="tool-note">Searching every source\u2026</span>';
+    const res = await callApi("cover_candidates", group.title);
+    const picks = (res && res.candidates) || [];
+    if (!picks.length) {
+      box.innerHTML = '<span class="tool-note">No cover found for this title.</span>';
+      return;
+    }
+    // The user ranks and chooses; nothing is applied automatically.
+    box.innerHTML = picks.map((c, j) => `
+      <button class="cover-pick" data-cover-pick="${index}:${j}"
+              title="${escapeHtml(c.title || "")} — ${escapeHtml(c.source_name || "")}">
+        <img src="${escapeHtml(c.preview || c.cover)}" alt="" loading="lazy">
+        <span>${escapeHtml(c.source_name || c.source || "")}</span>
+      </button>`).join("");
+    group._picks = picks;
+    return;
+  }
+
+  const pick = event.target.closest("[data-cover-pick]");
+  if (!pick) return;
+  const [gi, ci] = pick.dataset.coverPick.split(":").map(Number);
+  const group = coverGroups[gi];
+  const candidate = (group._picks || [])[ci];
+  if (!candidate) return;
+
+  pick.disabled = true;
+  const box = $(`coverPicks${gi}`);
+  box.innerHTML = '<span class="tool-note">Saving\u2026</span>';
+  const res = await callApi("apply_cover", group, candidate);
+  if (res && res.ok) {
+    box.innerHTML = `<span class="tool-note">Saved to ${escapeHtml(res.directory)}/cover.jpg` +
+      (res.moved ? " (archives moved into their own folder)" : "") + "</span>";
+    toast(`Cover saved for ${group.title}`);
+  } else {
+    box.innerHTML = `<span class="tool-note">${escapeHtml((res && res.error) || "Failed")}</span>`;
+  }
+});
+
 async function loadHealth() {
   const res = await callApi("get_health");
   const breakers = (res && res.report && res.report.breakers) || {};

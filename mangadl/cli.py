@@ -64,6 +64,8 @@ def build_parser():
             "  mangadl watch add <url>                  track a series for updates\n"
             "  mangadl watch check                      check every watched series\n"
             "  mangadl disk usage                       disk usage per series\n"
+            "  mangadl covers --urls                    plan a cover rebuild (dry run)\n"
+            "  mangadl covers                           rebuild cover.jpg beside each CBZ\n"
             "  mangadl library verify                   check files still exist\n"
             "  mangadl library scan ~/Manga             re-link moved folders\n"
             "  mangadl info <url>\n"
@@ -85,7 +87,7 @@ def build_parser():
                         help="manga URL, or a command: search | info | sources | config | "
                              "stats | history | lock | export | watch | disk | "
                              "trending | genres | health | library | gui | tui | "
-                             "menu | resume")
+                             "menu | resume | covers")
     parser.add_argument("query", nargs="*", help="arguments for search / info")
     parser.add_argument("-c", "--chapters", default="all", metavar="SEL",
                         help="chapter selection: all | 5 | 1-20 | 1,5,10-20 | 50- | latest | first (default: all)")
@@ -622,6 +624,68 @@ def cmd_watch(args) -> int:
     return 1
 
 
+def cmd_covers(args) -> int:
+    """Rebuild cover.jpg beside every CBZ.
+
+    The GUI offers a picker; here the best-ranked candidate is used, since
+    a terminal cannot show thumbnails. --dry-run prints the plan only.
+    """
+    from . import covers
+
+    root = args.output if args.output != "downloads" else None
+    root = root or load_settings().get("output_dir", "downloads")
+    overwrite = bool(getattr(args, "yes", False) and False)   # explicit flag below
+    overwrite = bool(getattr(args, "reverse", False))         # --reverse == replace
+    groups = covers.plan(root, overwrite=overwrite)
+    if not groups:
+        console.print(f"[{OK}]Every archive under {root} already has a cover.[/]")
+        return 0
+
+    table = Table(box=box.SIMPLE_HEAD, header_style=f"bold {ACCENT}")
+    table.add_column("Series")
+    table.add_column("Archives", justify="right", style=DIM)
+    table.add_column("Folder", style=DIM, overflow="fold")
+    for group in groups:
+        note = " (will move)" if group["needs_move"] else ""
+        table.add_row(group["title"], str(len(group["archives"])),
+                      group["target_dir"] + note)
+    console.print(table)
+
+    dry = bool(getattr(args, "urls", False))      # --urls == dry run
+    if dry:
+        console.print(f"[{DIM}]Dry run: nothing was changed.[/]")
+        return 0
+
+    saved = failed = 0
+    for group in groups:
+        picks = covers.candidates(group["title"], limit=4)
+        if not picks:
+            console.print(f"  [{WARN}]no cover found[/] {group['title']}")
+            failed += 1
+            continue
+        best = picks[0]
+        try:
+            directory = covers.isolate(group)
+            path = covers.save_cover(best["cover"], directory,
+                                     source_id=best.get("source"),
+                                     referer=best.get("url"))
+        except OSError as e:
+            console.print(f"  [{ERR}]failed[/] {group['title']}: {e}")
+            failed += 1
+            continue
+        if path:
+            saved += 1
+            console.print(f"  [{OK}]saved[/] {group['title']} "
+                          f"[{DIM}]from {best['source_name']}[/]")
+        else:
+            failed += 1
+            console.print(f"  [{ERR}]download failed[/] {group['title']}")
+
+    console.print(f"\n{saved} cover(s) written"
+                  + (f", {failed} failed" if failed else ""))
+    return 0 if saved else 1
+
+
 def cmd_disk(args) -> int:
     """Disk usage, duplicate files and orphaned library entries."""
     from . import features, tracking
@@ -1145,6 +1209,8 @@ def main(argv=None):
         return cmd_watch(args)
     if command == "disk":
         return cmd_disk(args)
+    if command in ("covers", "cover"):
+        return cmd_covers(args)
     if command in ("library", "lib"):
         return cmd_library(args)
     if command == "search":

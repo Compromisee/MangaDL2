@@ -7,6 +7,76 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.20 — Cover rebuilder
+
+### Added — Tools → Rebuild covers
+
+Point it at a folder and it walks the whole tree, finds every `.cbz`, works
+out which series each one belongs to, searches every enabled source, and
+writes `cover.jpg` **beside that archive**.
+
+You pick the cover. Candidates are shown as thumbnails ranked best-first
+(exact title match scores highest), because a fuzzy hit on a large catalogue
+is usually a different series — applying that silently would be worse than
+asking.
+
+**Covers go in the archive's own folder, never a shared parent.** Where
+several different series sit loose in one directory, each is first moved into
+a folder of its own — otherwise one `cover.jpg` there would be wrong for all
+but one of them. A directory that already holds a single series is left
+exactly as it is; this never reorganises a tidy library.
+
+### Recovering titles from filenames
+
+A CBZ is named for its contents, not the series, so the title has to be
+reconstructed. All of these resolve correctly:
+
+| Filename | Title |
+|---|---|
+| `Afterlife Diner - Chapters 001-050.cbz` | Afterlife Diner |
+| `Afterlife Diner - Chapters 001-003, 007-008, 020.cbz` | Afterlife Diner |
+| `[Group] Solo Leveling - c045 (2024) [1080p].cbz` | Solo Leveling |
+| `Nano.Machine.Chapter.5.cbz` | Nano Machine |
+| `The Beginning After The End Vol 3.cbz` | The Beginning After The End |
+| `Eleceed - Episode 200.cbz` | Eleceed |
+| `ワンピース - Chapters 001.cbz` | ワンピース |
+
+The tricky part is knowing which trailing numbers to keep. `Tower of God -
+005` is an index; `Kingdom 2` and `Overlord 3` are titles. Stripping every
+trailing number truncated real titles — my first attempt turned `Series 2`
+into `Series` — so an index now needs a dash separator or zero-padding.
+
+### Safety
+
+* Scanning is read-only; nothing changes until you choose a cover.
+* Folders that already have a cover are skipped unless you tick *Replace*.
+* Moving never overwrites: a name clash is suffixed `(2)`.
+* Running it twice does not nest folders inside folders.
+* `raw/` page folders are ignored.
+
+### Fixed — cover thumbnails rendered blank
+
+Three of fifteen thumbnails in the picker came up empty with
+`ERR_BLOCKED_BY_RESPONSE.NotSameOrigin`. The images fetched fine from Python
+(all HTTP 200) — the embedded browser was refusing them cross-origin.
+
+Two changes: every preview is now proxied through Python as a data URI rather
+than only the Referer-gated ones, and `Api._source()` learned to resolve
+aggregate member ids. Covers from Madara sites carry a source id like
+`madara.toonily`, which is a real source but not in the registry, so proxying
+them failed with "Unknown source" and fell back to the blocked direct URL.
+Now 15 of 15 preview, with zero console errors.
+
+### Added — `mangadl covers`
+
+The same tool from the CLI. `--urls` prints the plan without changing
+anything; a plain run takes the best-ranked cover, since a terminal cannot
+show thumbnails.
+
+816 passing.
+
+---
+
 ## v1.4.19 — Background downloads in the system tray, crash-safe resume
 
 ### Added — minimise to the system tray
