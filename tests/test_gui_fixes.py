@@ -175,7 +175,9 @@ def test_corner_radii_snap_to_the_scale():
     css = read(os.path.join(WEB, "style.css"))
     values = set(re.findall(r"border-radius:\s*([^;]+);", css))
 
-    allowed_px = {"3px", "999px", "50%", "4px 4px 2px 2px"}
+    # "inherit" is a fill matching the rounded track it sits in -- it cannot
+    # drift from the scale, because it has no value of its own.
+    allowed_px = {"3px", "999px", "50%", "4px 4px 2px 2px", "inherit"}
     stray = set()
     for value in values:
         # the square-corners mode legitimately forces 0 / 50% with !important

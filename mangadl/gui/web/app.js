@@ -1533,11 +1533,48 @@ function removeJobBars(jobId) {
   }
 }
 
-function markChapterDownloaded(name) {
+function trackChapter(job, name, done, total) {
+  /* Which chapters of this job are in flight right now. Kept on the job so
+     the queue tile can list them without inventing its own bookkeeping. */
+  if (!job || !name) return;
+  if (!job.chapters) job.chapters = [];
+  const existing = job.chapters.find((c) => c.name === name);
+  if (existing) {
+    existing.done = done;
+    existing.total = total || existing.total;
+  } else {
+    job.chapters.push({ name, done: done || 0, total: total || 0 });
+  }
+}
+
+function untrackChapter(job, name) {
+  if (!job || !job.chapters) return;
+  job.chapters = job.chapters.filter((c) => c.name !== name);
+}
+
+function sameManga(a, b) {
+  /* Compare by URL, ignoring a trailing slash and case. Titles are not
+     unique enough -- two sources spell the same series differently. */
+  const norm = (u) => String(u || "").trim().toLowerCase().replace(/\/+$/, "");
+  return !!norm(a) && norm(a) === norm(b);
+}
+
+function markChapterDownloaded(name, jobUrl) {
+  /* Only touch the page when the finished chapter belongs to the manga the
+     user is actually looking at.
+
+     Without this check, browsing to any book while a download ran made its
+     "N downloaded" pill climb 1, 2, 3... in step with the *other* book's
+     progress, and could highlight rows that were never downloaded. The event
+     carries no manga of its own, so the job's URL is the only correct
+     source of truth. */
+  if (!state.manga) return;
+  if (jobUrl !== undefined && !sameManga(jobUrl, state.manga.url)) return;
+
   state.downloaded.add(name);
   const item = [...document.querySelectorAll(".chapter-item")].find((el) => {
     const idx = Number(el.dataset.index);
-    return state.manga && state.manga.chapters[idx] && state.manga.chapters[idx].name === name;
+    return state.manga.chapters[idx] && state.manga.chapters[idx].name === name;
   });
   if (item) item.classList.add("downloaded");
   const dlPill = $("downloadedCount");
@@ -1567,6 +1604,7 @@ window.onEngineEvent = function (event) {
 
   switch (event.type) {
     case "job_started":
+      startCartPolling();
       registerJob(event.job, {
         title: event.title, url: event.url,
         cover: event.cover, source: event.source,
@@ -1592,12 +1630,14 @@ window.onEngineEvent = function (event) {
       break;
     case "chapter_start":
       ensureBar(event);
+      trackChapter(job, event.chapter, 0, event.total || 0);
       break;
     case "chapter_progress": {
       const row = ensureBar(event);
       const pct = event.total ? Math.round((event.done / event.total) * 100) : 0;
       row.querySelector(".ac-fill").style.width = pct + "%";
       row.querySelector(".ac-count").textContent = `${event.done}/${event.total}`;
+      trackChapter(job, event.chapter, event.done, event.total);
       break;
     }
     case "chapter_done":
@@ -1606,10 +1646,13 @@ window.onEngineEvent = function (event) {
       state.doneChapters = totalOf("done");
       refreshOverall();
       logLine("ok", prefixed(event, `${event.chapter} — ${event.pages} pages`));
-      markChapterDownloaded(event.chapter);
+      markChapterDownloaded(event.chapter, job ? job.url : undefined);
+      untrackChapter(job, event.chapter);
+      renderCart();
       break;
     case "chapter_failed":
       removeBar(event);
+      untrackChapter(job, event.chapter);
       logLine("err", prefixed(event, `Failed: ${event.chapter}`));
       break;
     case "packaging":
@@ -1721,6 +1764,190 @@ function refreshOverall() {
     : (running[0] || [...jobs.values()].pop() || {}).title || "–";
 }
 
+/* --------------------------------------------------------------- queue
+
+   Grouped by manga, one collapsible tile each. Collapsed by default: a long
+   queue should read as a list of books, not a wall of chapters.
+
+   Collapsed shows a rate sparkline and a chapter fraction pill; expanded adds
+   the cover, source, ETA, totals and the chapters currently downloading. */
+
+const cartOpen = new Set();      // series keys the user has expanded
+let cartProgress = {};           // job id -> live progress snapshot
+
+function mangaKey(row) {
+  const url = String(row.url || "").trim().toLowerCase().replace(/\/+$/, "");
+  return url || `title:${String(row.title || "").trim().toLowerCase()}`;
+}
+
+/* An inline SVG sparkline of the recent transfer rate. Drawn as a path so it
+   scales with the tile and costs no images. */
+function sparkline(history, width, height) {
+  const values = (history || []).slice(-40);
+  if (values.length < 2) {
+    return `<svg class="spark" viewBox="0 0 ${width} ${height}"
+                 preserveAspectRatio="none" aria-hidden="true"></svg>`;
+  }
+  const peak = Math.max(...values, 1);
+  const step = width / (values.length - 1);
+  const points = values.map((v, i) => {
+    const x = (i * step).toFixed(1);
+    const y = (height - (v / peak) * (height - 2) - 1).toFixed(1);
+    return `${x},${y}`;
+  });
+  const line = `M${points.join(" L")}`;
+  const area = `${line} L${width},${height} L0,${height} Z`;
+  return `<svg class="spark" viewBox="0 0 ${width} ${height}"
+               preserveAspectRatio="none" aria-hidden="true">
+      <path class="spark-area" d="${area}"></path>
+      <path class="spark-line" d="${line}"></path>
+    </svg>`;
+}
+
+function cartRowsFromState(queued) {
+  const rows = [];
+  jobs.forEach((j) => {
+    if (j.finished && j.ok) return;        // completed jobs leave the queue
+    rows.push({
+      id: j.id,
+      title: j.title || j.url || j.id,
+      status: j.finished
+        ? (j.ok ? "done" : ((j.result || {}).stopped ? "stopped" : "failed"))
+        : "running",
+      done: j.done, total: j.total, url: j.url, cover: j.cover,
+      source: j.source, chapters: j.chapters ? [...j.chapters] : [],
+    });
+  });
+  (queued || []).forEach((q) => rows.push({
+    title: q.title || q.url, status: "queued", url: q.url,
+    selection: q.selection, cover: q.cover, source: q.source, chapters: [],
+  }));
+  return rows;
+}
+
+function groupCartRows(rows) {
+  const groups = new Map();
+  rows.forEach((row) => {
+    const key = mangaKey(row);
+    let group = groups.get(key);
+    if (!group) {
+      group = { key, title: row.title, cover: row.cover, url: row.url,
+                source: row.source, items: [], done: 0, total: 0,
+                running: false, statuses: new Set() };
+      groups.set(key, group);
+    }
+    group.items.push(row);
+    group.statuses.add(row.status);
+    group.done += Number(row.done || 0);
+    group.total += Number(row.total || 0);
+    if (row.status === "running") group.running = true;
+    if (!group.cover && row.cover) group.cover = row.cover;
+    if (!group.source && row.source) group.source = row.source;
+  });
+  return [...groups.values()];
+}
+
+function groupProgress(group) {
+  /* Sum the live metrics of every job in this group. */
+  let rate = 0, eta = null, bytes = 0, history = [];
+  group.items.forEach((item) => {
+    const p = cartProgress[item.id];
+    if (!p) return;
+    rate += Number(p.bytes_per_second || 0);
+    bytes += Number(p.bytes || 0);
+    if (p.eta_seconds != null) eta = Math.max(eta == null ? 0 : eta, p.eta_seconds);
+    if ((p.history || []).length > history.length) history = p.history;
+  });
+  return { rate, eta, bytes, history };
+}
+
+function formatRate(bytesPerSecond) {
+  const v = Number(bytesPerSecond || 0);
+  if (v <= 0) return "0 KB/s";
+  if (v < 1024) return `${v.toFixed(0)} B/s`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(0)} KB/s`;
+  return `${(v / (1024 * 1024)).toFixed(1)} MB/s`;
+}
+
+function formatEta(seconds) {
+  if (seconds == null) return "--";
+  const total = Math.max(0, Math.round(seconds));
+  if (total < 60) return `${total}s`;
+  if (total < 3600) return `${Math.floor(total / 60)}m ${String(total % 60).padStart(2, "0")}s`;
+  return `${Math.floor(total / 3600)}h ${String(Math.floor((total % 3600) / 60)).padStart(2, "0")}m`;
+}
+
+function formatBytes(value) {
+  const v = Number(value || 0);
+  if (v < 1024) return `${v} B`;
+  if (v < 1024 * 1024) return `${(v / 1024).toFixed(0)} KB`;
+  if (v < 1024 * 1024 * 1024) return `${(v / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(v / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+function cartTileHtml(group) {
+  const open = cartOpen.has(group.key);
+  const live = groupProgress(group);
+  const status = group.running
+    ? "running"
+    : (group.statuses.has("failed") ? "failed"
+      : group.statuses.has("stopped") ? "stopped"
+      : group.statuses.has("queued") ? "queued" : "done");
+
+  const fraction = group.total
+    ? `${group.done}/${group.total}`
+    : (status === "queued" ? "queued" : "starting");
+  const percent = group.total
+    ? Math.min(100, Math.round((group.done / group.total) * 100)) : 0;
+
+  const chapters = group.items.flatMap((i) => i.chapters || []);
+  const cover = group.cover
+    ? `<img class="q-cover" src="${escapeHtml(group.cover)}" alt="" loading="lazy">`
+    : `<div class="q-cover q-cover-blank"><span class="material-symbols-rounded">book</span></div>`;
+
+  return `
+  <div class="q-tile ${open ? "open" : ""} ${status}" data-key="${escapeHtml(group.key)}">
+    <button class="q-head" data-toggle="${escapeHtml(group.key)}"
+            aria-expanded="${open}">
+      <span class="material-symbols-rounded q-chev">chevron_right</span>
+      <span class="q-name" title="${escapeHtml(group.title)}">${escapeHtml(group.title)}</span>
+      ${group.running ? `<span class="q-spark">${sparkline(live.history, 88, 22)}</span>
+        <span class="q-rate">${escapeHtml(formatRate(live.rate))}</span>` : ""}
+      <span class="q-pill ${status}">${escapeHtml(fraction)}</span>
+    </button>
+    <div class="q-body">
+      <div class="q-body-inner">
+        ${cover}
+        <div class="q-detail">
+          <div class="q-meta">
+            ${group.source ? `<span class="q-chip">${escapeHtml(group.source)}</span>` : ""}
+            <span class="q-chip">${escapeHtml(status)}</span>
+            ${group.total ? `<span class="q-chip">${percent}%</span>` : ""}
+          </div>
+          <div class="q-stats">
+            <div><span class="q-k">Speed</span><span class="q-v">${escapeHtml(formatRate(live.rate))}</span></div>
+            <div><span class="q-k">ETA</span><span class="q-v">${escapeHtml(formatEta(live.eta))}</span></div>
+            <div><span class="q-k">Downloaded</span><span class="q-v">${escapeHtml(formatBytes(live.bytes))}</span></div>
+            <div><span class="q-k">Chapters</span><span class="q-v">${escapeHtml(fraction)}</span></div>
+          </div>
+          ${group.total ? `<div class="q-bar"><i style="width:${percent}%"></i></div>` : ""}
+          ${chapters.length
+            ? `<div class="q-now"><span class="q-k">Downloading now</span>
+                 ${chapters.map((c) => `<span class="q-chapter">${escapeHtml(c.name)}
+                   <i style="width:${c.total ? Math.round((c.done / c.total) * 100) : 0}%"></i></span>`).join("")}
+               </div>`
+            : ""}
+          ${group.url && status === "queued"
+            ? `<button class="btn btn-tonal btn-sm cart-x" data-url="${escapeHtml(group.url)}"
+                       data-sel="${escapeHtml((group.items[0] || {}).selection || "all")}">
+                 <span class="material-symbols-rounded">close</span> Remove</button>`
+            : ""}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
 async function renderCart() {
   const list = $("cartList");
   if (!list) return;
@@ -1730,50 +1957,94 @@ async function renderCart() {
     if (res && res.ok) queued = res.queued || [];
   } catch (e) { /* bridge not ready */ }
 
-  const rows = [];
-  jobs.forEach((j) => {
-    if (j.finished && j.ok) return;         // completed jobs leave the queue
-    rows.push({
-      title: j.title || j.url || j.id,
-      status: j.finished
-        ? (j.ok ? "done" : ((j.result || {}).stopped ? "stopped" : "failed"))
-        : "running",
-      done: j.done, total: j.total, url: j.url, cover: j.cover,
-    });
-  });
-  queued.forEach((q) => rows.push({
-    title: q.title || q.url, status: "queued", url: q.url,
-    selection: q.selection, cover: q.cover,
-  }));
+  const rows = cartRowsFromState(queued);
+  const groups = groupCartRows(rows);
 
-  // Show the panel whenever anything is queued or more than one job is in
-  // flight. It lives outside the "a download is running" container, so a
-  // queue built up before pressing Download is visible immediately.
   const worthShowing = rows.length > 1 || queued.length > 0;
-  $("cartCount").textContent = rows.length;
+  $("cartCount").textContent = groups.length;
   $("cartCard").classList.toggle("hidden", !worthShowing);
   if (!worthShowing) { list.innerHTML = ""; return; }
 
-  list.innerHTML = rows.map((r) => {
-    const badge = r.status === "running"
-      ? `<span class="cart-badge run">${r.total ? `${r.done}/${r.total}` : "starting"}</span>`
-      : `<span class="cart-badge ${r.status}">${r.status}</span>`;
-    const remove = r.status === "queued"
-      ? `<button class="icon-btn cart-x" data-url="${escapeHtml(r.url || "")}"
-                 data-sel="${escapeHtml(r.selection || "all")}" title="Remove">
-           <span class="material-symbols-rounded">close</span></button>`
-      : "";
-    return `<div class="cart-row">
-      <span class="cart-title" title="${escapeHtml(r.title)}">${escapeHtml(r.title)}</span>
-      ${badge}${remove}</div>`;
-  }).join("");
-
+  list.innerHTML = groups.map(cartTileHtml).join("");
+  list.querySelectorAll("[data-toggle]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.toggle;
+      if (cartOpen.has(key)) cartOpen.delete(key); else cartOpen.add(key);
+      const tile = btn.closest(".q-tile");
+      tile.classList.toggle("open");
+      btn.setAttribute("aria-expanded", cartOpen.has(key));
+    });
+  });
   list.querySelectorAll(".cart-x").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", async (event) => {
+      event.stopPropagation();
       await api().remove_from_cart(btn.dataset.url, btn.dataset.sel);
       renderCart();
       toast("Removed from queue");
     });
+  });
+}
+
+/* Poll live throughput while anything is running. 1s is frequent enough for
+   a readable sparkline and cheap enough not to matter: the Python side just
+   reads counters. The timer stops itself when nothing is downloading. */
+let cartPollTimer = null;
+
+function startCartPolling() {
+  if (cartPollTimer) return;
+  cartPollTimer = setInterval(async () => {
+    const res = await callApi("get_progress");
+    if (!res || !res.ok) return;
+    cartProgress = {};
+    (res.jobs || []).forEach((j) => { cartProgress[j.job_id] = j; });
+    refreshCartLive();
+    if (!res.active) stopCartPolling();
+  }, 1000);
+}
+
+function stopCartPolling() {
+  if (!cartPollTimer) return;
+  clearInterval(cartPollTimer);
+  cartPollTimer = null;
+  cartProgress = {};
+  refreshCartLive();
+}
+
+/* Repaint only what changes while downloading, so an open tile is not
+   rebuilt from scratch (which would collapse it mid-interaction). */
+function refreshCartLive() {
+  const list = $("cartList");
+  if (!list || !list.children.length) return;
+  const groups = groupCartRows(cartRowsFromState([]));
+  groups.forEach((group) => {
+    const tile = list.querySelector(`.q-tile[data-key="${CSS.escape(group.key)}"]`);
+    if (!tile) return;
+    const live = groupProgress(group);
+    const fraction = group.total ? `${group.done}/${group.total}` : "starting";
+    const pill = tile.querySelector(".q-pill");
+    if (pill && pill.textContent !== fraction) {
+      pill.textContent = fraction;
+      pill.classList.remove("bump");
+      void pill.offsetWidth;               // restart the animation
+      pill.classList.add("bump");
+    }
+    const rate = tile.querySelector(".q-rate");
+    if (rate) rate.textContent = formatRate(live.rate);
+    const spark = tile.querySelector(".q-spark");
+    if (spark) spark.innerHTML = sparkline(live.history, 88, 22);
+    if (tile.classList.contains("open")) {
+      const values = tile.querySelectorAll(".q-stats .q-v");
+      if (values.length >= 4) {
+        values[0].textContent = formatRate(live.rate);
+        values[1].textContent = formatEta(live.eta);
+        values[2].textContent = formatBytes(live.bytes);
+        values[3].textContent = fraction;
+      }
+      const bar = tile.querySelector(".q-bar i");
+      if (bar && group.total) {
+        bar.style.width = `${Math.min(100, Math.round((group.done / group.total) * 100))}%`;
+      }
+    }
   });
 }
 

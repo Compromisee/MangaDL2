@@ -2588,3 +2588,165 @@ body.dragging-bookmark .folder-tile { border-style: dashed; }
   background: var(--panel-2, #1b1b26); border-radius: var(--radius-sm);
   max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+
+/* =============================================== grouped download queue */
+
+.q-tile {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--panel-2, #1b1b26);
+  overflow: hidden;
+  transition: border-color .18s ease, box-shadow .18s ease,
+              transform .18s ease;
+  animation: q-in .22s ease both;
+}
+.q-tile + .q-tile { margin-top: 8px; }
+.q-tile:hover { border-color: var(--accent); }
+.q-tile.running { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
+.q-tile.failed  { border-color: color-mix(in srgb, var(--danger, #d1242f) 55%, var(--border)); }
+
+@keyframes q-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.q-head {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 10px 12px; cursor: pointer; text-align: left;
+  background: none; border: 0; color: inherit; font: inherit;
+  transition: background .15s ease;
+}
+.q-head:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.q-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.q-chev {
+  font-size: 20px; opacity: .6; flex: none;
+  transition: transform .22s cubic-bezier(.4, 0, .2, 1);
+}
+.q-tile.open .q-chev { transform: rotate(90deg); }
+
+.q-name {
+  flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.q-spark { flex: none; width: 88px; height: 22px; display: block; }
+.spark { width: 100%; height: 100%; display: block; overflow: visible; }
+.spark-line {
+  fill: none; stroke: var(--accent); stroke-width: 1.5;
+  stroke-linejoin: round; stroke-linecap: round;
+}
+.spark-area { fill: color-mix(in srgb, var(--accent) 18%, transparent); stroke: none; }
+
+.q-rate {
+  flex: none; font-size: 11.5px; font-variant-numeric: tabular-nums;
+  color: var(--text-2); min-width: 62px; text-align: right;
+}
+
+.q-pill {
+  flex: none; font-size: 11.5px; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  padding: 3px 9px; border-radius: 999px;
+  background: var(--surface); color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.q-pill.running { background: var(--accent); color: #fff; border-color: transparent; }
+.q-pill.failed  { background: var(--danger, #d1242f); color: #fff; border-color: transparent; }
+.q-pill.done    { background: var(--ok, #1a7f37); color: #fff; border-color: transparent; }
+.q-pill.bump { animation: q-bump .3s ease; }
+@keyframes q-bump {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.16); }
+  100% { transform: scale(1); }
+}
+
+/* Collapsed by default; grid-template-rows animates to auto-height cleanly. */
+.q-body {
+  display: grid; grid-template-rows: 0fr;
+  transition: grid-template-rows .24s cubic-bezier(.4, 0, .2, 1);
+}
+.q-tile.open .q-body { grid-template-rows: 1fr; }
+.q-body-inner {
+  overflow: hidden; display: flex; gap: 14px;
+  padding: 0 12px; opacity: 0;
+  transition: padding .24s ease, opacity .2s ease .04s;
+}
+.q-tile.open .q-body-inner { padding: 2px 12px 14px; opacity: 1; }
+
+.q-cover {
+  width: 84px; height: 118px; flex: none; object-fit: cover;
+  border-radius: var(--radius-sm); background: var(--surface);
+}
+.q-cover-blank { display: grid; place-items: center; color: var(--text-2); }
+.q-detail { flex: 1 1 auto; min-width: 0; }
+
+.q-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.q-chip {
+  font-size: 11px; padding: 2px 8px; border-radius: 999px;
+  background: var(--surface); color: var(--text-2); border: 1px solid var(--border);
+}
+
+.q-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: 8px 14px; margin-bottom: 10px;
+}
+.q-stats > div { display: flex; flex-direction: column; gap: 1px; }
+.q-k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); }
+.q-v { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.q-bar {
+  height: 5px; border-radius: 999px; background: var(--surface);
+  overflow: hidden; margin-bottom: 10px;
+}
+.q-bar i {
+  display: block; height: 100%; border-radius: inherit;
+  background: var(--accent); transition: width .4s cubic-bezier(.4, 0, .2, 1);
+}
+
+.q-now { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.q-chapter {
+  position: relative; font-size: 11.5px; padding: 3px 9px;
+  border-radius: 999px; background: var(--surface);
+  border: 1px solid var(--border); overflow: hidden;
+  animation: q-in .2s ease both;
+}
+.q-chapter i {
+  position: absolute; inset: 0 auto 0 0; display: block;
+  background: color-mix(in srgb, var(--accent) 24%, transparent);
+  transition: width .3s ease; z-index: 0;
+}
+
+/* ------------------------------------------------------ misc animations */
+
+.toast { animation: toast-in .26s cubic-bezier(.2, .8, .3, 1) both; }
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(10px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+.card { animation: card-in .24s ease both; }
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.btn { transition: background .15s ease, border-color .15s ease,
+                   transform .12s ease, box-shadow .15s ease; }
+.btn:active { transform: translateY(1px) scale(.985); }
+
+.rank-row, .cover-pick, .src { transition: transform .15s ease, border-color .15s ease; }
+
+.tool-path {
+  font-size: 12px; opacity: .8; padding: 3px 8px;
+  background: var(--panel-2, #1b1b26); border-radius: var(--radius-sm);
+  max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* Honour the OS setting: motion is decoration, never the only signal. */
+  .q-tile, .q-body, .q-body-inner, .q-chev, .q-pill, .q-bar i,
+  .toast, .card, .btn, .q-chapter, .rank-row, .cover-pick, .src {
+    animation: none !important;
+    transition: none !important;
+  }
+}

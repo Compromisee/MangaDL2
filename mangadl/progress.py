@@ -157,6 +157,10 @@ class JobProgress:
         self.chapters_total = 0
         self.started = time.time()
         self.finished = None
+        #: Recent bytes/sec samples for the queue sparkline. Bounded, and
+        #: appended by snapshot() so it costs nothing when nobody is looking.
+        self.history = []
+        self._last_sample = 0.0
 
     # -- updates ------------------------------------------------------
 
@@ -229,22 +233,46 @@ class JobProgress:
             return None
         return remaining / rate
 
-    def snapshot(self):
+    #: How many rate samples the sparkline keeps.
+    HISTORY = 40
+
+    def _sample(self, rate):
+        """Append to the rate history, at most a few times a second."""
+        now = time.time()
+        if now - self._last_sample < 0.4:
+            return
+        self._last_sample = now
+        with self._lock:
+            self.history.append(round(rate))
+            if len(self.history) > self.HISTORY:
+                del self.history[:len(self.history) - self.HISTORY]
+
+    def snapshot(self, sample=False):
+        rate = self.bytes.rate()
+        if sample and self.finished is None:
+            self._sample(rate)
         with self._lock:
             done, total = self.pages_done, self.pages_total
             chapters_done, chapters_total = self.chapters_done, self.chapters_total
+            history = list(self.history)
+        eta = self.eta_seconds()
         return {
             "job_id": self.job_id,
             "title": self.title,
             "bytes": self.bytes.total,
-            "bytes_per_second": self.bytes.rate(),
+            "bytes_per_second": rate,
             "pages_done": done,
             "pages_total": total,
             "chapters_done": chapters_done,
             "chapters_total": chapters_total,
-            "eta_seconds": self.eta_seconds(),
+            "eta_seconds": eta,
             "elapsed": (self.finished or time.time()) - self.started,
             "running": self.finished is None,
+            # Pre-formatted so the UI never has to reimplement the units.
+            "speed_text": human_rate(rate),
+            "eta_text": human_eta(eta),
+            "downloaded_text": human_bytes(self.bytes.total),
+            "history": history,
         }
 
 
@@ -295,17 +323,20 @@ class ProgressRegistry:
             running = [j for j in self._jobs.values() if j.finished is None]
             queued = self._queued
 
-        rate = sum(j.bytes.rate() for j in running)
-        total_bytes = sum(j.bytes.total for j in running)
-        pages_done = sum(j.snapshot()["pages_done"] for j in running)
-        pages_total = sum(j.snapshot()["pages_total"] for j in running)
-        chapters_done = sum(j.snapshot()["chapters_done"] for j in running)
-        chapters_total = sum(j.snapshot()["chapters_total"] for j in running)
+        # One snapshot per job: calling it four times also sampled the
+        # history four times, which made the sparkline advance too fast.
+        snapshots = [j.snapshot(sample=True) for j in running]
+        rate = sum(s["bytes_per_second"] for s in snapshots)
+        total_bytes = sum(s["bytes"] for s in snapshots)
+        pages_done = sum(s["pages_done"] for s in snapshots)
+        pages_total = sum(s["pages_total"] for s in snapshots)
+        chapters_done = sum(s["chapters_done"] for s in snapshots)
+        chapters_total = sum(s["chapters_total"] for s in snapshots)
 
         # Overall ETA is the longest of the running jobs, since they finish
         # in parallel -- not the sum, which would overstate it badly, and not
         # the shortest, which would promise a finish that has not happened.
-        etas = [j.eta_seconds() for j in running]
+        etas = [s["eta_seconds"] for s in snapshots]
         etas = [e for e in etas if e is not None]
         eta = max(etas) if etas else None
 
@@ -323,7 +354,7 @@ class ProgressRegistry:
             "speed_text": human_rate(rate),
             "eta_text": human_eta(eta),
             "downloaded_text": human_bytes(total_bytes),
-            "jobs": [j.snapshot() for j in running],
+            "jobs": snapshots,
         }
 
 

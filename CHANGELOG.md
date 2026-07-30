@@ -7,6 +7,73 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.23 — Queue redesign, and a cross-book counter bug
+
+### Fixed — "downloaded chapters" climbing on the wrong book
+
+Reported, and reproduced in a browser before touching anything: with a
+download running, opening **any other** manga from search showed its
+*"N downloaded"* pill counting 1, 2, 3… in step with the *other* book's
+progress.
+
+The cause was one line. `markChapterDownloaded()` wrote into `state.downloaded`
+and the pill for whatever page happened to be open, and `chapter_done` carries
+no manga of its own — only a job id. Reproduction, before:
+
+```
+viewing Book B, pill: 0 downloaded
+…3 chapters of Book A finish elsewhere…
+pill now says: 3 downloaded          ← wrong book
+state.downloaded: [Chapter 1, 2, 3]
+```
+
+After: the pill stays empty for Book B and still updates correctly when
+Book B itself is the one downloading. Matching is on the job's URL,
+case-insensitively and ignoring a trailing slash, since sources spell the
+same link differently.
+
+### Changed — the download queue is now grouped and collapsible
+
+One tile per manga rather than one row per job.
+
+**Collapsed** (the default — a long queue should read as a list of books):
+* a live **sparkline** of the transfer rate, drawn as an inline SVG
+* the current rate
+* a **chapter fraction pill** — `0/20`, `10/100` — which pulses on change
+
+**Expanded**:
+* larger cover, source chip, status and percentage
+* **speed, ETA, downloaded bytes and the chapter fraction**
+* a progress bar
+* the chapters **downloading right now**, each with its own page progress
+
+Grouping keys on the URL, not the title, so one book never splits into two
+tiles. The live refresh patches only the values that changed rather than
+re-rendering the list — rebuilding would collapse a tile the moment you
+opened it. Rate polling runs once a second while something is downloading and
+stops itself when nothing is.
+
+### Added — animations
+
+Tile entry, chevron rotation, expand/collapse (via `grid-template-rows`, so
+it animates to auto height), pill pulse, progress-bar easing, toast entry,
+card entry, and button press feedback.
+
+All of it is wrapped in `prefers-reduced-motion: reduce` — motion is
+decoration here, never the only signal, so the OS setting switches it off.
+
+### Details
+
+* Per-job snapshots now carry `speed_text`, `eta_text`, `downloaded_text` and
+  a bounded rate `history` for the sparkline.
+* The history is sampled at most every 0.4s. Sampling on every read made the
+  sparkline scroll far too fast, and `summary()` was calling `snapshot()`
+  four times per job — so it sampled four times per tick.
+
+874 passing.
+
+---
+
 ## v1.4.22 — Smart search: one button, covers chosen for you
 
 ### Added — Smart search
