@@ -376,9 +376,11 @@ counts. Use `--plain` in cron jobs and CI.
 ## Rebuilding CBZ covers
 
 ```bash
-mangadl covers --urls          # dry run: show the plan, change nothing
-mangadl covers                 # rebuild, taking the best-ranked cover
-mangadl covers -o ~/Manga      # a specific folder
+mangadl covers --dry-run           # show the plan, change nothing
+mangadl covers                     # rebuild, taking the best-ranked cover
+mangadl covers -o ~/Manga          # scan any folder you like
+mangadl covers -o ~/Manga --sort-only   # just split a flat folder by series
+mangadl covers --replace           # replace covers that already exist
 ```
 
 Walks the tree, works out the series behind each `.cbz` from its filename
@@ -389,9 +391,17 @@ Where several different series sit loose in one folder, each is moved into a
 folder of its own first — otherwise a single `cover.jpg` there would be wrong
 for all but one of them. A folder that already holds one series is left alone.
 
-The GUI version (**Tools → Rebuild covers**) shows the candidates as
-thumbnails so you can pick; the CLI takes the best-ranked match, since a
-terminal cannot show them.
+Filename styles understood include `Chapters 001-050`, `Ch.001-036`,
+`Chs.001-036`, `Chapt. 5`, `Cap.12`, `c045`, `v03`, `#12`, `Episode 200`,
+`[Group]` prefixes and `(2024)` suffixes. Titles that contain a marker word --
+Chainsaw Man, Case Closed, Cells at Work -- survive intact, because a marker
+only counts when a number follows it.
+
+The GUI version (**Tools → Rebuild covers**) adds a **Choose folder** button so
+you can point it anywhere, and a **Sort into folders** button that splits a
+flat folder without downloading anything. It shows candidates as thumbnails so
+you can pick; the CLI takes the best-ranked match, since a terminal cannot
+show them.
 
 ## Background mode
 

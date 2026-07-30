@@ -7,6 +7,57 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.21 — Cover rebuilder: pick a folder, sort a flat library
+
+Three questions, three answers: **yes, yes, and yes** — one of them already
+worked, one needed a fix, one needed a button.
+
+### Added — choose which folder to scan
+
+The rebuilder always accepted a folder argument, but only the CLI could pass
+one; the GUI silently used your downloads directory. There is now a
+**Choose folder** button in Tools → Rebuild covers, the chosen path is shown,
+and **Reset** goes back to the configured downloads folder. It still recurses
+into every subfolder.
+
+### Fixed — `Ch.001-036` style names
+
+`Close Family Ch.001-036.cbz` already resolved to *Close Family*, but several
+near neighbours did not. `Chs.001-036` became **"Close Family Chs 001"**,
+because the pattern tried `ch` before `chs` and left the `s` stranded in the
+title. Now the longest spelling matches first, and `Chapt.`, `Cap.`,
+`Capitulo` and `~` ranges are recognised too.
+
+Titles that *contain* a marker word are unaffected — Chainsaw Man, Case
+Closed, Cells at Work, Chi's Sweet Home, Eden's Zero, Ex-Arm and E-Rank Healer
+all survive whole, because a marker only counts when a number follows it.
+
+### Added — sort a flat folder into one folder per series
+
+For the "everything is in one directory" case there is now a **Sort into
+folders** button, and `mangadl covers --sort-only`. It moves every loose
+archive into a folder named after its series and stops there — no cover
+downloads, no network calls at all.
+
+Multi-volume sets group correctly: `Close Family Ch.001-036.cbz` and
+`Close Family Ch.037-072.cbz` land in the same folder. Verified on a flat
+folder of loose archives: 5 files, 4 folders, both Close Family volumes
+together.
+
+The button only appears when there is something loose to tidy, and the scan
+line says how many groups are still sharing a folder.
+
+### Changed — dedicated CLI flags
+
+`--dry-run`, `--sort-only` and `--replace` replace the overloaded `--urls`
+and `--reverse`. Reusing `--sort` was a mistake: it has a fixed choice list,
+so `--sort folders` was rejected by argparse before the command ever ran.
+`--urls` still works as a dry run for anyone who scripted it.
+
+842 passing.
+
+---
+
 ## v1.4.20 — Cover rebuilder
 
 ### Added — Tools → Rebuild covers

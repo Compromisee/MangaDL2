@@ -548,6 +548,32 @@ class Api(metaclass=_SafeApiMeta):
             for g in groups
         ]}
 
+    def organise_covers(self, root: str = None):
+        """Split a flat folder of loose archives into one folder per series.
+
+        Answers the "I have 300 CBZs in one directory" case without needing a
+        cover for each: every archive is moved into a folder named after its
+        series, and covers can then be fetched (or not) at leisure.
+
+        Archives already alone with their own series are left untouched.
+        """
+        from .. import covers
+
+        root = root or load_settings().get("output_dir")
+        moved = folders = 0
+        failed = []
+        for group in covers.scan(root):
+            if not group.get("needs_move"):
+                continue
+            try:
+                covers.isolate(group)
+                folders += 1
+                moved += len(group["archives"])
+            except OSError as e:
+                failed.append({"title": group["title"], "error": str(e)})
+        return {"ok": True, "root": root, "moved": moved,
+                "folders": folders, "failed": failed}
+
     def cover_candidates(self, title: str, limit: int = 6):
         """Ranked cover options for one title, for the user to choose from."""
         from .. import covers

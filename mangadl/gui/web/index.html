@@ -613,6 +613,9 @@
 
     <div class="tool-panel" id="tool-covers">
       <div class="tool-bar">
+        <button class="btn" id="pickCoverFolderBtn">
+          <span class="material-symbols-rounded">folder_open</span>Choose folder
+        </button>
         <button class="btn" id="scanCoversBtn">
           <span class="material-symbols-rounded">image_search</span>Scan for missing covers
         </button>
@@ -621,13 +624,26 @@
         </label>
         <span class="tool-note" id="coverNote"></span>
       </div>
+      <div class="tool-bar" style="margin-top:-4px">
+        <span class="tool-note">Folder:</span>
+        <code class="tool-path" id="coverRoot">your downloads folder</code>
+        <button class="btn ghost" id="resetCoverFolderBtn">Reset</button>
+      </div>
       <p class="tool-note" style="margin:-6px 0 12px">
-        Finds every <code>.cbz</code> below your downloads folder, works out the
-        series from the filename, and offers covers from all sources. You pick;
-        it saves <code>cover.jpg</code> next to that archive. Where several
-        series share one folder, each is moved into its own first so the cover
+        Scans the chosen folder and every folder inside it for
+        <code>.cbz</code> files, works out the series from each filename
+        (<code>Close Family Ch.001-036.cbz</code> &rarr; <em>Close Family</em>),
+        and offers covers from all sources. You pick; it saves
+        <code>cover.jpg</code> next to that archive. A flat folder of loose
+        archives is split into one folder per series first, so each cover
         belongs to the right book. Nothing is changed until you choose.
       </p>
+      <div class="tool-bar" id="coverBulkBar" style="display:none">
+        <button class="btn" id="organiseCoversBtn">
+          <span class="material-symbols-rounded">create_new_folder</span>Sort into folders
+        </button>
+        <span class="tool-note">Move every loose archive into a folder named after its series, without downloading covers.</span>
+      </div>
       <div class="rank-list" id="coverList"></div>
     </div>
 

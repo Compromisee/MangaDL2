@@ -64,8 +64,9 @@ def build_parser():
             "  mangadl watch add <url>                  track a series for updates\n"
             "  mangadl watch check                      check every watched series\n"
             "  mangadl disk usage                       disk usage per series\n"
-            "  mangadl covers --urls                    plan a cover rebuild (dry run)\n"
+            "  mangadl covers --dry-run                 plan a cover rebuild, change nothing\n"
             "  mangadl covers                           rebuild cover.jpg beside each CBZ\n"
+            "  mangadl covers -o DIR --sort-only        just split a flat folder by series\n"
             "  mangadl library verify                   check files still exist\n"
             "  mangadl library scan ~/Manga             re-link moved folders\n"
             "  mangadl info <url>\n"
@@ -144,6 +145,15 @@ def build_parser():
                               help="print results as JSON instead of a table")
     search_group.add_argument("--urls", action="store_true",
                               help="print only URLs, one per line (pipe-friendly)")
+    covers_group = parser.add_argument_group("covers")
+    covers_group.add_argument("--dry-run", action="store_true",
+                              help="covers: show the plan, change nothing")
+    covers_group.add_argument("--sort-only", action="store_true",
+                              help="covers: only split a flat folder into "
+                                   "one folder per series")
+    covers_group.add_argument("--replace", action="store_true",
+                              help="covers: replace covers that already exist")
+
     search_group.add_argument("--open", type=int, default=0, metavar="N",
                               help="after searching, show details for result N")
     search_group.add_argument("--download", type=int, default=0, metavar="N",
@@ -634,8 +644,7 @@ def cmd_covers(args) -> int:
 
     root = args.output if args.output != "downloads" else None
     root = root or load_settings().get("output_dir", "downloads")
-    overwrite = bool(getattr(args, "yes", False) and False)   # explicit flag below
-    overwrite = bool(getattr(args, "reverse", False))         # --reverse == replace
+    overwrite = bool(getattr(args, "replace", False))
     groups = covers.plan(root, overwrite=overwrite)
     if not groups:
         console.print(f"[{OK}]Every archive under {root} already has a cover.[/]")
@@ -651,9 +660,25 @@ def cmd_covers(args) -> int:
                       group["target_dir"] + note)
     console.print(table)
 
-    dry = bool(getattr(args, "urls", False))      # --urls == dry run
+    dry = bool(getattr(args, "dry_run", False) or getattr(args, "urls", False))
     if dry:
         console.print(f"[{DIM}]Dry run: nothing was changed.[/]")
+        return 0
+
+    # --sort folders: split a flat folder into one folder per series and
+    # stop there, without fetching any covers.
+    if getattr(args, "sort_only", False):
+        moved = folders = 0
+        for group in groups:
+            if not group["needs_move"]:
+                continue
+            try:
+                covers.isolate(group)
+                folders += 1
+                moved += len(group["archives"])
+            except OSError as e:
+                console.print(f"  [{ERR}]failed[/] {group['title']}: {e}")
+        console.print(f"{moved} archive(s) sorted into {folders} folder(s)")
         return 0
 
     saved = failed = 0

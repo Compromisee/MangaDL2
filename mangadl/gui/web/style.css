@@ -2582,3 +2582,9 @@ body.dragging-bookmark .folder-tile { border-style: dashed; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 78px;
 }
 .inline-check { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; opacity: .85; }
+
+.tool-path {
+  font-size: 12px; opacity: .8; padding: 3px 8px;
+  background: var(--panel-2, #1b1b26); border-radius: var(--radius-sm);
+  max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}

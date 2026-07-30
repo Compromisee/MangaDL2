@@ -402,3 +402,157 @@ def test_ui_says_nothing_changes_until_you_choose():
     panel = panel[:panel.index('id="tool-history"')]
     assert "Nothing is changed until you choose" in panel
     assert "own" in panel        # explains the move
+
+
+# ================================ v1.4.21: folder choice, Ch. names, bulk sort
+
+
+@pytest.mark.parametrize("filename,expected", [
+    # the exact shape asked about, and its near neighbours
+    ("Close Family Ch.001-036.cbz", "Close Family"),
+    ("Close Family Ch. 001-036.cbz", "Close Family"),
+    ("Close Family Ch001-036.cbz", "Close Family"),
+    ("Close Family Chs.001-036.cbz", "Close Family"),
+    ("Close Family Chapt. 5.cbz", "Close Family"),
+    ("Close Family Cap.12.cbz", "Close Family"),
+    ("Close Family Capitulo 12.cbz", "Close Family"),
+    ("Close Family Ch.001~036.cbz", "Close Family"),
+])
+def test_ch_dot_range_titles(filename, expected):
+    from mangadl.covers import clean_title
+
+    assert clean_title(filename) == expected
+
+
+@pytest.mark.parametrize("filename,expected", [
+    # Titles that start with, or contain, a chapter-marker word. The marker
+    # only counts when a number follows it, so these must survive whole.
+    ("Chainsaw Man Ch.100.cbz", "Chainsaw Man"),
+    ("Cheese in the Trap Ch.5.cbz", "Cheese in the Trap"),
+    ("Children of the Whales Ch.1.cbz", "Children of the Whales"),
+    ("Case Closed Ch.1000.cbz", "Case Closed"),
+    ("Cells at Work Ch.10.cbz", "Cells at Work"),
+    ("Chi's Sweet Home Ch.2.cbz", "Chi's Sweet Home"),
+    ("Eden's Zero Ch.100.cbz", "Eden's Zero"),
+    ("Ex-Arm Ch.3.cbz", "Ex-Arm"),
+    ("E-Rank Healer Ch.9.cbz", "E-Rank Healer"),
+    ("Eleceed Ch.200.cbz", "Eleceed"),
+])
+def test_chapter_marker_does_not_eat_real_words(filename, expected):
+    from mangadl.covers import clean_title
+
+    assert clean_title(filename) == expected
+
+
+def test_longest_marker_spelling_wins():
+    """Alternation order matters: with "ch" tried before "chs", the "s" is
+    left behind and the title becomes "Close Family Chs 001"."""
+    from mangadl.covers import _CHAPTER_TAIL
+
+    pattern = _CHAPTER_TAIL.pattern
+    assert pattern.index("chapters?") < pattern.index("|ch|")
+    assert pattern.index("chs") < pattern.index("|ch|")
+
+
+def test_a_flat_folder_of_loose_archives_splits_by_title(tmp_path):
+    """The "300 CBZs in one directory" case: every archive gets a folder
+    named after its series, and multi-volume sets group together."""
+    from mangadl.covers import scan
+
+    root = make(tmp_path,
+                "Close Family Ch.001-036.cbz",
+                "Close Family Ch.037-072.cbz",
+                "Solo Leveling Ch.001-050.cbz",
+                "Eleceed Ch.200.cbz")
+    groups = {g["title"]: g for g in scan(root)}
+
+    assert set(groups) == {"Close Family", "Solo Leveling", "Eleceed"}
+    assert len(groups["Close Family"]["archives"]) == 2
+    assert all(g["needs_move"] for g in groups.values())
+
+
+def test_organise_covers_sorts_without_downloading(tmp_path):
+    """Sorting must not require a network call -- it is a filesystem job."""
+    import mangadl.sources as sources_module
+    from mangadl.gui import Api
+
+    root = make(tmp_path,
+                "Close Family Ch.001-036.cbz",
+                "Close Family Ch.037-072.cbz",
+                "Solo Leveling Ch.001-050.cbz")
+
+    original = sources_module.search_all
+
+    def boom(*a, **k):
+        raise AssertionError("organise must not search for covers")
+
+    sources_module.search_all = boom
+    try:
+        result = Api().organise_covers(root)
+    finally:
+        sources_module.search_all = original
+
+    assert result["ok"] is True
+    assert result["folders"] == 2
+    assert result["moved"] == 3
+    assert os.path.isfile(os.path.join(
+        root, "Close Family", "Close Family Ch.001-036.cbz"))
+    assert os.path.isfile(os.path.join(
+        root, "Solo Leveling", "Solo Leveling Ch.001-050.cbz"))
+
+
+def test_organise_covers_leaves_tidy_folders_alone(tmp_path):
+    from mangadl.gui import Api
+
+    root = make(tmp_path, "Series/Series Ch.001.cbz")
+    result = Api().organise_covers(root)
+    assert result["moved"] == 0
+    assert os.path.isfile(os.path.join(root, "Series", "Series Ch.001.cbz"))
+
+
+def test_organise_covers_is_idempotent(tmp_path):
+    from mangadl.gui import Api
+
+    root = make(tmp_path, "A Series Ch.001.cbz", "B Series Ch.001.cbz")
+    Api().organise_covers(root)
+    second = Api().organise_covers(root)
+    assert second["moved"] == 0
+    assert not os.path.isdir(os.path.join(root, "A Series", "A Series"))
+
+
+def test_scan_covers_honours_an_explicit_root(tmp_path):
+    """The tool must scan the folder you choose, not only the configured
+    downloads directory."""
+    from mangadl.gui import Api
+
+    chosen = make(tmp_path / "elsewhere", "Picked Ch.001.cbz")
+    result = Api().scan_covers(chosen)
+    assert result["ok"]
+    assert result["root"] == chosen
+    assert [g["title"] for g in result["groups"]] == ["Picked"]
+
+
+def test_ui_has_a_folder_picker_for_the_cover_tool():
+    html = read(os.path.join(ROOT, "mangadl", "gui", "web", "index.html"))
+    app = read(os.path.join(ROOT, "mangadl", "gui", "web", "app.js"))
+
+    assert 'id="pickCoverFolderBtn"' in html
+    assert 'id="coverRoot"' in html
+    assert 'id="organiseCoversBtn"' in html
+    # the chosen folder must actually reach the backend
+    assert "choose_folder" in app
+    assert "scan_covers\", coverRoot" in app
+    assert "organise_covers" in app
+
+
+def test_cli_has_dedicated_cover_flags():
+    """Overloading --sort broke: it has a fixed choice list, so
+    "--sort folders" was rejected by argparse before the command ran."""
+    import subprocess
+    import sys
+
+    result = subprocess.run(
+        [sys.executable, "-m", "mangadl.cli", "--help"],
+        capture_output=True, text=True, cwd=ROOT, timeout=180)
+    for flag in ("--dry-run", "--sort-only", "--replace"):
+        assert flag in result.stdout, flag

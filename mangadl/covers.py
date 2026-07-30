@@ -63,12 +63,15 @@ _BRACKETED = re.compile(r"[\[\(\{][^\]\)\}]*[\]\)\}]")
 _CHAPTER_TAIL = re.compile(
     r"""[\s._-]*                       # separator before the marker
         (?:-\s*)?                      # MangaDL writes " - Chapters ..."
-        (?:chapters?|chaps?|ch|c|episodes?|eps?|e|\#)
+        (?:chapters?|chapts?|chaps?|chs|ch|cap(?:itulo)?s?|
+           episodes?|eps?|c|e|\#)      # longest spellings first, or "ch"
+                                       # would match inside "chs" and leave
+                                       # an orphan "s" in the title
         [\s._]*                        # "Chapter 5", "Ch.5", "c045"
         \d+(?:\.\d+)?                  # the number
-        (?:\s*[-–—]\s*\d+(?:\.\d+)?)?  # an inclusive range: 001-050
+        (?:\s*[-–—~]\s*\d+(?:\.\d+)?)? # an inclusive range: 001-036
         (?:\s*,\s*\d+(?:\.\d+)?        # further comma-separated runs
-           (?:\s*[-–—]\s*\d+(?:\.\d+)?)?)*
+           (?:\s*[-–—~]\s*\d+(?:\.\d+)?)?)*
         .*$                            # and anything after it
     """, re.I | re.X)
 

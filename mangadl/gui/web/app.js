@@ -3089,20 +3089,54 @@ $("scanOrphansBtn").addEventListener("click", async () => {
 /* ------------------------------------------------- rebuild CBZ covers */
 
 let coverGroups = [];
+let coverRoot = null;          // null = use the configured downloads folder
+
+$("pickCoverFolderBtn").addEventListener("click", async () => {
+  const folder = await callApi("choose_folder");
+  if (!folder) return;         // cancelled
+  coverRoot = folder;
+  $("coverRoot").textContent = folder;
+  $("coverNote").textContent = "Folder chosen - scan when ready.";
+});
+
+$("resetCoverFolderBtn").addEventListener("click", () => {
+  coverRoot = null;
+  $("coverRoot").textContent = "your downloads folder";
+  $("coverNote").textContent = "";
+});
+
+$("organiseCoversBtn").addEventListener("click", async () => {
+  const loose = coverGroups.filter((g) => g.needs_move);
+  if (!loose.length) return;
+  $("coverNote").textContent = "Sorting into folders\u2026";
+  const res = await callApi("organise_covers", coverRoot);
+  if (!res || !res.ok) {
+    $("coverNote").textContent = (res && res.error) || "Could not sort";
+    return;
+  }
+  toast(`${res.moved} archive(s) sorted into ${res.folders} folder(s)`);
+  $("scanCoversBtn").click();     // re-scan so the list reflects disk
+});
 
 $("scanCoversBtn").addEventListener("click", async () => {
   $("coverNote").textContent = "Scanning\u2026";
   $("coverList").innerHTML = "";
-  const res = await callApi("scan_covers", null,
+  $("coverBulkBar").style.display = "none";
+  const res = await callApi("scan_covers", coverRoot,
                             $("coverOverwrite").checked);
   if (!res || !res.ok) {
     $("coverNote").textContent = (res && res.error) || "Scan failed";
     return;
   }
   coverGroups = res.groups || [];
+  if (res.root) $("coverRoot").textContent = res.root;
+  const loose = coverGroups.filter((g) => g.needs_move).length;
   $("coverNote").textContent = coverGroups.length
     ? `${coverGroups.length} series need a cover`
+      + (loose ? ` \u00b7 ${loose} still loose in a shared folder` : "")
     : "Every archive already has a cover.";
+  // Offer the bulk tidy only when there is something loose to tidy.
+  $("coverBulkBar").style.display = loose ? "" : "none";
   renderCoverGroups();
 });
 
