@@ -92,7 +92,7 @@ def test_every_screenshot_tab_has_a_panel():
     from bs4 import BeautifulSoup
 
     soup = BeautifulSoup(read(SITE), "html.parser")
-    tabs = {t["data-s"] for t in soup.select(".shot-tab[data-s]")}
+    tabs = {t["data-s"] for t in soup.select("[data-s]")}
     shots = {s["id"].replace("s-", "") for s in soup.select(".shot[id]")}
     assert tabs == shots
 
@@ -116,15 +116,25 @@ def test_stated_counters_match_the_repository():
                              read(os.path.join(ROOT, "mangadl", "sources",
                                                "__init__.py")), re.M))
     assert f"{features} documented features" in html
-    assert f'<div class="hs-n">{sources}</div>' in html
+
+    # Read the stat tiles structurally rather than by class name, so a
+    # redesign cannot make this check silently vacuous.
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    tiles = {}
+    for value in soup.select(".st-n, .hs-n"):
+        label = value.find_next(class_=["st-k", "hs-k"])
+        if label:
+            tiles[label.get_text(strip=True).lower()] = value.get_text(strip=True)
+    assert tiles, "no stat tiles found on the page"
+    assert tiles.get("sources") == str(sources), (
+        f"page says {tiles.get('sources')} sources, registry has {sources}")
 
     # Tests passing: never claim more tests than the suite actually has.
     # Counting "def test_" is not enough -- 30 parametrize decorators expand
     # 595 functions into 694 cases -- so ask pytest itself.
     collected = _collect_count()
-    claimed = int(re.search(r'<div class="hs-n">(\d+)</div>\s*'
-                            r'<div class="hs-k">tests passing</div>',
-                            html).group(1))
+    claimed = int(tiles["tests passing"])
     assert claimed <= collected, f"page claims {claimed}, suite has {collected}"
 
 
@@ -203,8 +213,10 @@ def test_version_badge_matches_the_package():
 
 def test_links_point_at_the_right_repository():
     html = read(SITE)
-    assert "github.com/Compromisee/MDL" in html
+    assert "github.com/Compromisee/MangaDL2" in html
+    # The old names must not linger anywhere on the page.
     assert "Compromisee/WeebDL" not in html
+    assert "Compromisee/MDL" not in html
     assert "Yui007" not in html
 
 
@@ -216,6 +228,86 @@ def test_both_colour_modes_are_defined():
 
 def test_site_respects_reduced_motion():
     assert "prefers-reduced-motion" in read(SITE)
+
+
+def test_landing_page_uses_icon_font_not_emoji():
+    """The brief: Google icons, no emoji.
+
+    Emoji render differently on every OS, are unstyleable, and several
+    showed as empty boxes in headless Chromium.
+    """
+    import re as _re
+
+    from bs4 import BeautifulSoup
+
+    html = read(SITE)
+    soup = BeautifulSoup(html, "html.parser")
+    # Only visible copy matters: <style>/<script> banners and shell listings
+    # legitimately contain box-drawing and tick characters.
+    for tag in soup(["style", "script", "pre"]):
+        tag.decompose()
+    for pane in soup.select(".pane"):
+        pane.decompose()
+
+    emoji = _re.findall(
+        "[\U0001F300-\U0001FAFF\u2600-\u27BF\uFE0F]", soup.get_text())
+    assert emoji == [], f"emoji left on the page: {set(emoji)}"
+    assert "material-symbols-rounded" in html, "expected the Material icon font"
+
+
+def test_landing_page_icons_are_real_ligatures():
+    """Every icon span must carry a ligature name, not be left empty."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(read(SITE), "html.parser")
+    spans = soup.select(".material-symbols-rounded")
+    assert len(spans) >= 10, f"only {len(spans)} icons found"
+    empty = [str(s)[:60] for s in spans if not s.get_text(strip=True)]
+    assert empty == [], f"icon spans with no ligature: {empty}"
+
+
+def test_landing_page_fonts_do_not_block_rendering():
+    """Same lesson as the app: never block first paint on a font CDN."""
+    import re as _re
+
+    html = read(SITE)
+    head = html[:html.index("</head>")]
+    head = _re.sub(r"<noscript>.*?</noscript>", "", head, flags=_re.S)
+    links = [t for t in _re.findall(r"<link[^>]*>", head, flags=_re.S)
+             if "fonts.googleapis.com" in t and 'rel="stylesheet"' in t]
+    assert links, "expected the font stylesheets to be linked"
+    for tag in links:
+        assert 'media="print"' in tag and "onload" in tag, tag[:110]
+
+
+def test_content_is_not_hidden_without_javascript():
+    """The scroll reveal must never be able to eat the page.
+
+    The hiding is gated behind html.js, which only JS adds, so a script
+    error or an old browser shows everything.
+    """
+    import re as _re
+
+    # Strip CSS comments first: a comment sitting above a rule gets pulled
+    # into the "selector" capture and made every check pass by accident.
+    html = _re.sub(r"/\*.*?\*/", "", read(SITE), flags=_re.S)
+    # Every rule that hides a .rise element must be scoped to html.js.
+    for match in _re.finditer(r"([^{}]*\.rise[^{}]*)\{([^}]*)\}", html):
+        selector, body = match.group(1).strip(), match.group(2)
+        if "opacity:0" not in body.replace(" ", ""):
+            continue
+        assert "html.js" in selector or ".js " in selector, (
+            f"'{selector}' hides content without a JS gate")
+    # ...and something must actually add that class at runtime.
+    assert "classList.add('js')" in html or 'classList.add("js")' in html
+
+
+def test_cli_panes_preserve_their_formatting():
+    """The panes are divs; without white-space:pre every listing collapses
+    into one wrapped paragraph."""
+    html = read(SITE)
+    block = html[html.index(".pane{"):html.index(".pane{") + 220]
+    assert "white-space:pre" in block.replace(" ", "")
 
 
 def test_page_is_not_styled_like_github():
@@ -265,7 +357,7 @@ def test_theme_toggles_and_persists(site):
 
 
 def test_screenshot_tabs_switch(site):
-    site.click('.shot-tab[data-s="s3"]')
+    site.click('[data-s="s3"]')
     site.wait_for_timeout(200)
     assert site.evaluate("() => document.querySelector('#s-s3').classList.contains('on')")
     assert not site.evaluate("() => document.querySelector('#s-s1').classList.contains('on')")

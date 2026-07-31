@@ -168,6 +168,20 @@ A complete feature reference for MangaDL.
 122. A source that blocks measuring is not penalised for it
 123. `mangadl covers` uses the same rules and reports the chosen resolution
 
+## Notifications and a rebuilt site (v1.4.25)
+
+573. Repeated window-close events no longer fire repeated tray notifications
+574. Tray notifications are de-duplicated by text within a 30-second window
+575. "Still downloading" is only claimed when something actually is
+576. Reopening the window lets the next hide notify again
+577. Genuine per-book completion notifications are never suppressed
+578. Landing page rebuilt: Google Material Symbols throughout, no emoji
+579. Source tiles link to each site and carry Cloudflare and 18+ badges
+580. Source list filters by All / General / 18+ in place
+581. Landing page fonts load without blocking first paint
+582. Page content is never hidden when JavaScript does not run
+583. Landing page repository links point at Compromisee/MangaDL2
+
 ## Tray, startup and stats (v1.4.24)
 
 548. Closing to the tray keeps the process alive, so downloads really continue

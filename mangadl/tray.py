@@ -26,6 +26,7 @@ the ordinary close-quits behaviour.
 import logging
 import os
 import threading
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +96,9 @@ class TrayController:
         summary()         a mangadl.progress-style summary dict
     """
 
+    #: Do not repeat the same notification text inside this many seconds.
+    DEDUPE_SECONDS = 30.0
+
     def __init__(self, callbacks=None, title="MangaDL"):
         self.callbacks = callbacks or {}
         self.title = title
@@ -104,6 +108,11 @@ class TrayController:
         self._last_active = None
         #: Set once Quit has been chosen, so :meth:`wait` can return.
         self._quit = threading.Event()
+        # Notification bookkeeping -- see notify().
+        self._notify_lock = threading.Lock()
+        self._notified = {}          # message -> monotonic time last shown
+        self._notified_once = set()  # messages flagged once=True
+        self._last_notify_at = 0.0
 
     # ------------------------------------------------------------ data
 
@@ -310,14 +319,75 @@ class TrayController:
         except Exception:
             pass
 
-    def notify(self, message, title=None):
-        """Desktop notification, where the platform supports one."""
-        if self.icon is None:
-            return
+    def notify(self, message, title=None, dedupe_seconds=None, once=False):
+        """Desktop notification, where the platform supports one.
+
+        Rate limited and de-duplicated, because a tray balloon is one of the
+        few things in the app a bug can fire hundreds of times.
+
+        Reported as "repeated notifications over and over like a loop", and
+        reproduced: a window manager that delivers the close event more than
+        once (minimise/restore, a taskbar "Close window", a WebView2 hiccup,
+        or the backend-retry path in ``run_gui`` which closes the window once
+        per attempt) produced **one balloon per event** -- 20 events in 0.4s
+        gave 20 balloons. Nothing here checked whether the same message had
+        just been shown.
+
+        Two guards, both cheap:
+
+        ``dedupe_seconds``
+            The same text is not shown twice inside this window. Defaults to
+            :attr:`DEDUPE_SECONDS`.
+        ``once``
+            The message is shown at most once for the lifetime of this tray,
+            for things like "still running in the background" that are only
+            news the first time.
+
+        Deliberately keyed on the message **text**, not on a global rate
+        limit. Five books finishing in quick succession are five different
+        events and all five deserve a balloon; the same sentence arriving
+        five times is one event reported five times. A first attempt at this
+        fix used a blanket floor between any two notifications and silently
+        ate 4 of 5 genuine "download finished" messages -- caught by the
+        job-completion harness, which is why that distinction is now tested.
+        """
+        if self.icon is None or not message:
+            return False
+
+        now = time.monotonic()
+        window = (self.DEDUPE_SECONDS if dedupe_seconds is None
+                  else float(dedupe_seconds))
+
+        with self._notify_lock:
+            if once and message in self._notified_once:
+                return False
+            last = self._notified.get(message)
+            if last is not None and (now - last) < window:
+                logger.debug("suppressed duplicate notification: %s", message)
+                return False
+            self._notified[message] = now
+            self._last_notify_at = now
+            if once:
+                self._notified_once.add(message)
+            # Keep the seen-map from growing without bound in a long session.
+            if len(self._notified) > 64:
+                cutoff = now - window
+                self._notified = {k: v for k, v in self._notified.items()
+                                  if v > cutoff}
+
         try:
             self.icon.notify(message, title or self.title)
+            return True
         except Exception:
             logger.debug("tray notification failed", exc_info=True)
+            return False
+
+    def reset_notifications(self):
+        """Forget what has been shown, so a real new event can notify again."""
+        with self._notify_lock:
+            self._notified.clear()
+            self._notified_once.clear()
+            self._last_notify_at = 0.0
 
     # ------------------------------------------------- keeping alive
 

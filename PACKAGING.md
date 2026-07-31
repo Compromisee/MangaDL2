@@ -24,7 +24,7 @@ unified entry point **[`launcher.py`](launcher.py)**.
   everything importable, so a lean venv means a smaller exe)
 
 ```bash
-git clone https://github.com/Compromisee/MDL.git
+git clone https://github.com/Compromisee/MangaDL2.git
 cd MDL
 
 python -m venv .venv

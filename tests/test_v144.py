@@ -341,7 +341,17 @@ def test_landing_page_source_count_matches_the_registry():
     from mangadl.sources import SOURCE_CLASSES
 
     html = read(os.path.join(ROOT, "docs", "index.html"))
-    assert f'<div class="hs-n">{len(SOURCE_CLASSES)}</div>' in html
+    # Read the stat tiles structurally: keying on one set of class names
+    # made this silently vacuous after the page was redesigned.
+    from bs4 import BeautifulSoup
+    soup = BeautifulSoup(html, "html.parser")
+    tiles = {}
+    for value in soup.select(".st-n, .hs-n"):
+        label = value.find_next(class_=["st-k", "hs-k"])
+        if label:
+            tiles[label.get_text(strip=True).lower()] = value.get_text(strip=True)
+    assert tiles.get("sources") == str(len(SOURCE_CLASSES)), (
+        f"page says {tiles.get('sources')}, registry has {len(SOURCE_CLASSES)}")
 
 
 def test_adult_sources_are_all_rating_stamped():

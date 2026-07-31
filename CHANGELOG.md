@@ -7,6 +7,83 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.25 — Notification loop fixed, landing page rebuilt
+
+### Fixed — repeated tray notifications, over and over
+
+Reported as running in the background but "repeated notifications over and
+over like a loop", and reproduced before touching anything.
+
+`_on_closing()` notified **unconditionally** on every close event, with no
+duplicate suppression and no check for "already hidden". Window managers
+deliver that event more than once — minimise/restore, a taskbar *Close
+window*, or the backend-retry path in `run_gui()`, which closes the window
+once per attempt. Measured:
+
+| close events | before | after |
+|---|---|---|
+| 10 in 0.50s | **10 balloons** | 1 |
+| 20 in 0.41s | **20 balloons** | 0 (already hidden) |
+| 3 backend retries | 3 | 1 |
+| same text 10× | 10 | 1 |
+
+Three layers, because one was not enough:
+
+* `_on_closing` returns early when the window is already hidden, so a
+  repeat event is vetoed silently.
+* `TrayController.notify()` de-duplicates by message text within 30s, and
+  supports `once=True` for messages that are only news the first time.
+* Reopening the window — from the tray menu or the `shown` event — clears
+  both, so the next genuine hide notifies again.
+
+**The dedupe is keyed on the message, not on a blanket rate limit.** Five
+books finishing in quick succession are five real events and all five
+deserve a balloon. A first attempt used a global floor between any two
+notifications and silently ate 4 of 5 genuine "download finished" messages;
+the job-completion harness caught it, and that distinction is now a test.
+
+### Fixed — the close message claimed downloads that did not exist
+
+Closing to the tray always said *"Still downloading in the background."*,
+even with an empty queue. It now checks `get_progress()` and says
+*"MangaDL is still running in the tray."* when nothing is running.
+
+### Changed — the landing page, rebuilt
+
+* **Google Material Symbols throughout, no emoji.** The old page used
+  emoji glyphs for its feature icons, which render differently on every OS
+  and showed as empty boxes in headless Chromium.
+* A new layout: sticky nav, an asymmetric hero with a live terminal, a
+  six-cell bento grid, a four-way interface comparison, a filterable source
+  grid, a tabbed CLI reference, tabbed screenshots and a three-step install.
+* A fine grid backdrop with soft colour fields, rather than the plain
+  gradient wash that every project page has.
+* **Source tiles are links now**, each with its domain, a colour badge, and
+  `18+` / `CF` tags where they apply.
+* Filter the source list by All / General / 18+ in place.
+* Light and dark themes, remembered between visits.
+* Fonts load without blocking first paint — the same fix the app itself
+  got in v1.4.24.
+* Content is never hidden when JavaScript does not run: the scroll-reveal
+  animation is gated behind a class only JS adds, with a 4s safety net and
+  a print handler.
+* Every repository link points at `Compromisee/MangaDL2`.
+
+Every number on the page is still checked against the repository by the
+test suite — sources against the registry, features against `FEATURES.md`,
+and the passing-test count against what pytest actually collects.
+
+### Tests
+
+29 new tests, 944 passing. Each fix was reverted to confirm its test fails:
+**16 of 16 deliberate regressions caught** (6 notification, 10 landing
+page). Four tests that initially passed for the wrong reason were
+rewritten — one matched a CSS comment as if it were a selector, one could
+not tell a bound listener from a mention in a payload, and two keyed on
+class names a redesign had already changed.
+
+---
+
 ## v1.4.24 — The tray really keeps running, and a contribution calendar
 
 ### Fixed — closing to the tray still killed the app

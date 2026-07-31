@@ -1816,6 +1816,14 @@ def _install_tray(api, window):
             window.restore()
         except Exception:
             logger.debug("could not restore the window", exc_info=True)
+        # The window is back, so hiding it again is worth announcing once
+        # more. Done here as well as on the "shown" event because not every
+        # pywebview backend fires that event.
+        api._hidden_to_tray = False
+        try:
+            controller.reset_notifications()
+        except Exception:
+            logger.debug("could not reset notification state", exc_info=True)
 
     def quit_app():
         api._really_quitting = True
@@ -1856,6 +1864,17 @@ def _install_tray(api, window):
                 return True
         except Exception:
             logger.debug("could not re-read the tray setting", exc_info=True)
+
+        # Already hidden? Then this is a repeat of an event we have already
+        # handled -- veto it and say nothing. Window managers deliver the
+        # close event more than once (minimise/restore, a taskbar "Close
+        # window", the backend-retry path below which closes the window once
+        # per attempt), and this handler used to notify unconditionally
+        # every time: measured, 20 close events produced 20 balloons in
+        # 0.4s. That is the reported notification loop.
+        if getattr(api, "_hidden_to_tray", False):
+            return False
+
         try:
             window.hide()
         except Exception:
@@ -1867,14 +1886,44 @@ def _install_tray(api, window):
             api._really_quitting = True
             controller.stop()
             return True
-        controller.notify("Still downloading in the background.")
+
+        api._hidden_to_tray = True
+
+        # Only claim downloads are continuing when some actually are.
+        # Saying "Still downloading in the background" with an empty queue
+        # is simply untrue, and it was the text shown every time.
+        try:
+            progress = api.get_progress() or {}
+            busy = int(progress.get("active") or 0) + \
+                int(progress.get("queued") or 0)
+        except Exception:
+            busy = 0
+        message = ("Still downloading in the background."
+                   if busy else "MangaDL is still running in the tray.")
+        # once=True: this is only news the first time the window is hidden.
+        controller.notify(message, once=True)
         return False                         # veto the close
+
+    def _on_shown():
+        """The window is visible again, so a later hide is news once more."""
+        api._hidden_to_tray = False
+        try:
+            controller.reset_notifications()
+        except Exception:
+            logger.debug("could not reset notification state", exc_info=True)
 
     try:
         window.events.closing += _on_closing
     except Exception:
         logger.debug("closing event unavailable; tray hide disabled",
                      exc_info=True)
+
+    # Not every backend fires "shown", so show_window() clears the flag too
+    # (see above); this is belt and braces for the ones that do.
+    try:
+        window.events.shown += _on_shown
+    except Exception:
+        logger.debug("shown event unavailable", exc_info=True)
     return controller
 
 

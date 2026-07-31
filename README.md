@@ -64,7 +64,7 @@ See **[FEATURES.md](FEATURES.md)** for the complete feature reference and
 Requires **Python 3.9+**.
 
 ```bash
-git clone https://github.com/Compromisee/MDL.git
+git clone https://github.com/Compromisee/MangaDL2.git
 cd MDL
 
 # install with the GUI and TUI
