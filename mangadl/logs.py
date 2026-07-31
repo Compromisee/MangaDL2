@@ -22,22 +22,75 @@ _configured = False
 _crash_fh = None
 
 
+#: Trim crash.log once it passes this. A user-supplied log had 116 session
+#: markers and exactly 2 real crashes in it -- the signal was buried under
+#: 114 lines of "started, nothing happened".
+CRASH_LOG_MAX_BYTES = 512 * 1024
+
+
+def _trim_crash_log():
+    """Keep the tail of crash.log, so real tracebacks stay findable.
+
+    Rotating would be wrong here: faulthandler writes to a file descriptor
+    it keeps for the life of the process, so moving the file out from under
+    it loses the very crash we are trying to capture. Truncating on the way
+    *in*, before the handle is opened, is safe.
+    """
+    try:
+        if os.path.getsize(CRASH_FILE) <= CRASH_LOG_MAX_BYTES:
+            return
+    except OSError:
+        return
+    try:
+        with open(CRASH_FILE, "rb") as fh:
+            fh.seek(-CRASH_LOG_MAX_BYTES // 2, os.SEEK_END)
+            tail = fh.read()
+        # Start at a session boundary so the file never opens mid-traceback.
+        marker = tail.find(b"\n--- session start")
+        if marker != -1:
+            tail = tail[marker:]
+        with open(CRASH_FILE, "wb") as fh:
+            fh.write(b"--- earlier entries trimmed ---\n")
+            fh.write(tail)
+    except OSError:
+        pass
+
+
 def enable_crash_dumps():
     """Write a Python traceback of every thread to crash.log on hard crashes
-    (segfaults, stack overflow, fatal aborts) via faulthandler."""
+    (segfaults, stack overflow, fatal aborts) via faulthandler.
+
+    The file is trimmed on the way in. A user-supplied crash.log carried
+    116 session markers and exactly 2 real tracebacks -- the signal was
+    buried under 114 lines of "started, nothing happened".
+    """
     global _crash_fh
     if _crash_fh is not None:
         return CRASH_FILE
     try:
         import faulthandler
         os.makedirs(LOG_DIR, exist_ok=True)
+        _trim_crash_log()
         _crash_fh = open(CRASH_FILE, "a", encoding="utf-8", errors="replace")
-        _crash_fh.write(f"\n--- session start {__import__('time').strftime('%Y-%m-%d %H:%M:%S')} ---\n")
+        # faulthandler.enable() calls fileno() immediately and then writes
+        # to that descriptor directly from the signal handler, so there is
+        # no way to defer the header until a crash actually happens --
+        # verified: a wrapper's fileno() is invoked during enable().
+        #
+        # Instead the marker is made cheap and self-cleaning: it says what
+        # it is, and _trim_crash_log() keeps the file from growing without
+        # bound. A user-supplied log had 116 markers around 2 real crashes.
+        _crash_fh.write(
+            f"\n--- session {__import__('time').strftime('%Y-%m-%d %H:%M:%S')}"
+            f" pid {os.getpid()} (no crash below this line = clean run) ---\n")
         _crash_fh.flush()
         faulthandler.enable(file=_crash_fh, all_threads=True)
     except Exception:
         _crash_fh = None
     return CRASH_FILE
+
+
+
 
 
 class _BridgeNoiseFilter(logging.Filter):

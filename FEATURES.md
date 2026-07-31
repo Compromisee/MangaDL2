@@ -301,6 +301,9 @@ MangaDL did not create.
 
 ## Background mode
 
+- **One app at a time.** Launching MangaDL while it is already running
+  raises the existing window instead of starting a second copy — which used
+  to leave two tray icons and two download engines on the same library.
 - Optional **system tray** mode: closing the window hides it and downloads
   keep running.
 - The tray tooltip and menu show live speed, ETA, chapters remaining, queued

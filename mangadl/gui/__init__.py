@@ -2032,14 +2032,40 @@ def run_gui():
     wclogs.quiet_pywebview()
     wclogs.enable_crash_dumps()
 
+    # ------------------------------------------------- single instance
+    # Claimed BEFORE pywebview is imported. Two reasons:
+    #
+    #  1. Nothing used to stop a second copy launching while the first sat
+    #     hidden in the tray, and running it again is the obvious way to
+    #     "reopen" it. Measured: three launches left three processes alive,
+    #     three tray icons, and three download engines writing the same
+    #     library and config files.
+    #  2. Importing webview loads the .NET CLR on Windows, and doing that a
+    #     second time in a process that already has a tray message loop is
+    #     what the crash log shows dying:
+    #         Windows fatal exception: access violation
+    #           clr_loader/types.py __call__  ->  webview/platforms/winforms
+    #     Refusing early means the duplicate never reaches that import.
+    from ..singleton import InstanceServer
+
+    instance = InstanceServer()
+    if not instance.start():
+        # Another MangaDL answered; it has raised its own window.
+        logger.info("MangaDL is already running; asked it to come forward.")
+        print("[MangaDL] Already running - bringing the existing window to "
+              "the front.")
+        return 0
+
     try:
         import webview
     except ImportError:
+        instance.stop()
         _show_fatal("pywebview is not installed. Run: pip install pywebview")
         return 1
 
     html_path = _web_asset_path()
     if not os.path.isfile(html_path):
+        instance.stop()
         _show_fatal(f"GUI assets not found at:\n{html_path}\n\n"
                     "If this is a packaged exe, rebuild it with the provided "
                     "MangaDL.spec so web assets are bundled.")
@@ -2057,6 +2083,7 @@ def run_gui():
             background_color="#16161e",
         )
     except Exception:
+        instance.stop()
         logger.exception("create_window failed")
         _show_fatal("Could not create the application window:\n"
                     + traceback.format_exc(limit=3))
@@ -2083,7 +2110,86 @@ def run_gui():
     # ------------------------------------------------------------- tray
     # With "minimize to tray" on, closing the window hides it and downloads
     # keep running; the app only exits from the tray's Quit item.
-    tray = _install_tray(api, window)
+    #
+    # DEFERRED until the GUI toolkit is up. The tray icon runs a Win32
+    # message loop of its own, and the crash log shows what happens when
+    # that loop already exists while pywebview loads the .NET CLR:
+    #
+    #     Windows fatal exception: access violation
+    #       Thread ...: pystray/_win32.py _mainloop      <- tray already up
+    #       Thread ...: mangadl/tray.py loop
+    #       Current  : clr_loader/types.py __call__      <- CLR loading
+    #                  webview/platforms/winforms.py <module>
+    #
+    # That is a hard crash, not a catchable exception. Starting the tray
+    # after the toolkit has initialised keeps the two message loops from
+    # racing during CLR startup.
+    tray = None
+
+    def _start_tray_once():
+        """Install the tray after the window is up. Idempotent."""
+        nonlocal tray
+        if tray is not None or getattr(api, "_tray_attempted", False):
+            return
+        api._tray_attempted = True
+        tray = _install_tray(api, window)
+
+    try:
+        # "shown" fires once the native window exists, which on Windows is
+        # after the CLR is fully loaded.
+        window.events.shown += _start_tray_once
+    except Exception:
+        logger.debug("shown event unavailable", exc_info=True)
+
+    # Not every backend fires "shown". Without a fallback, "minimise to
+    # tray" would silently do nothing on those -- closing the window would
+    # quit the app with no icon left behind. A short timer is enough: it
+    # only has to land after the toolkit has initialised, and by then the
+    # window is either up or the whole start attempt has failed.
+    def _tray_fallback():
+        if getattr(api, "_tray_attempted", False):
+            return
+        logger.debug("no 'shown' event; starting the tray on the timer")
+        _start_tray_once()
+
+    threading.Timer(4.0, _tray_fallback).start()
+
+    # If the window closes before either of those has fired -- a very fast
+    # close, or a backend that fires neither event -- install it right then,
+    # synchronously. By this point the toolkit is fully up, which is the
+    # only ordering the CLR crash cares about, and it means "minimise to
+    # tray" cannot be lost to a race with the user's own click.
+    def _on_closing_pre():
+        try:
+            if load_settings().get("minimize_to_tray"):
+                _start_tray_once()
+        except Exception:
+            logger.debug("late tray install failed", exc_info=True)
+        return True          # never veto here; _install_tray's handler does
+
+    try:
+        window.events.closing += _on_closing_pre
+    except Exception:
+        logger.debug("closing event unavailable for the late tray install",
+                     exc_info=True)
+
+    # Launching MangaDL again is the natural way to "reopen" a window that
+    # is hidden in the tray, so make that gesture do exactly that instead of
+    # starting a second copy.
+    def _surface():
+        try:
+            window.show()
+            window.restore()
+        except Exception:
+            logger.debug("could not surface the window", exc_info=True)
+        api._hidden_to_tray = False
+        if tray is not None:
+            try:
+                tray.reset_notifications()
+            except Exception:
+                pass
+
+    instance.on_show = _surface
 
     # Release the flush timer, cached sessions and sockets on close, so a
     # closing window cannot leave background threads alive.
@@ -2137,11 +2243,24 @@ def run_gui():
             # it, which is what "closing to tray still ends the process"
             # looked like. Block the main thread until Quit instead.
             _hold_for_tray(api, tray)
+            instance.stop()
             return 0
         except Exception as e:
             last_error = e
             logger.exception("webview.start failed (backend=%s)", backend)
+            # Only the FIRST backend attempt may import a fresh GUI toolkit.
+            # On Windows the crash log shows the .NET CLR being loaded a
+            # second time inside a process that already has a tray message
+            # loop, and that is an access violation -- a hard crash, not an
+            # exception we could catch:
+            #     clr_loader/types.py __call__
+            #     webview/platforms/winforms.py <module>
+            # Retrying another backend after a failed import is what walks
+            # into it, so on Windows we stop after the first failure.
+            if sys.platform == "win32":
+                break
 
+    instance.stop()
     _show_fatal(
         "The embedded browser engine could not start.\n\n"
         f"Last error: {last_error}\n\n"

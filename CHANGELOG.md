@@ -7,6 +7,102 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.27 — One app at a time, and the Windows crash
+
+Both fixes come from a crash log covering 116 sessions.
+
+### Fixed — every launch started another copy
+
+Nothing stopped a second MangaDL starting while the first sat hidden in the
+tray. And running it again is the *obvious* way to reopen a hidden window,
+so the bug was easy to hit repeatedly. Reproduced with three launches
+against one profile:
+
+| | before | after |
+|---|---|---|
+| processes alive | **3** | 1 |
+| tray icons | 3 | 1 |
+| download engines on one `library.json` | 3 | 1 |
+
+New `mangadl/singleton.py`. A loopback TCP server whose port is recorded in
+`~/.mangadl/instance.json`:
+
+* **The socket is the lock.** Binding is atomic and the OS releases it when
+  the process dies, so a killed instance never leaves a stale lock that
+  needs cleaning up — the classic failure of PID-file locking. A stale port
+  file simply fails to connect and startup continues.
+* **It doubles as the wake-up channel.** The second launch sends `show` and
+  exits; the running instance raises its window, which is what the user
+  wanted. Refusing silently would have been worse than the duplicate.
+* A random token in the file must match before any command is honoured, and
+  only `127.0.0.1` is bound.
+
+### Fixed — the access violation on startup
+
+```
+Windows fatal exception: access violation
+  Thread : pystray/_win32.py _mainloop      <- tray loop already running
+  Current: clr_loader/types.py __call__     <- .NET CLR loading
+           webview/platforms/winforms.py <module>
+```
+
+The tray icon runs a Win32 message loop of its own, and it was started
+*before* `webview.start()` — which is where pywebview loads the .NET CLR.
+Two message loops racing during CLR startup is a hard crash, not something
+`try/except` can catch.
+
+The tray now installs **after** the toolkit is up, on the window's `shown`
+event. Three things could otherwise go wrong, and all three are covered:
+
+* a backend that never fires `shown` → a 4-second fallback timer;
+* the window closed before either fires → installed synchronously on close,
+  so "minimise to tray" is never lost to a race with the user's click;
+* all three firing at once → the install is idempotent, verified by counting
+  icons rather than reading the source.
+
+The second crash in the log is the same shape, one layer down: after a
+backend import failed, `run_gui` retried the next backend and walked back
+into the CLR load that had just died. On Windows it now stops after the
+first failure.
+
+The single-instance check also runs **before** `import webview`, so a
+duplicate never reaches the CLR at all.
+
+### Changed — crash.log no longer buries the evidence
+
+The supplied log was 116 session markers around exactly 2 real tracebacks.
+It is now trimmed to 512 KB on startup, cut at a session boundary so it
+never opens mid-traceback, and the marker says plainly that no crash below
+it means a clean run.
+
+A lazily-written header would have been nicer, and I tried it —
+`faulthandler.enable()` calls `fileno()` immediately and writes to that
+descriptor from the signal handler, so the header cannot be deferred.
+Measured, not assumed.
+
+### Changed — new screenshots
+
+The committed shots were from v1.4.14, twelve releases ago. They predated
+the grouped queue, the contribution calendar, the source carousel, the tools
+tab and the downloaded-result overlays, so both the README and the landing
+page were advertising a UI that no longer exists.
+
+All eight are regenerated at 2× against the current build, with seven stale
+files deleted. Covers are generated gradients rather than hotlinked artwork.
+Two new tests keep them honest: every referenced image must exist, and no
+screenshot may sit in `docs/` unreferenced — an unused shot is one nobody
+remembers to update.
+
+### Tests
+
+21 new tests, 988 passing. Each fix was reverted to confirm its test fails:
+**12 of 12 deliberate regressions caught**. One test initially passed for
+the wrong reason — it asserted the tray install had moved by searching for
+a source string that legitimately still exists inside the deferred helper,
+so it now checks indentation and the event wiring instead.
+
+---
+
 ## v1.4.26 — Tray reopen fixed, downloaded results, readable FEATURES.md
 
 ### Fixed — opening from the tray flashed the window and lost it

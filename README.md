@@ -28,6 +28,7 @@
 - **Browse by genre.** 200+ genres merged across sites, with quick-pick chips, genre-filtered search and per-genre trending.
 - **Smart search for covers.** One button scans a whole folder, searches every source and picks each cover itself using your source ranking — exact title first, then your preferred site, then the largest image so it never grabs a thumbnail.
 - **Rebuild missing covers.** Point *Tools → Rebuild covers* at a folder of loose CBZs: it recovers the series from each filename, offers covers from every source, and saves `cover.jpg` beside the archive — splitting mixed folders so each cover belongs to the right book.
+- **One window, not five.** Starting MangaDL when it is already running brings the existing window forward rather than launching another copy.
 - **Runs in the background.** Turn on *Minimise to system tray* and closing the window keeps downloads going. The tray menu shows live speed, ETA, chapters remaining and what is queued — and brings the window back.
 - **Skip what you already have.** Search results that are in your library can be shown normally, dimmed, or hidden. Dimmed is the default: hover one and the cover fills up to the fraction you have, with the percentage on the badge.
 - **A year of activity at a glance.** The Stats tab draws a contribution calendar — one square per day, brighter the more you downloaded, tinted by the sources it came from. Hovering a day names each source as a fraction.
@@ -275,12 +276,14 @@ mangadl gui        # or: python gui.py
 
 | | |
 |---|---|
-| ![Manga](docs/gui-manga.png) | ![Downloads](docs/gui-downloads.png) |
-| **Manga** — downloaded chapters glow green | **Queue** — live overall + per-chapter progress |
-| ![Library](docs/gui-library.png) | ![Settings](docs/gui-settings.png) |
-| **Library** — everything you've downloaded | **Settings** — themes, accents, behavior |
-| ![Search](docs/gui-search.png) | ![Plum theme](docs/gui-theme-plum.png) |
-| **Search** — find manga with cover thumbnails | **Themes** — 6 pastel-dark bases + light |
+| ![Search](docs/gui-search.png) | ![Manga](docs/gui-manga.png) |
+| **Search** — every source at once; series you already have are dimmed, with the percentage on hover | **Series** — chapter picker, downloaded chapters marked |
+| ![Queue](docs/gui-queue.png) | ![Stats](docs/gui-insights.png) |
+| **Queue** — one collapsible tile per book, with a live rate sparkline and ETA | **Stats** — a year of activity, each day tinted by the sources it came from |
+| ![Library](docs/gui-library.png) | ![Tools](docs/gui-tools.png) |
+| **Library** — what you have, where it is, and whether it moved | **Tools** — cover rebuilder, disk usage, library health |
+| ![Settings](docs/gui-settings.png) | ![Light theme](docs/gui-light.png) |
+| **Settings** — sources, ranking, naming, background mode | **Themes** — six dark bases plus light |
 
 **GUI features**
 
