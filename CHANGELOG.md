@@ -7,6 +7,139 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.24 — The tray really keeps running, and a contribution calendar
+
+### Fixed — closing to the tray still killed the app
+
+The flag was set, the window hid, and the process died anyway.
+
+The tray icon runs on a **daemon** thread, and so does every download
+worker. Python kills daemon threads at interpreter exit, so the moment
+`webview.start()` returned there was nothing non-daemon left to hold the
+process open. Measured in a real subprocess:
+
+| | before | after |
+|---|---|---|
+| process lifetime after the window closes, downloads running | **0.06s** | held open |
+| Quit chosen from the tray | 0.06s | 1.2s (releases) |
+| queue empties while hidden | 0.06s | 0.7s (exits on its own) |
+| no tray installed | 0.06s | 0.2s (unchanged) |
+
+`run_gui()` now blocks the main thread in `TrayController.wait_for_quit()`
+once the GUI loop returns. It ends on Quit, and also when the queue drains,
+so a tray that silently failed to draw an icon cannot strand an invisible
+process.
+
+Three related tray bugs went with it:
+
+* **The setting was frozen at startup.** The close handler captured
+  `minimize_to_tray` once, so turning it off and closing still hid the
+  window. It is re-read on every close.
+* **The switches saved nothing.** `minimize_to_tray` and
+  `tray_notifications` were in the payload of the settings save handler but
+  their checkboxes were never in the list of ids that got a listener, so
+  flipping one on its own did nothing. Caught by a browser test that clicks
+  the real switch — the string-matching test I wrote first passed with the
+  bug reintroduced.
+* **The packaged exe had no tray at all.** pystray picks its backend through
+  a chain of `try/except` imports that PyInstaller cannot follow;
+  `MangaDL.spec` now names them.
+
+### Fixed — the page sat unstyled for up to 20 seconds on startup
+
+`index.html` loaded two render-blocking stylesheets from
+`fonts.googleapis.com` **before** its own `style.css`. A desktop app should
+never block first paint on a remote host it does not need.
+
+| font CDN | before | after |
+|---|---|---|
+| reachable | 77ms | 79ms |
+| slow (3s) | **timed out past 45s** | 94ms |
+| blackholed (10s) | **timed out past 45s** | 52ms |
+
+`style.css` is now first, and the font links are `media="print"` with an
+`onload` promotion, which fetches them without blocking. Because icons are
+ligatures and render as their literal names (`chevron_right`) until the
+font arrives, they are hidden until it loads — with a 1.2s timeout so an
+offline app is still usable.
+
+### Fixed — the bouncing search icon was clipped
+
+`.hero-icon` floats 7px upward forever inside `.hero-title`, which is
+`overflow: hidden` so the title can collapse when results appear. There was
+no headroom, so the top of the icon was sliced off. Sampled across one full
+5s bounce:
+
+| | worst headroom | clipped frames |
+|---|---|---|
+| before | **-6.44px** | 20 of 21 |
+| after | +2.76px | 0 of 21 |
+
+### Fixed — the queue ignored the theme
+
+`--panel-2` and `--edge-c` were used by the queue tiles, the cover picker
+and the tool paths but **were never defined anywhere**, so all four fell
+back to hardcoded literals (`#1b1b26`, `#2a2a38`). On a dark theme nobody
+noticed; on the light theme the queue was near-black slabs carrying
+near-black text — measured, title `rgb(28,29,31)` on background
+`rgb(27,27,38)`, a luminance difference of **0.03**. After: **0.887**.
+
+`.spark` was also declared twice: the stats bar chart claimed it
+(`display:flex; height:110px`) and the queue's inline SVG silently inherited
+it. The sparkline is now `.q-sparkline`.
+
+### Changed — the queue tab is one panel
+
+* The floating *"N downloads / Stop"* card that repeated the queue's totals
+  is merged into the queue card header.
+* The **Active chapters** card is gone: it listed exactly the same in-flight
+  chapters as the expanded tiles, so every chapter was on screen twice.
+* A single download now renders a tile. The card required two rows, so the
+  commonest case showed no tile at all.
+* Collapsed tiles gained a cover thumbnail, the source, and a live ETA.
+* Chapter rows update in place instead of being rebuilt every second, which
+  was restarting their entry animation and making the block flicker.
+
+### Added — advanced queue logging
+
+A switch in **Settings → Background**, mirrored on the Queue tab, that logs
+every engine event (per-page fetches, retries) instead of just milestones.
+Off by default; the line cap rises from 200 to 2000 when it is on.
+
+### Added — contribution calendar and source carousel
+
+**Recent activity** is now a GitHub-style grid: one square per day for 53
+weeks, whole weeks starting Sunday, empty days included.
+
+* Brightness scales with that day's chapters, bucketed against the busiest
+  day in the window so both light and heavy users get a readable spread.
+* Every source has a stable colour hashed from its id by golden-angle hue
+  rotation, so adding a site never renumbers anyone else's hue.
+* A day's square is the **weighted mix** of the colours of the sources that
+  contributed to it.
+* Hovering a day names each source as a fraction — *MangaDex 23/55*.
+* A carousel below it gives each source a card with its total, its share,
+  and a mini activity strip; hovering shows its chapters as a fraction of
+  the whole library.
+
+This required recording per-day-per-source statistics, which the app was not
+keeping. Days recorded before this release still count toward the totals and
+simply have no source breakdown — dropping real history to keep the new
+field tidy would misreport what you downloaded.
+
+Charts also label sources by display name now, instead of raw ids like
+`flamecomics` and `madara.toonily`.
+
+### Tests
+
+47 new tests. Every one was verified by reverting its fix and confirming it
+fails: **16 of 16 deliberate regressions were caught**. Two tests that
+initially passed for the wrong reason were rewritten — one matched a comment
+describing a removal rather than the removal itself, the other could not
+tell a bound listener from a mention in the saved payload.
+
+---
+
 ## v1.4.23 — Queue redesign, and a cross-book counter bug
 
 ### Fixed — "downloaded chapters" climbing on the wrong book

@@ -34,6 +34,19 @@ hiddenimports = [
     "webview.platforms.cocoa",      # macOS
     "webview.platforms.gtk",        # Linux (WebKitGTK)
     "webview.platforms.qt",         # Linux fallback
+    # System tray. pystray picks its backend at import time via a chain of
+    # try/except imports, which PyInstaller's static analysis cannot follow
+    # -- so without these the packaged exe silently had no tray at all and
+    # "minimise to tray" did nothing.
+    "pystray",
+    "pystray._win32",
+    "pystray._darwin",
+    "pystray._appindicator",
+    "pystray._gtk",
+    "pystray._xorg",
+    # The tray icon is drawn with Pillow at runtime.
+    "PIL.Image",
+    "PIL.ImageDraw",
     # stdlib/log bits PyInstaller sometimes misses
     "logging.handlers",
 ]

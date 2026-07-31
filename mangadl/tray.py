@@ -102,6 +102,8 @@ class TrayController:
         self._thread = None
         self._stop = threading.Event()
         self._last_active = None
+        #: Set once Quit has been chosen, so :meth:`wait` can return.
+        self._quit = threading.Event()
 
     # ------------------------------------------------------------ data
 
@@ -217,6 +219,7 @@ class TrayController:
         self.refresh()
 
     def _on_quit(self, _icon=None, _item=None):
+        self._quit.set()
         self.stop()
         self._call("quit_app")
 
@@ -316,8 +319,52 @@ class TrayController:
         except Exception:
             logger.debug("tray notification failed", exc_info=True)
 
+    # ------------------------------------------------- keeping alive
+
+    def quit_requested(self):
+        """Whether Quit has been chosen from the tray menu."""
+        return self._quit.is_set()
+
+    def wait_for_quit(self, poll=0.5, still_working=None):
+        """Block the *main thread* until Quit, or until work runs out.
+
+        Why this exists
+        ---------------
+        ``start()`` runs the icon on a **daemon** thread, and every worker
+        thread in the app is a daemon too. Python kills daemon threads at
+        interpreter exit, so the moment ``webview.start()`` returned the
+        whole process went with it -- measured directly: with a tray running
+        and downloads active, the child process exited in **0.06s** with
+        rc=0. "Minimise to tray" set the flag, hid the window, and the app
+        died anyway, which is exactly the reported symptom.
+
+        The window closing is a UI event; the *process* has to be held open
+        by something non-daemon, and only the main thread can do that after
+        the GUI loop returns.
+
+        ``still_working`` is an optional predicate. When given, the wait also
+        ends once it returns False, so a tray whose icon failed to appear
+        cannot strand a headless process forever -- it exits when the queue
+        drains rather than lingering invisibly.
+        """
+        while not self._quit.wait(poll):
+            if self.icon is None and not self._thread_alive():
+                return False            # the tray died; do not hang on it
+            if still_working is not None:
+                try:
+                    if not still_working():
+                        return False
+                except Exception:
+                    logger.debug("still_working check failed", exc_info=True)
+                    return False
+        return True
+
+    def _thread_alive(self):
+        return bool(self._thread is not None and self._thread.is_alive())
+
     def stop(self):
         self._stop.set()
+        self._quit.set()             # release anyone in wait_for_quit()
         if self.icon is not None:
             try:
                 self.icon.stop()

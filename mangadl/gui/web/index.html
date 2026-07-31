@@ -9,11 +9,55 @@
 <meta name="referrer" content="no-referrer">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>MangaDL</title>
+<!-- Our own stylesheet loads FIRST and from disk, so the app is never
+     unstyled while waiting on a font CDN.
+
+     It used to come last, after two render-blocking stylesheets from
+     fonts.googleapis.com. A desktop app must not block first paint on a
+     remote host it does not need: measured with the CDN reachable the page
+     styled in 0.04s, with it merely slow (3s) 6.0s, and with it blackholed
+     -- a firewall, a captive portal, no internet -- 20.0s of raw unstyled
+     HTML. That is the "CSS is delayed for a long time on startup" report.
+
+     The font links below are now non-blocking: media="print" makes the
+     browser fetch them at low priority without holding up rendering, and
+     the onload handler promotes them to "all" once they arrive. Text shows
+     immediately in the system fallback and swaps to Inter when ready. -->
+<link rel="stylesheet" href="style.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet" media="print" onload="this.media='all'">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0"
+      rel="stylesheet" media="print" onload="this.media='all'">
+<noscript>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0" rel="stylesheet">
+</noscript>
+<script>
+/* Icons are ligatures: until the Material Symbols font arrives, every icon
+   renders as its literal name ("chevron_right", "auto_stories"), which is
+   far uglier than a blank square and reflows the layout when it swaps.
+   Hide the glyphs until the font is ready -- but only ever briefly: the
+   timeout guarantees the UI is usable offline, where the font never loads
+   and the names are still better than nothing. */
+(function () {
+  var reveal = function () {
+    document.documentElement.classList.add("icons-ready");
+  };
+  var timer = setTimeout(reveal, 1200);
+  try {
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load("24px 'Material Symbols Rounded'")
+        .then(function () { clearTimeout(timer); reveal(); })
+        .catch(function () { clearTimeout(timer); reveal(); });
+    } else {
+      clearTimeout(timer);
+      reveal();
+    }
+  } catch (e) { clearTimeout(timer); reveal(); }
+})();
+</script>
 </head>
 <body>
 
@@ -369,50 +413,60 @@
       <p class="hint">Pick a manga from Search to get started</p>
     </div>
 
+    <!-- The queue card owns the whole picture: the header carries the
+         overall state and the Stop button, then the per-manga tiles.
+         These used to be two separate cards -- a queue card of bare tiles,
+         and a floating "N downloads / Stop" card underneath repeating the
+         same totals -- which is what made the tab look unintegrated. -->
     <div class="card" id="cartCard">
       <div class="card-title">
         <span class="material-symbols-rounded">shopping_cart</span>
         Download queue
         <span class="cart-count" id="cartCount">0</span>
+        <span class="flex-spacer"></span>
+        <button class="btn btn-tonal btn-sm hidden" id="openFolderBtn">
+          <span class="material-symbols-rounded">folder_open</span> Open folder
+        </button>
+        <button class="btn btn-danger btn-sm hidden" id="stopBtn">
+          <span class="material-symbols-rounded">stop_circle</span> Stop
+        </button>
         <button class="btn btn-tonal btn-sm cart-clear" id="cartClearBtn">
           <span class="material-symbols-rounded">clear_all</span> Clear queue
         </button>
       </div>
+
+      <div class="q-overall hidden" id="dlActive">
+        <div class="q-overall-head">
+          <span class="q-overall-title" id="dlTitle">–</span>
+          <span class="q-overall-status hint" id="dlStatus">Preparing…</span>
+          <span class="flex-spacer"></span>
+          <span class="q-overall-rate" id="dlRate"></span>
+          <span class="overall-text" id="overallText">0 / 0</span>
+        </div>
+        <div class="overall-bar"><div class="overall-fill" id="overallFill"></div></div>
+      </div>
+
       <div class="cart-list" id="cartList"></div>
     </div>
 
-    <div class="dl-active hidden" id="dlActive">
-      <div class="card dl-header-card">
-        <div class="dl-header">
-          <div>
-            <h2 id="dlTitle">–</h2>
-            <p class="hint" id="dlStatus">Preparing…</p>
-          </div>
-          <div class="dl-actions">
-            <button class="btn btn-tonal hidden" id="openFolderBtn">
-              <span class="material-symbols-rounded">folder_open</span> Open folder
-            </button>
-            <button class="btn btn-danger" id="stopBtn">
-              <span class="material-symbols-rounded">stop_circle</span> Stop
-            </button>
-          </div>
-        </div>
-        <div class="overall">
-          <div class="overall-bar"><div class="overall-fill" id="overallFill"></div></div>
-          <span class="overall-text" id="overallText">0 / 0</span>
-        </div>
-      </div>
+    <div>
 
-      <div class="card">
-        <div class="card-title">
-          <span class="material-symbols-rounded">sync</span> Active chapters
-        </div>
-        <div class="active-chapters" id="activeChapters"></div>
-      </div>
+      <!-- The "Active chapters" card that used to sit here listed exactly
+           the same in-flight chapters as the expanded queue tiles above,
+           so every downloading chapter was on screen twice. The tiles own
+           that now. #activeChapters stays as a hidden stub because the
+           download event handlers still write per-chapter progress rows
+           into it; removing the node outright would throw on every
+           chapter_start. -->
+      <div class="active-chapters hidden" id="activeChapters" aria-hidden="true"></div>
 
-      <div class="card">
+      <div class="card" id="dlLogCard">
         <div class="card-title">
           <span class="material-symbols-rounded">receipt_long</span> Activity
+          <span class="flex-spacer"></span>
+          <label class="inline-check" title="Show every engine event, not just milestones">
+            <input type="checkbox" id="logAdvanced"> Advanced
+          </label>
         </div>
         <div class="log" id="dlLog"></div>
       </div>
@@ -511,13 +565,60 @@
 
     <div class="stat-grid" id="insightTiles"></div>
 
+    <!-- Recent activity as a contribution calendar. One square per day for
+         the last 53 weeks; brightness grows with that day's chapters and
+         the hue is mixed from the sources they came from. -->
+    <div class="card panel">
+      <div class="card-title">
+        <span class="material-symbols-rounded">calendar_month</span> Recent activity
+        <span class="flex-spacer"></span>
+        <span class="hint" id="calSummary"></span>
+      </div>
+      <div class="cal-wrap">
+        <div class="cal-scroll">
+          <div class="cal-months" id="calMonths"></div>
+          <div class="cal-grid" id="calGrid"></div>
+        </div>
+        <div class="cal-legend">
+          <span id="calRange"></span>
+          <span class="cal-spacer"></span>
+          <span>Less</span>
+          <span class="cal-day lvl-0"></span>
+          <span class="cal-day" style="--cal-color: color-mix(in srgb, var(--accent) 25%, var(--surface-2))"></span>
+          <span class="cal-day" style="--cal-color: color-mix(in srgb, var(--accent) 50%, var(--surface-2))"></span>
+          <span class="cal-day" style="--cal-color: color-mix(in srgb, var(--accent) 75%, var(--surface-2))"></span>
+          <span class="cal-day" style="--cal-color: var(--accent)"></span>
+          <span>More</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Per-source carousel: each site has a colour, and those colours are
+         what tint the calendar squares above. -->
+    <div class="card panel">
+      <div class="card-title">
+        <span class="material-symbols-rounded">lan</span> By source
+        <span class="flex-spacer"></span>
+        <span class="hint" id="srcSummary"></span>
+      </div>
+      <div class="src-carousel">
+        <button class="src-nav" id="srcPrev" aria-label="Scroll left">
+          <span class="material-symbols-rounded">chevron_left</span>
+        </button>
+        <div class="src-track" id="srcTrack"></div>
+        <button class="src-nav" id="srcNext" aria-label="Scroll right">
+          <span class="material-symbols-rounded">chevron_right</span>
+        </button>
+      </div>
+    </div>
+
     <div class="panel-row">
       <div class="card panel">
-        <div class="card-title"><span class="material-symbols-rounded">lan</span> By source</div>
+        <div class="card-title"><span class="material-symbols-rounded">bar_chart</span> Chapters per source</div>
         <div class="bar-chart" id="sourceChart"></div>
       </div>
       <div class="card panel">
-        <div class="card-title"><span class="material-symbols-rounded">calendar_month</span> Recent activity</div>
+        <div class="card-title"><span class="material-symbols-rounded">show_chart</span> Last 14 days</div>
         <div class="spark" id="activityChart"></div>
       </div>
     </div>
@@ -711,6 +812,13 @@
       <div class="setting-row">
         <div><label>Tray notifications</label><p class="hint">Tell me when a download finishes</p></div>
         <label class="switch"><input type="checkbox" id="setTrayNotify"><span></span></label>
+      </div>
+      <div class="setting-row">
+        <div><label>Advanced queue log</label>
+          <p class="hint">Log every engine event — page fetches, retries and
+            packaging steps — instead of just chapter milestones. Useful when
+            reporting a problem; noisy otherwise.</p></div>
+        <label class="switch"><input type="checkbox" id="setLogAdvanced"><span></span></label>
       </div>
     </div>
 

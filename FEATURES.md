@@ -168,6 +168,34 @@ A complete feature reference for MangaDL.
 122. A source that blocks measuring is not penalised for it
 123. `mangadl covers` uses the same rules and reports the chosen resolution
 
+## Tray, startup and stats (v1.4.24)
+
+548. Closing to the tray keeps the process alive, so downloads really continue
+549. Tray Quit and an empty queue both release the app; it never hangs invisibly
+550. Turning "minimise to tray" off takes effect immediately, no restart
+551. The tray switches save when you flip them (they were never bound)
+552. Packaged builds bundle pystray, so the tray works in the exe
+553. The stylesheet loads before the font CDN: no unstyled page on a slow link
+554. Icons stay hidden until their font arrives instead of showing raw names
+555. The bouncing search icon is no longer clipped at the top of its bounce
+556. Queue tiles follow the theme (--panel-2/--edge-c were never defined)
+557. Queue sparkline no longer inherits the stats chart's flex layout
+558. Overall progress and Stop live inside the queue card, not a floating one
+559. A single download shows a tile (the card used to need two rows)
+560. Collapsed tiles carry a cover thumbnail, source and live ETA
+561. In-flight chapters are listed once, inside the expanded tile
+562. Chapter rows update in place instead of being rebuilt every second
+563. Advanced queue logging records every engine event, off by default
+564. Recent activity is a GitHub-style contribution calendar, 53 weeks
+565. Calendar squares are brighter the more you downloaded that day
+566. Each source has a stable colour; day squares mix their sources' colours
+567. Day tooltips name each source as a fraction of that day's chapters
+568. Source carousel with per-source totals, share and a mini activity strip
+569. Carousel tooltips show a source's chapters as a fraction of the library
+570. Per-day per-source statistics are recorded for the calendar
+571. Charts label sources by display name, not raw ids like `madara.toonily`
+572. Calendar and carousel honour the square-corners and reduced-motion settings
+
 ## Queue redesign and animations (v1.4.23)
 
 124. Download queue **grouped by manga**, one tile per book

@@ -4,6 +4,7 @@
   /* Radius scale. Corner rounding had drifted to 13 different ad-hoc values
      (6, 7, 8, 9, 10, 12, 13, 14px...), which read as inconsistent across
      settings. Everything now snaps to these four steps. */
+  --radius-xs: 3px;    /* contribution squares and legend dots */
   --radius-sm: 8px;    /* chips, small inputs, list rows */
   --radius-md: 12px;   /* buttons, fields, tiles */
   --radius-lg: 16px;   /* cards, panels */
@@ -86,6 +87,17 @@
   --danger-soft: color-mix(in srgb, #f38ba8 16%, var(--bg));
   --ok: #a6e3a1;
   --ok-soft: color-mix(in srgb, #a6e3a1 14%, var(--surface));
+
+  /* --panel-2 and --edge-c were used by the queue tiles, the cover picker
+     and the tool paths but were never DEFINED anywhere, so all four fell
+     back to their hardcoded literals -- #1b1b26 and #2a2a38. On a dark
+     theme nobody noticed; on the light theme the queue rendered as near
+     black slabs with near black text on them (measured: tile background
+     rgb(27,27,38) behind title text rgb(28,29,31) -- effectively
+     invisible), which is the queue in the screenshot. They are now real
+     theme tokens derived from the surface colours. */
+  --panel-2: var(--surface-2);
+  --edge-c: var(--border);
 }
 [data-theme="light"] {
   --danger: #d32f2f; --ok: #2e7d32;
@@ -110,9 +122,21 @@ body {
 }
 
 .material-symbols-rounded {
+  font-family: 'Material Symbols Rounded';
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
   font-size: 22px;
+  line-height: 1;
   user-select: none;
+  /* Reserve the glyph box so promoting the font from print->all does not
+     reflow the whole UI. */
+  min-width: 1em;
+}
+
+/* Icon ligatures render as their literal names until the font loads.
+   html.icons-ready is set by the inline script in index.html, either when
+   the font resolves or after a short timeout, whichever comes first. */
+html:not(.icons-ready) .material-symbols-rounded {
+  visibility: hidden;
 }
 
 .hidden { display: none !important; }
@@ -321,7 +345,15 @@ body {
   transform: none;
   transition: max-height .45s cubic-bezier(.5,0,.2,1), opacity .3s ease,
               transform .45s cubic-bezier(.5,0,.2,1), margin .45s ease;
+  /* This clips deliberately -- collapsing to max-height:0 is how the title
+     disappears once results show. But the icon inside floats 7px upward
+     forever, and with no headroom the top of it was sliced off on every
+     bounce (measured: icon top sat 1.4px ABOVE the clip edge at rest, and
+     8.4px above at the peak). Padding gives the animation somewhere to go;
+     the negative margin keeps the layout exactly where it was. */
   overflow: hidden;
+  padding-top: 10px;
+  margin-top: -10px;
   margin-bottom: 30px;
 }
 /* Title disappears when results are showing */
@@ -2165,6 +2197,7 @@ body.rail-open .rail-toggle .material-symbols-rounded { transform: rotate(180deg
    the switch knob) alone so controls stay recognisable. */
 
 [data-corners="square"] {
+  --radius-xs: 0px;
   --radius-sm: 0px;
   --radius-md: 0px;
   --radius-lg: 0px;
@@ -2191,6 +2224,22 @@ body.rail-open .rail-toggle .material-symbols-rounded { transform: rotate(180deg
 [data-corners="square"] .b-track,
 [data-corners="square"] .b-fill,
 [data-corners="square"] .sp-bar,
+/* The queue tiles and the contribution calendar hardcode their own radii
+   too, so the corner setting has to reach them explicitly. */
+[data-corners="square"] .q-pill,
+[data-corners="square"] .q-chip,
+[data-corners="square"] .q-bar,
+[data-corners="square"] .q-bar i,
+[data-corners="square"] .q-spark,
+[data-corners="square"] .q-thumb,
+[data-corners="square"] .q-cover,
+[data-corners="square"] .q-chapter,
+[data-corners="square"] .src-swatch,
+[data-corners="square"] .src-card-bar,
+[data-corners="square"] .src-card-bar i,
+[data-corners="square"] .src-mini i,
+[data-corners="square"] .src-nav,
+[data-corners="square"] .cal-tip .tip-dot,
 /* These hardcode 999px, so the radius variables above could never reach
    them and the setting appeared to do nothing to the search box or any
    progress bar -- the two most visible rounded shapes in the app. */
@@ -2589,132 +2638,274 @@ body.dragging-bookmark .folder-tile { border-style: dashed; }
   max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-/* =============================================== grouped download queue */
+/* =============================================== grouped download queue
+
+   One tile per manga, collapsed by default. Collapsed shows a rate
+   sparkline and a chapter fraction; expanded adds the cover, source, ETA
+   and the chapters in flight.
+
+   These used to paint themselves with --panel-2 / --edge-c, which were
+   never defined -- so every tile fell back to a hardcoded near-black and
+   the whole queue ignored the theme. On the light theme that meant black
+   slabs carrying black text. Everything below uses real theme tokens. */
+
+.cart-list { display: flex; flex-direction: column; gap: 10px; }
+
+/* The overall progress strip, now inside the queue card rather than a
+   separate floating card that repeated the same totals underneath it. */
+.q-overall {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 12px 14px; margin-bottom: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface-2));
+  animation: q-in .26s ease both;
+}
+.q-overall.hidden { display: none; }
+.q-overall-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.q-overall-title { font-weight: 700; font-size: 15px; }
+.q-overall-status { font-size: 12.5px; }
+.q-overall-rate {
+  font-size: 12px; font-variant-numeric: tabular-nums; color: var(--text-2);
+}
+.q-overall .overall-bar {
+  height: 7px; border-radius: 999px; background: var(--bg);
+  border: 1px solid var(--border); overflow: hidden;
+}
+.q-overall .overall-fill {
+  height: 100%; border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width .45s cubic-bezier(.4, 0, .2, 1);
+}
+.q-overall .overall-text {
+  font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums;
+}
 
 .q-tile {
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  background: var(--panel-2, #1b1b26);
+  background: var(--surface);
   overflow: hidden;
   transition: border-color .18s ease, box-shadow .18s ease,
-              transform .18s ease;
-  animation: q-in .22s ease both;
+              background .18s ease, transform .18s ease;
+  animation: q-in .26s cubic-bezier(.2, .8, .3, 1) both;
 }
-.q-tile + .q-tile { margin-top: 8px; }
-.q-tile:hover { border-color: var(--accent); }
-.q-tile.running { border-color: color-mix(in srgb, var(--accent) 55%, var(--border)); }
-.q-tile.failed  { border-color: color-mix(in srgb, var(--danger, #d1242f) 55%, var(--border)); }
+.q-tile:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.q-tile.open {
+  background: var(--surface-2);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}
+.q-tile.running {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+}
+.q-tile.failed {
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+}
+
+/* A hairline of accent down the left edge marks the tile that is actually
+   moving, so a long queue can be scanned without reading any numbers. */
+.q-tile.running .q-head { border-left: 3px solid var(--accent); }
+.q-tile.failed  .q-head { border-left: 3px solid var(--danger); }
+.q-tile .q-head { border-left: 3px solid transparent; }
 
 @keyframes q-in {
-  from { opacity: 0; transform: translateY(-4px); }
+  from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: none; }
 }
 
 .q-head {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 10px 12px; cursor: pointer; text-align: left;
-  background: none; border: 0; color: inherit; font: inherit;
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 11px 14px; cursor: pointer; text-align: left;
+  background: none; border: 0; color: var(--text); font: inherit;
   transition: background .15s ease;
 }
-.q-head:hover { background: color-mix(in srgb, var(--accent) 8%, transparent); }
+.q-head:hover { background: color-mix(in srgb, var(--accent) 7%, transparent); }
 .q-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
 .q-chev {
-  font-size: 20px; opacity: .6; flex: none;
-  transition: transform .22s cubic-bezier(.4, 0, .2, 1);
+  font-size: 20px; color: var(--text-2); flex: none;
+  transition: transform .24s cubic-bezier(.4, 0, .2, 1), color .15s ease;
 }
-.q-tile.open .q-chev { transform: rotate(90deg); }
+.q-tile.open .q-chev { transform: rotate(90deg); color: var(--accent); }
 
+.q-thumb {
+  width: 30px; height: 42px; flex: none; object-fit: cover;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+.q-thumb-blank {
+  display: grid; place-items: center; color: var(--text-2);
+}
+.q-thumb-blank .material-symbols-rounded { font-size: 17px; }
+
+.q-headings { flex: 1 1 auto; min-width: 0; display: grid; gap: 1px; }
 .q-name {
-  flex: 1 1 auto; min-width: 0; font-weight: 600; font-size: 14px;
+  font-weight: 600; font-size: 14px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.q-sub {
+  font-size: 11.5px; color: var(--text-2);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
-.q-spark { flex: none; width: 88px; height: 22px; display: block; }
-.spark { width: 100%; height: 100%; display: block; overflow: visible; }
+.q-spark {
+  flex: none; width: 84px; height: 24px; display: block;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+/* Deliberately NOT called .spark: that class already existed for the stats
+   bar chart (display:flex, height:110px, gap:4px) and silently applied to
+   this SVG, which is why the collapsed tile drew a stretched graph. */
+.q-sparkline { width: 100%; height: 100%; display: block; overflow: hidden; }
 .spark-line {
-  fill: none; stroke: var(--accent); stroke-width: 1.5;
+  fill: none; stroke: var(--accent); stroke-width: 1.6;
   stroke-linejoin: round; stroke-linecap: round;
 }
-.spark-area { fill: color-mix(in srgb, var(--accent) 18%, transparent); stroke: none; }
+.spark-area { fill: color-mix(in srgb, var(--accent) 20%, transparent); stroke: none; }
 
 .q-rate {
   flex: none; font-size: 11.5px; font-variant-numeric: tabular-nums;
-  color: var(--text-2); min-width: 62px; text-align: right;
+  color: var(--text-2); min-width: 64px; text-align: right;
 }
 
 .q-pill {
-  flex: none; font-size: 11.5px; font-weight: 600;
+  flex: none; font-size: 11.5px; font-weight: 700;
   font-variant-numeric: tabular-nums;
-  padding: 3px 9px; border-radius: 999px;
-  background: var(--surface); color: var(--text-2);
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--surface-2); color: var(--text-2);
   border: 1px solid var(--border);
+  transition: background .2s ease, color .2s ease;
 }
-.q-pill.running { background: var(--accent); color: #fff; border-color: transparent; }
-.q-pill.failed  { background: var(--danger, #d1242f); color: #fff; border-color: transparent; }
-.q-pill.done    { background: var(--ok, #1a7f37); color: #fff; border-color: transparent; }
-.q-pill.bump { animation: q-bump .3s ease; }
+.q-pill.running { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+.q-pill.failed  { background: var(--danger); color: #fff; border-color: transparent; }
+.q-pill.done    { background: var(--ok); color: var(--accent-text); border-color: transparent; }
+.q-pill.bump { animation: q-bump .34s cubic-bezier(.2, .8, .3, 1); }
 @keyframes q-bump {
   0%   { transform: scale(1); }
-  40%  { transform: scale(1.16); }
+  35%  { transform: scale(1.18); }
   100% { transform: scale(1); }
 }
 
-/* Collapsed by default; grid-template-rows animates to auto-height cleanly. */
+/* Collapsed by default; grid-template-rows animates to auto height. */
 .q-body {
   display: grid; grid-template-rows: 0fr;
-  transition: grid-template-rows .24s cubic-bezier(.4, 0, .2, 1);
+  transition: grid-template-rows .28s cubic-bezier(.4, 0, .2, 1);
 }
 .q-tile.open .q-body { grid-template-rows: 1fr; }
 .q-body-inner {
-  overflow: hidden; display: flex; gap: 14px;
-  padding: 0 12px; opacity: 0;
-  transition: padding .24s ease, opacity .2s ease .04s;
+  overflow: hidden; display: flex; gap: 16px;
+  padding: 0 14px; opacity: 0;
+  border-top: 1px solid transparent;
+  transition: padding .28s ease, opacity .22s ease .05s,
+              border-color .28s ease;
 }
-.q-tile.open .q-body-inner { padding: 2px 12px 14px; opacity: 1; }
+.q-tile.open .q-body-inner {
+  padding: 14px; opacity: 1; border-top-color: var(--border);
+}
 
 .q-cover {
-  width: 84px; height: 118px; flex: none; object-fit: cover;
-  border-radius: var(--radius-sm); background: var(--surface);
+  width: 104px; height: 148px; flex: none; object-fit: cover;
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
 }
 .q-cover-blank { display: grid; place-items: center; color: var(--text-2); }
-.q-detail { flex: 1 1 auto; min-width: 0; }
+.q-cover-blank .material-symbols-rounded { font-size: 34px; }
 
-.q-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.q-detail { flex: 1 1 auto; min-width: 0; display: flex;
+            flex-direction: column; gap: 10px; }
+
+.q-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
 .q-chip {
-  font-size: 11px; padding: 2px 8px; border-radius: 999px;
-  background: var(--surface); color: var(--text-2); border: 1px solid var(--border);
+  font-size: 11px; padding: 3px 9px; border-radius: 999px;
+  background: var(--surface); color: var(--text-2);
+  border: 1px solid var(--border);
+}
+.q-tile.open .q-chip { background: var(--bg); }
+.q-chip.src {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .q-stats {
-  display: grid; grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: 8px 14px; margin-bottom: 10px;
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 10px 16px;
 }
-.q-stats > div { display: flex; flex-direction: column; gap: 1px; }
-.q-k { font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--text-2); }
-.q-v { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.q-stats > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.q-k {
+  font-size: 10px; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--text-2); font-weight: 600;
+}
+.q-v {
+  font-size: 14px; font-weight: 600; color: var(--text);
+  font-variant-numeric: tabular-nums;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
 
 .q-bar {
-  height: 5px; border-radius: 999px; background: var(--surface);
-  overflow: hidden; margin-bottom: 10px;
+  height: 6px; border-radius: 999px; background: var(--surface);
+  border: 1px solid var(--border); overflow: hidden;
 }
+.q-tile.open .q-bar { background: var(--bg); }
 .q-bar i {
   display: block; height: 100%; border-radius: inherit;
-  background: var(--accent); transition: width .4s cubic-bezier(.4, 0, .2, 1);
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  transition: width .45s cubic-bezier(.4, 0, .2, 1);
 }
 
-.q-now { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+/* Chapters currently downloading, inside the expanded tile. This is the
+   only place they are listed: the separate "Active chapters" card that used
+   to sit under the queue said the same thing twice. */
+.q-now { display: flex; flex-direction: column; gap: 6px; }
+.q-now-list { display: flex; flex-direction: column; gap: 5px; }
+
 .q-chapter {
-  position: relative; font-size: 11.5px; padding: 3px 9px;
-  border-radius: 999px; background: var(--surface);
-  border: 1px solid var(--border); overflow: hidden;
-  animation: q-in .2s ease both;
+  position: relative; display: flex; align-items: center; gap: 10px;
+  font-size: 12px; padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  overflow: hidden;
+  animation: q-in .22s ease both;
 }
+.q-tile.open .q-chapter { background: var(--bg); }
 .q-chapter i {
   position: absolute; inset: 0 auto 0 0; display: block;
-  background: color-mix(in srgb, var(--accent) 24%, transparent);
-  transition: width .3s ease; z-index: 0;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  transition: width .35s ease; z-index: 0;
 }
+.q-chapter .q-ch-name {
+  position: relative; z-index: 1; flex: 1 1 auto; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  color: var(--text);
+}
+.q-chapter .q-ch-count {
+  position: relative; z-index: 1; flex: none;
+  font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 11.5px;
+}
+
+.q-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+.q-empty {
+  padding: 26px 14px; text-align: center; color: var(--text-2);
+  font-size: 13px;
+}
+
+/* An indeterminate shimmer while a job is starting and has no numbers yet,
+   so "nothing is happening" and "waiting for the server" look different. */
+.q-tile.starting .q-pill::after {
+  content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent,
+              color-mix(in srgb, var(--accent) 25%, transparent), transparent);
+  animation: shimmer 1.4s linear infinite;
+}
+.q-tile.starting .q-pill { position: relative; overflow: hidden; }
 
 /* ------------------------------------------------------ misc animations */
 
@@ -2742,11 +2933,173 @@ body.dragging-bookmark .folder-tile { border-style: dashed; }
   max-width: 60ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 
+/* ============================== contribution calendar (GitHub-style dots)
+
+   Recent activity, one square per day for the last 53 weeks. Brightness
+   grows with the number of chapters downloaded that day; the hue is mixed
+   from the sources those chapters came from, so a year of downloading
+   reads as a colour history of which sites you actually use. */
+
+.cal-wrap { display: flex; flex-direction: column; gap: 10px; }
+
+.cal-scroll {
+  overflow-x: auto; overflow-y: hidden; padding-bottom: 4px;
+  scrollbar-width: thin;
+}
+
+.cal-grid {
+  display: grid;
+  grid-auto-flow: column;               /* one column per week */
+  grid-template-rows: repeat(7, 1fr);
+  gap: 3px;
+  width: max-content;
+}
+
+.cal-day {
+  width: 12px; height: 12px;
+  border-radius: var(--radius-xs);
+  background: var(--cal-color, var(--surface-2));
+  border: 1px solid color-mix(in srgb, var(--text) 6%, transparent);
+  cursor: default;
+  transition: transform .14s cubic-bezier(.2, .8, .3, 1),
+              box-shadow .14s ease, outline-color .14s ease;
+  outline: 2px solid transparent; outline-offset: 1px;
+  animation: cal-pop .3s ease both;
+  animation-delay: var(--cal-delay, 0s);
+}
+.cal-day:hover {
+  transform: scale(1.42);
+  outline-color: var(--accent);
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--accent) 35%, transparent);
+  z-index: 2;
+}
+/* An empty day is a flat surface tint, never a coloured one -- a source
+   colour on a day with no downloads would be a lie. */
+.cal-day.lvl-0 { background: var(--surface-2); }
+
+@keyframes cal-pop {
+  from { opacity: 0; transform: scale(.4); }
+  to   { opacity: 1; transform: none; }
+}
+
+/* The corner setting reaches these too. */
+[data-corners="square"] .cal-day { border-radius: 0; }
+
+.cal-legend {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 11.5px; color: var(--text-2);
+}
+.cal-legend .cal-day { animation: none; cursor: default; }
+.cal-legend .cal-day:hover { transform: none; outline-color: transparent; box-shadow: none; }
+.cal-spacer { flex: 1; }
+
+.cal-months {
+  display: grid; grid-auto-flow: column; gap: 3px;
+  width: max-content; font-size: 10.5px; color: var(--text-2);
+  height: 14px;
+}
+.cal-month { grid-row: 1; white-space: nowrap; }
+
+/* --------------------------------------------------- source carousel */
+
+.src-carousel { position: relative; display: flex; align-items: center; gap: 8px; }
+
+.src-track {
+  display: flex; gap: 10px; overflow-x: auto; scroll-behavior: smooth;
+  scroll-snap-type: x mandatory; padding: 4px 2px 10px;
+  flex: 1 1 auto; scrollbar-width: thin;
+}
+
+.src-card {
+  flex: 0 0 auto; width: 190px; scroll-snap-align: start;
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--surface); padding: 12px;
+  display: flex; flex-direction: column; gap: 8px;
+  transition: transform .18s cubic-bezier(.2, .8, .3, 1),
+              border-color .18s ease, box-shadow .18s ease;
+  animation: q-in .3s ease both;
+}
+.src-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--src-color, var(--accent));
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--src-color, var(--accent)) 22%, transparent);
+}
+
+.src-card-head { display: flex; align-items: center; gap: 8px; }
+.src-swatch {
+  width: 12px; height: 12px; border-radius: var(--radius-xs); flex: none;
+  background: var(--src-color, var(--accent));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--src-color, var(--accent)) 20%, transparent);
+}
+.src-card-name {
+  font-weight: 600; font-size: 13px; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.src-card-value { font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.src-card-sub { font-size: 11.5px; color: var(--text-2); }
+
+.src-card-bar {
+  height: 5px; border-radius: 999px; background: var(--surface-2);
+  overflow: hidden;
+}
+.src-card-bar i {
+  display: block; height: 100%; border-radius: inherit;
+  background: var(--src-color, var(--accent));
+  transition: width .5s cubic-bezier(.4, 0, .2, 1);
+}
+
+.src-nav {
+  flex: none; width: 30px; height: 30px; border-radius: 50%;
+  display: grid; place-items: center; cursor: pointer;
+  background: var(--surface); color: var(--text);
+  border: 1px solid var(--border);
+  transition: background .15s ease, transform .12s ease, opacity .15s ease;
+}
+.src-nav:hover { background: var(--accent-soft); border-color: var(--accent); }
+.src-nav:active { transform: scale(.92); }
+.src-nav:disabled { opacity: .35; cursor: default; }
+.src-nav .material-symbols-rounded { font-size: 18px; }
+
+/* Mini per-source contribution rows inside the carousel card. */
+.src-mini {
+  display: grid; grid-auto-flow: column; grid-template-rows: repeat(7, 1fr);
+  gap: 2px; width: max-content;
+}
+.src-mini i {
+  width: 5px; height: 5px; border-radius: var(--radius-xs); display: block;
+  background: var(--src-color, var(--accent));
+}
+
+/* --------------------------------------------------------- tooltip */
+
+.cal-tip {
+  position: fixed; z-index: 60; pointer-events: none;
+  max-width: 260px; padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2); color: var(--text);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow);
+  font-size: 12px; line-height: 1.45;
+  opacity: 0; transform: translateY(4px);
+  transition: opacity .14s ease, transform .14s ease;
+}
+.cal-tip.show { opacity: 1; transform: none; }
+.cal-tip b { font-weight: 700; }
+.cal-tip .tip-row { display: flex; align-items: center; gap: 6px; }
+.cal-tip .tip-dot {
+  width: 8px; height: 8px; border-radius: var(--radius-xs); flex: none;
+  background: var(--tip-color, var(--accent));
+}
+.cal-tip .tip-muted { color: var(--text-2); }
+
 @media (prefers-reduced-motion: reduce) {
   /* Honour the OS setting: motion is decoration, never the only signal. */
   .q-tile, .q-body, .q-body-inner, .q-chev, .q-pill, .q-bar i,
-  .toast, .card, .btn, .q-chapter, .rank-row, .cover-pick, .src {
+  .toast, .card, .btn, .q-chapter, .rank-row, .cover-pick, .src,
+  .cal-day, .src-card, .src-card-bar i, .cal-tip, .q-spark, .q-thumb {
     animation: none !important;
     transition: none !important;
   }
+  .cal-day:hover { transform: none; }
+  .src-track { scroll-behavior: auto; }
 }

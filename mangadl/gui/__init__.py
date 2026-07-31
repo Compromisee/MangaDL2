@@ -62,6 +62,7 @@ DEFAULT_SETTINGS = {
     "max_concurrent_jobs": 2,       # manga downloading at the same time
     "minimize_to_tray": False,      # closing the window keeps downloads going
     "tray_notifications": True,     # notify when a download finishes
+    "queue_log_advanced": False,    # verbose per-page queue log
     "columns": 0,                   # result grid columns, 0 = fit the window
     "advanced_info": False,         # extra metadata on the manga page
     "confirm_delete": True,
@@ -388,6 +389,52 @@ class Api(metaclass=_SafeApiMeta):
 
     def get_insights(self):
         return {"ok": True, "insights": features.library_insights()}
+
+    def get_calendar(self, weeks: int = None):
+        """Contribution-graph data: one entry per day, with its sources.
+
+        Source display names travel with it so the UI does not have to keep
+        its own copy of the registry -- an id like ``madara.toonily`` is not
+        something to put in a tooltip.
+        """
+        try:
+            data = features.stat_calendar(
+                weeks or features.CALENDAR_WEEKS)
+            names = {}
+            for source_id in data.get("sources", {}):
+                try:
+                    names[source_id] = self._source_name(source_id)
+                except Exception:
+                    names[source_id] = source_id
+            data["names"] = names
+            return {"ok": True, "calendar": data}
+        except Exception as e:
+            logger.debug("calendar failed", exc_info=True)
+            return {"ok": False, "error": str(e), "calendar": None}
+
+    def _source_name(self, source_id: str) -> str:
+        """Human label for a source id, including aggregate members.
+
+        Aggregate members carry a namespaced id ("madara.toonily") and are
+        not in the registry -- only their parent is. MEMBERS is a tuple of
+        source *classes*, so it is searched by id rather than indexed.
+        """
+        if not source_id or source_id == "?":
+            return "Unknown"
+        cls = SOURCES.get(source_id)
+        if cls is not None:
+            return getattr(cls, "name", source_id)
+
+        if "." in source_id:
+            parent_id, member_id = source_id.split(".", 1)
+            if parent_id == "madara":
+                parent_id = "madaranet"
+            parent = SOURCES.get(parent_id)
+            for member in (getattr(parent, "MEMBERS", None) or ()):
+                if getattr(member, "id", None) == source_id:
+                    return getattr(member, "name", source_id)
+            return member_id.replace("-", " ").replace("_", " ").title()
+        return source_id
 
     def get_collections(self):
         return {"ok": True, "collections": features.get_collections()}
@@ -1800,10 +1847,25 @@ def _install_tray(api, window):
     def _on_closing():
         if getattr(api, "_really_quitting", False):
             return True                      # let it close for real
+        # The toggle takes effect immediately: turning "minimise to tray"
+        # off and closing the window used to still hide it, because this
+        # handler captured the setting once at startup.
+        try:
+            if not load_settings().get("minimize_to_tray"):
+                api._really_quitting = True
+                return True
+        except Exception:
+            logger.debug("could not re-read the tray setting", exc_info=True)
         try:
             window.hide()
         except Exception:
+            # Hiding failed, so the window is about to close for real. Let
+            # it -- but mark the app as quitting first, otherwise the main
+            # thread would sit in wait_for_quit() holding an invisible
+            # process open with no window and no way to reach it.
             logger.debug("window.hide failed", exc_info=True)
+            api._really_quitting = True
+            controller.stop()
             return True
         controller.notify("Still downloading in the background.")
         return False                         # veto the close
@@ -1814,6 +1876,44 @@ def _install_tray(api, window):
         logger.debug("closing event unavailable; tray hide disabled",
                      exc_info=True)
     return controller
+
+
+def _hold_for_tray(api, tray):
+    """Keep the process alive after the window closes, while the tray lives.
+
+    Only called once ``webview.start()`` has returned. Returns immediately
+    unless a tray is actually running and the user has not quit, so the
+    no-tray path is unchanged.
+    """
+    if tray is None:
+        return
+    if getattr(api, "_really_quitting", False) or tray.quit_requested():
+        return
+
+    def still_working():
+        """Do not hold a *hidden* app open once there is nothing left to do.
+
+        Without this a tray that silently failed to draw an icon would leave
+        an invisible process running with no way to reach it. With downloads
+        still going the app stays up, which is the whole point.
+        """
+        try:
+            progress = api.get_progress() or {}
+        except Exception:
+            return False
+        return bool(progress.get("active") or progress.get("queued"))
+
+    logger.info("Window closed; MangaDL is still running in the system tray.")
+    try:
+        tray.wait_for_quit(still_working=still_working)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        try:
+            api.shutdown()
+        except Exception:
+            logger.debug("shutdown after tray wait failed", exc_info=True)
+        tray.stop()
 
 
 def run_gui():
@@ -1918,6 +2018,14 @@ def run_gui():
             else:
                 logger.warning("Retrying GUI with '%s' backend", backend)
                 webview.start(debug=False, gui=backend)
+            # webview.start() has returned: the GUI loop is over. If the tray
+            # is meant to be holding the app open, this is where the process
+            # would otherwise die -- every worker thread, and the tray icon
+            # thread itself, is a daemon. Measured before this: the process
+            # exited 0.06s after the loop returned, taking the downloads with
+            # it, which is what "closing to tray still ends the process"
+            # looked like. Block the main thread until Quit instead.
+            _hold_for_tray(api, tray)
             return 0
         except Exception as e:
             last_error = e

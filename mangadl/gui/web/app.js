@@ -1458,14 +1458,37 @@ const activeBars = new Map();
 /* job id -> {title, total, done, status} for concurrent downloads */
 const jobs = new Map();
 
-function logLine(cls, text) {
+/* Advanced logging.
+
+   The queue log is a milestone log by default -- a chapter finished, a file
+   was written, something failed. Advanced mode also records the per-page
+   chatter (every chapter_progress tick, every retry), which is what you
+   want when diagnosing a stall and noise the rest of the time.
+
+   The cap scales with the mode: 200 lines is plenty of milestones, but at
+   one line per page it is about four chapters of history, so verbose mode
+   keeps more. */
+const LOG_CAP = 200;
+const LOG_CAP_ADVANCED = 2000;
+
+function logAdvanced() {
+  const box = $("logAdvanced");
+  if (box) return box.checked;
+  return !!(state.settings && state.settings.queue_log_advanced);
+}
+
+function logLine(cls, text, verbose) {
+  // Verbose lines exist only in advanced mode.
+  if (verbose && !logAdvanced()) return;
   const log = $("dlLog");
+  if (!log) return;
   const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
   const line = document.createElement("div");
-  line.className = "log-line " + cls;
+  line.className = "log-line " + cls + (verbose ? " verbose" : "");
   line.innerHTML = `<span class="t">${t}</span><span>${escapeHtml(text)}</span>`;
   log.prepend(line);
-  while (log.children.length > 200) log.removeChild(log.lastChild);
+  const cap = logAdvanced() ? LOG_CAP_ADVANCED : LOG_CAP;
+  while (log.children.length > cap) log.removeChild(log.lastChild);
 }
 
 /* Progress rows are keyed on job + chapter, never on the chapter name
@@ -1631,6 +1654,8 @@ window.onEngineEvent = function (event) {
     case "chapter_start":
       ensureBar(event);
       trackChapter(job, event.chapter, 0, event.total || 0);
+      logLine("info", prefixed(event, `Start ${event.chapter}`
+        + (event.total ? ` (${event.total} pages)` : "")), true);
       break;
     case "chapter_progress": {
       const row = ensureBar(event);
@@ -1638,6 +1663,8 @@ window.onEngineEvent = function (event) {
       row.querySelector(".ac-fill").style.width = pct + "%";
       row.querySelector(".ac-count").textContent = `${event.done}/${event.total}`;
       trackChapter(job, event.chapter, event.done, event.total);
+      logLine("info", prefixed(event,
+        `${event.chapter} page ${event.done}/${event.total}`), true);
       break;
     }
     case "chapter_done":
@@ -1762,6 +1789,26 @@ function refreshOverall() {
   $("dlTitle").textContent = running.length > 1
     ? `${running.length} downloads`
     : (running[0] || [...jobs.values()].pop() || {}).title || "–";
+  refreshOverallRate();
+}
+
+/* Combined throughput and ETA across every running job, shown in the
+   queue card header so the headline figure is next to the headline bar
+   instead of only inside the tiles. */
+function refreshOverallRate() {
+  const el = $("dlRate");
+  if (!el) return;
+  let rate = 0, eta = null;
+  Object.values(cartProgress || {}).forEach((p) => {
+    rate += Number(p.bytes_per_second || 0);
+    if (p.eta_seconds != null) {
+      eta = Math.max(eta == null ? 0 : eta, Number(p.eta_seconds));
+    }
+  });
+  const parts = [];
+  if (rate > 0) parts.push(formatRate(rate));
+  if (eta != null) parts.push(`ETA ${formatEta(eta)}`);
+  el.textContent = parts.join("  ·  ");
 }
 
 /* --------------------------------------------------------------- queue
@@ -1785,7 +1832,7 @@ function mangaKey(row) {
 function sparkline(history, width, height) {
   const values = (history || []).slice(-40);
   if (values.length < 2) {
-    return `<svg class="spark" viewBox="0 0 ${width} ${height}"
+    return `<svg class="q-sparkline" viewBox="0 0 ${width} ${height}"
                  preserveAspectRatio="none" aria-hidden="true"></svg>`;
   }
   const peak = Math.max(...values, 1);
@@ -1797,7 +1844,7 @@ function sparkline(history, width, height) {
   });
   const line = `M${points.join(" L")}`;
   const area = `${line} L${width},${height} L0,${height} Z`;
-  return `<svg class="spark" viewBox="0 0 ${width} ${height}"
+  return `<svg class="q-sparkline" viewBox="0 0 ${width} ${height}"
                preserveAspectRatio="none" aria-hidden="true">
       <path class="spark-area" d="${area}"></path>
       <path class="spark-line" d="${line}"></path>
@@ -1885,44 +1932,67 @@ function formatBytes(value) {
   return `${(v / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
+function groupStatus(group) {
+  if (group.running) return "running";
+  if (group.statuses.has("failed")) return "failed";
+  if (group.statuses.has("stopped")) return "stopped";
+  if (group.statuses.has("queued")) return "queued";
+  return "done";
+}
+
+function groupFraction(group, status) {
+  if (group.total) return `${group.done}/${group.total}`;
+  return status === "queued" ? "queued" : "starting";
+}
+
 function cartTileHtml(group) {
   const open = cartOpen.has(group.key);
   const live = groupProgress(group);
-  const status = group.running
-    ? "running"
-    : (group.statuses.has("failed") ? "failed"
-      : group.statuses.has("stopped") ? "stopped"
-      : group.statuses.has("queued") ? "queued" : "done");
-
-  const fraction = group.total
-    ? `${group.done}/${group.total}`
-    : (status === "queued" ? "queued" : "starting");
+  const status = groupStatus(group);
+  const fraction = groupFraction(group, status);
   const percent = group.total
     ? Math.min(100, Math.round((group.done / group.total) * 100)) : 0;
+  const starting = status === "running" && !group.total;
 
   const chapters = group.items.flatMap((i) => i.chapters || []);
-  const cover = group.cover
-    ? `<img class="q-cover" src="${escapeHtml(group.cover)}" alt="" loading="lazy">`
-    : `<div class="q-cover q-cover-blank"><span class="material-symbols-rounded">book</span></div>`;
+  const cover = (cls, iconSize) => group.cover
+    ? `<img class="${cls}" src="${escapeHtml(group.cover)}" alt="" loading="lazy">`
+    : `<div class="${cls} ${cls}-blank"><span class="material-symbols-rounded">book</span></div>`;
+
+  /* The collapsed row carries a small cover too. A queue of six books that
+     differ only by a line of text is much harder to scan than one with
+     artwork, and the thumbnail costs nothing -- it is the same image the
+     expanded tile shows, at 30px. */
+  const subParts = [];
+  if (group.source) subParts.push(group.source);
+  if (status === "running" && live.eta != null) subParts.push(`ETA ${formatEta(live.eta)}`);
+  else if (status !== "running") subParts.push(status);
 
   return `
-  <div class="q-tile ${open ? "open" : ""} ${status}" data-key="${escapeHtml(group.key)}">
+  <div class="q-tile ${open ? "open" : ""} ${status} ${starting ? "starting" : ""}"
+       data-key="${escapeHtml(group.key)}">
     <button class="q-head" data-toggle="${escapeHtml(group.key)}"
             aria-expanded="${open}">
       <span class="material-symbols-rounded q-chev">chevron_right</span>
-      <span class="q-name" title="${escapeHtml(group.title)}">${escapeHtml(group.title)}</span>
-      ${group.running ? `<span class="q-spark">${sparkline(live.history, 88, 22)}</span>
+      ${cover("q-thumb")}
+      <span class="q-headings">
+        <span class="q-name" title="${escapeHtml(group.title)}">${escapeHtml(group.title)}</span>
+        <span class="q-sub">${escapeHtml(subParts.join(" · "))}</span>
+      </span>
+      ${group.running ? `<span class="q-spark">${sparkline(live.history, 84, 24)}</span>
         <span class="q-rate">${escapeHtml(formatRate(live.rate))}</span>` : ""}
       <span class="q-pill ${status}">${escapeHtml(fraction)}</span>
     </button>
     <div class="q-body">
       <div class="q-body-inner">
-        ${cover}
+        ${cover("q-cover")}
         <div class="q-detail">
           <div class="q-meta">
-            ${group.source ? `<span class="q-chip">${escapeHtml(group.source)}</span>` : ""}
+            ${group.source ? `<span class="q-chip src">${escapeHtml(group.source)}</span>` : ""}
             <span class="q-chip">${escapeHtml(status)}</span>
             ${group.total ? `<span class="q-chip">${percent}%</span>` : ""}
+            ${group.items.length > 1
+              ? `<span class="q-chip">${group.items.length} jobs</span>` : ""}
           </div>
           <div class="q-stats">
             <div><span class="q-k">Speed</span><span class="q-v">${escapeHtml(formatRate(live.rate))}</span></div>
@@ -1933,19 +2003,34 @@ function cartTileHtml(group) {
           ${group.total ? `<div class="q-bar"><i style="width:${percent}%"></i></div>` : ""}
           ${chapters.length
             ? `<div class="q-now"><span class="q-k">Downloading now</span>
-                 ${chapters.map((c) => `<span class="q-chapter">${escapeHtml(c.name)}
-                   <i style="width:${c.total ? Math.round((c.done / c.total) * 100) : 0}%"></i></span>`).join("")}
+                 <div class="q-now-list">${chapters.map(chapterRowHtml).join("")}</div>
                </div>`
             : ""}
           ${group.url && status === "queued"
-            ? `<button class="btn btn-tonal btn-sm cart-x" data-url="${escapeHtml(group.url)}"
-                       data-sel="${escapeHtml((group.items[0] || {}).selection || "all")}">
-                 <span class="material-symbols-rounded">close</span> Remove</button>`
+            ? `<div class="q-actions">
+                 <button class="btn btn-tonal btn-sm cart-x" data-url="${escapeHtml(group.url)}"
+                         data-sel="${escapeHtml((group.items[0] || {}).selection || "all")}">
+                   <span class="material-symbols-rounded">close</span> Remove</button>
+               </div>`
             : ""}
         </div>
       </div>
     </div>
   </div>`;
+}
+
+/* One in-flight chapter. Rendered here rather than in a separate panel:
+   the old "Active chapters" card under the queue listed exactly the same
+   rows, so every downloading chapter appeared twice on the same screen. */
+function chapterRowHtml(chapter) {
+  const pct = chapter.total
+    ? Math.min(100, Math.round((chapter.done / chapter.total) * 100)) : 0;
+  const count = chapter.total ? `${chapter.done}/${chapter.total}` : "–";
+  return `<div class="q-chapter" data-chapter="${escapeHtml(chapter.name)}">
+      <i style="width:${pct}%"></i>
+      <span class="q-ch-name">${escapeHtml(chapter.name)}</span>
+      <span class="q-ch-count">${escapeHtml(count)}</span>
+    </div>`;
 }
 
 async function renderCart() {
@@ -1960,9 +2045,14 @@ async function renderCart() {
   const rows = cartRowsFromState(queued);
   const groups = groupCartRows(rows);
 
-  const worthShowing = rows.length > 1 || queued.length > 0;
+  /* The card is shown whenever there is ANY row. It used to require two
+     rows or a queued item, so a single download -- the common case --
+     rendered no tile at all and the tab showed only the floating summary
+     card, which is half of why the queue looked disconnected. */
+  const worthShowing = rows.length > 0;
   $("cartCount").textContent = groups.length;
   $("cartCard").classList.toggle("hidden", !worthShowing);
+  $("dlEmpty").classList.toggle("hidden", worthShowing || state.downloading);
   if (!worthShowing) { list.innerHTML = ""; return; }
 
   list.innerHTML = groups.map(cartTileHtml).join("");
@@ -1998,6 +2088,7 @@ function startCartPolling() {
     cartProgress = {};
     (res.jobs || []).forEach((j) => { cartProgress[j.job_id] = j; });
     refreshCartLive();
+    refreshOverallRate();
     if (!res.active) stopCartPolling();
   }, 1000);
 }
@@ -2008,6 +2099,7 @@ function stopCartPolling() {
   cartPollTimer = null;
   cartProgress = {};
   refreshCartLive();
+  refreshOverallRate();
 }
 
 /* Repaint only what changes while downloading, so an open tile is not
@@ -2020,7 +2112,9 @@ function refreshCartLive() {
     const tile = list.querySelector(`.q-tile[data-key="${CSS.escape(group.key)}"]`);
     if (!tile) return;
     const live = groupProgress(group);
-    const fraction = group.total ? `${group.done}/${group.total}` : "starting";
+    const status = groupStatus(group);
+    const fraction = groupFraction(group, status);
+
     const pill = tile.querySelector(".q-pill");
     if (pill && pill.textContent !== fraction) {
       pill.textContent = fraction;
@@ -2031,7 +2125,21 @@ function refreshCartLive() {
     const rate = tile.querySelector(".q-rate");
     if (rate) rate.textContent = formatRate(live.rate);
     const spark = tile.querySelector(".q-spark");
-    if (spark) spark.innerHTML = sparkline(live.history, 88, 22);
+    if (spark) spark.innerHTML = sparkline(live.history, 84, 24);
+    tile.classList.toggle("starting", status === "running" && !group.total);
+
+    // The collapsed subtitle carries the live ETA, so a closed tile still
+    // answers "how much longer" without being expanded.
+    const sub = tile.querySelector(".q-sub");
+    if (sub) {
+      const parts = [];
+      if (group.source) parts.push(group.source);
+      if (status === "running" && live.eta != null) parts.push(`ETA ${formatEta(live.eta)}`);
+      else if (status !== "running") parts.push(status);
+      const text = parts.join(" \u00b7 ");
+      if (sub.textContent !== text) sub.textContent = text;
+    }
+
     if (tile.classList.contains("open")) {
       const values = tile.querySelectorAll(".q-stats .q-v");
       if (values.length >= 4) {
@@ -2044,7 +2152,45 @@ function refreshCartLive() {
       if (bar && group.total) {
         bar.style.width = `${Math.min(100, Math.round((group.done / group.total) * 100))}%`;
       }
+      refreshChapterRows(tile, group);
     }
+  });
+}
+
+/* Update the in-flight chapter rows of one open tile in place.
+
+   Rebuilding this list from innerHTML on every 1s poll restarted each row's
+   entry animation and made the whole block flicker. Rows are matched by
+   chapter name: existing ones are updated, new ones appended, finished ones
+   removed. */
+function refreshChapterRows(tile, group) {
+  const holder = tile.querySelector(".q-now-list");
+  const chapters = group.items.flatMap((i) => i.chapters || []);
+  if (!holder) {
+    // The tile had no chapters when it was drawn; a full repaint adds the
+    // section. Cheap, and only happens on the first chapter of a job.
+    if (chapters.length) renderCart();
+    return;
+  }
+  const seen = new Set();
+  chapters.forEach((chapter) => {
+    seen.add(chapter.name);
+    let row = holder.querySelector(
+      `.q-chapter[data-chapter="${CSS.escape(chapter.name)}"]`);
+    if (!row) {
+      holder.insertAdjacentHTML("beforeend", chapterRowHtml(chapter));
+      return;
+    }
+    const pct = chapter.total
+      ? Math.min(100, Math.round((chapter.done / chapter.total) * 100)) : 0;
+    const fill = row.querySelector("i");
+    if (fill) fill.style.width = `${pct}%`;
+    const count = row.querySelector(".q-ch-count");
+    const text = chapter.total ? `${chapter.done}/${chapter.total}` : "\u2013";
+    if (count && count.textContent !== text) count.textContent = text;
+  });
+  holder.querySelectorAll(".q-chapter").forEach((row) => {
+    if (!seen.has(row.dataset.chapter)) row.remove();
   });
 }
 
@@ -2680,6 +2826,8 @@ whenReady(async () => {
   $("setDedupe").checked = state.settings.dedupe_results !== false;
   if ($("setTray")) $("setTray").checked = !!state.settings.minimize_to_tray;
   if ($("setTrayNotify")) $("setTrayNotify").checked = state.settings.tray_notifications !== false;
+  if ($("setLogAdvanced")) $("setLogAdvanced").checked = !!state.settings.queue_log_advanced;
+  if ($("logAdvanced")) $("logAdvanced").checked = !!state.settings.queue_log_advanced;
   bootStep("trayState", refreshTrayState);
   $("setInterleave").checked = !!state.settings.interleave_results;
 
@@ -3090,15 +3238,43 @@ $("setCorners") && $("setCorners").addEventListener("change", async (e) => {
   await callApi("set_settings", { corners: value });
 });
 
-["setDedupe", "setInterleave"].forEach((id) =>
-  $(id).addEventListener("change", async () => {
-    await api().set_settings({
-      dedupe_results: $("setDedupe").checked,
-      minimize_to_tray: $("setTray") ? $("setTray").checked : false,
-      tray_notifications: $("setTrayNotify") ? $("setTrayNotify").checked : true,
-      interleave_results: $("setInterleave").checked,
+/* The tray switches were listed inside this handler's payload but were
+   never in the ids it binds, so flipping "Minimise to system tray" saved
+   nothing unless the user happened to also toggle dedupe or interleave.
+   They are bound now. */
+["setDedupe", "setInterleave", "setTray", "setTrayNotify", "setLogAdvanced"]
+  .forEach((id) => {
+    const el = $(id);
+    if (!el) return;
+    el.addEventListener("change", async () => {
+      const changes = {
+        dedupe_results: $("setDedupe").checked,
+        minimize_to_tray: $("setTray") ? $("setTray").checked : false,
+        tray_notifications: $("setTrayNotify") ? $("setTrayNotify").checked : true,
+        interleave_results: $("setInterleave").checked,
+        queue_log_advanced: $("setLogAdvanced") ? $("setLogAdvanced").checked : false,
+      };
+      state.settings = Object.assign(state.settings || {}, changes);
+      // Keep the in-panel checkbox on the Queue tab in step with Settings.
+      if ($("logAdvanced")) $("logAdvanced").checked = changes.queue_log_advanced;
+      await api().set_settings(changes);
+      if (id === "setTray") {
+        toast(changes.minimize_to_tray
+          ? "Closing the window will keep downloads running"
+          : "Closing the window will quit MangaDL");
+        refreshTrayState();
+      }
     });
-  }));
+  });
+
+/* The Queue tab's own Advanced checkbox is the same setting, mirrored so it
+   can be flipped while watching a download without leaving the tab. */
+$("logAdvanced") && $("logAdvanced").addEventListener("change", async (e) => {
+  const on = e.target.checked;
+  state.settings = Object.assign(state.settings || {}, { queue_log_advanced: on });
+  if ($("setLogAdvanced")) $("setLogAdvanced").checked = on;
+  await callApi("set_settings", { queue_log_advanced: on });
+});
 
 async function loadStats() {
   const [statsRes, insightRes] = await Promise.all([
@@ -3236,8 +3412,8 @@ $("checkUpdatesBtn").addEventListener("click", async () => {
 /* ====================================================== insights view */
 
 async function loadInsights() {
-  const [statsRes, insightRes] = await Promise.all([
-    callApi("get_stats"), callApi("get_insights"),
+  const [statsRes, insightRes, calRes] = await Promise.all([
+    callApi("get_stats"), callApi("get_insights"), callApi("get_calendar"),
   ]);
   const totals = (statsRes && statsRes.stats && statsRes.stats.totals) || {};
   const derived = (statsRes && statsRes.stats && statsRes.stats.derived) || {};
@@ -3259,14 +3435,17 @@ async function loadInsights() {
       <div class="k">${escapeHtml(k)}</div>
     </div>`).join("");
 
-  // per-source bar chart
+  // per-source bar chart. Labelled with display names, not raw ids: the
+  // chart used to read "flamecomics" and "madara.toonily".
+  const calNames = (calRes && calRes.ok && calRes.calendar
+                    && calRes.calendar.names) || {};
   const entries = Object.entries(perSource)
     .sort((a, b) => (b[1].chapters || 0) - (a[1].chapters || 0));
   const max = Math.max(1, ...entries.map(([, v]) => v.chapters || 0));
   $("sourceChart").innerHTML = entries.length
     ? entries.map(([name, v]) => `
         <div class="bar-row">
-          <span class="b-label">${escapeHtml(name)}</span>
+          <span class="b-label" title="${escapeHtml(name)}">${escapeHtml(calNames[name] || name)}</span>
           <span class="b-track"><span class="b-fill" style="width:${((v.chapters || 0) / max) * 100}%"></span></span>
           <span class="b-value">${v.chapters || 0}</span>
         </div>`).join("")
@@ -3295,7 +3474,305 @@ async function loadInsights() {
 
   $("largestList").innerHTML = rankRows(ins.largest || [], "chapters", "title");
   $("recentList").innerHTML = rankRows(ins.recent || [], "date", "title");
+
+  // The contribution calendar and the source carousel share one payload.
+  const cal = calRes && calRes.ok ? calRes.calendar : null;
+  if (cal) {
+    renderCalendar(cal);
+    renderSourceCarousel(cal, perSource);
+  }
 }
+
+/* ============================== contribution calendar + source carousel
+
+   Every source gets a stable colour, derived from its id rather than an
+   assignment table, so adding a site never renumbers everyone else's
+   colour and the same source is the same hue on every machine. */
+
+const CAL_STATE = { calendar: null, colors: {}, filter: null };
+
+/* Golden-angle hue rotation over a hash of the id: deterministic, evenly
+   spread, and no two of the 19 sources land close enough to confuse. */
+function sourceColor(sourceId) {
+  if (CAL_STATE.colors[sourceId]) return CAL_STATE.colors[sourceId];
+  const id = String(sourceId || "?");
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) {
+    hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  }
+  const hue = (hash * 137.508) % 360;         // golden angle
+  const sat = 62 + (hash % 3) * 9;            // 62/71/80%
+  const light = 52 + ((hash >> 3) % 3) * 6;   // 52/58/64%
+  const color = `hsl(${hue.toFixed(1)} ${sat}% ${light}%)`;
+  CAL_STATE.colors[sourceId] = color;
+  return color;
+}
+
+/* Mix a day's source colours in proportion to how many chapters each one
+   contributed, then scale the result's opacity by the day's intensity.
+
+   Mixing happens in RGB after converting each HSL colour, because
+   color-mix() cannot take a weighted list of N colours in CSS. */
+function hslToRgb(hsl) {
+  const m = /hsl\(([\d.]+)\s+([\d.]+)%\s+([\d.]+)%\)/.exec(hsl);
+  if (!m) return [128, 128, 128];
+  const h = parseFloat(m[1]) / 360, s = parseFloat(m[2]) / 100, l = parseFloat(m[3]) / 100;
+  if (s === 0) { const v = Math.round(l * 255); return [v, v, v]; }
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const conv = (t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [conv(h + 1 / 3), conv(h), conv(h - 1 / 3)].map((v) => Math.round(v * 255));
+}
+
+function mixDayColor(sources, level) {
+  const entries = Object.entries(sources || {}).filter(([, n]) => n > 0);
+  if (!entries.length || level <= 0) return null;
+  const total = entries.reduce((n, [, v]) => n + v, 0) || 1;
+  let r = 0, g = 0, b = 0;
+  entries.forEach(([id, count]) => {
+    const [cr, cg, cb] = hslToRgb(sourceColor(id));
+    const w = count / total;
+    r += cr * w; g += cg * w; b += cb * w;
+  });
+  // Level drives alpha: a busy day is a solid colour, a quiet one a wash.
+  const alpha = [0, 0.32, 0.55, 0.78, 1][Math.max(0, Math.min(4, level))];
+  return `rgba(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)}, ${alpha})`;
+}
+
+function fmtDay(iso) {
+  const d = new Date(iso + "T00:00:00");
+  return isNaN(d) ? iso : d.toLocaleDateString(undefined,
+    { weekday: "short", month: "short", day: "numeric", year: "numeric" });
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function renderCalendar(cal) {
+  const grid = $("calGrid");
+  if (!grid || !cal) return;
+  CAL_STATE.calendar = cal;
+  const days = cal.days || [];
+
+  grid.innerHTML = days.map((day, i) => {
+    const color = mixDayColor(day.sources, day.level);
+    const style = color ? `--cal-color:${color};` : "";
+    // Stagger the entry animation across the grid, capped so the far end
+    // does not wait a second and a half to appear.
+    const delay = Math.min(0.6, (i / Math.max(1, days.length)) * 0.6);
+    return `<span class="cal-day lvl-${day.level}"
+                  style="${style}--cal-delay:${delay.toFixed(2)}s"
+                  data-date="${escapeHtml(day.date)}"></span>`;
+  }).join("");
+
+  // Month labels above the columns, one per week-column where the month
+  // changes -- the same convention GitHub uses.
+  const months = $("calMonths");
+  if (months) {
+    const cells = [];
+    let last = -1;
+    for (let week = 0; week * 7 < days.length; week++) {
+      const day = days[week * 7];
+      if (!day) break;
+      const m = new Date(day.date + "T00:00:00").getMonth();
+      const label = (m !== last && !isNaN(m)) ? MONTHS[m] : "";
+      if (label) last = m;
+      cells.push(`<span class="cal-month">${label}</span>`);
+    }
+    months.innerHTML = cells.join("");
+  }
+
+  const summary = $("calSummary");
+  if (summary) {
+    summary.textContent = `${cal.total || 0} chapters in the last ${cal.weeks || 53} weeks`;
+  }
+  const range = $("calRange");
+  if (range && days.length) {
+    range.textContent = `${fmtDay(days[0].date)} – ${fmtDay(days[days.length - 1].date)}`;
+  }
+
+  attachCalendarTooltips(grid, cal);
+}
+
+/* Tooltips are one shared, position:fixed node rather than a title
+   attribute: native tooltips cannot show the per-source breakdown, and 371
+   permanent DOM nodes for something only ever seen one at a time is waste. */
+let calTip = null;
+
+function ensureTip() {
+  if (calTip && document.body.contains(calTip)) return calTip;
+  calTip = document.createElement("div");
+  calTip.className = "cal-tip";
+  document.body.appendChild(calTip);
+  return calTip;
+}
+
+function showTip(html, x, y) {
+  const tip = ensureTip();
+  tip.innerHTML = html;
+  tip.classList.add("show");
+  // Keep it on screen near the right/bottom edges.
+  const r = tip.getBoundingClientRect();
+  const left = Math.min(Math.max(8, x - r.width / 2), window.innerWidth - r.width - 8);
+  const top = y - r.height - 10 < 8 ? y + 18 : y - r.height - 10;
+  tip.style.left = `${left}px`;
+  tip.style.top = `${top}px`;
+}
+
+function hideTip() {
+  if (calTip) calTip.classList.remove("show");
+}
+
+function attachCalendarTooltips(grid, cal) {
+  const names = (cal && cal.names) || {};
+  const byDate = {};
+  (cal.days || []).forEach((d) => { byDate[d.date] = d; });
+
+  grid.querySelectorAll(".cal-day").forEach((cell) => {
+    cell.addEventListener("mouseenter", () => {
+      const day = byDate[cell.dataset.date];
+      if (!day) return;
+      const r = cell.getBoundingClientRect();
+      showTip(dayTipHtml(day, names), r.left + r.width / 2, r.top);
+    });
+    cell.addEventListener("mouseleave", hideTip);
+  });
+  grid.addEventListener("mouseleave", hideTip);
+}
+
+/* The plain calendar tooltip: how many books/chapters that day, then the
+   per-source split as a fraction of that day's total. */
+function dayTipHtml(day, names) {
+  const head = `<div><b>${escapeHtml(fmtDay(day.date))}</b></div>`;
+  if (!day.chapters) {
+    return head + '<div class="tip-muted">No downloads</div>';
+  }
+  const total = day.chapters;
+  const rows = Object.entries(day.sources || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, n]) => `
+      <div class="tip-row">
+        <span class="tip-dot" style="--tip-color:${sourceColor(id)}"></span>
+        <span>${escapeHtml(names[id] || id)}</span>
+        <span class="tip-muted">${n}/${total}</span>
+      </div>`).join("");
+  const noSources = !rows
+    ? '<div class="tip-muted">Source not recorded</div>' : "";
+  return `${head}
+    <div>${total} chapter${total === 1 ? "" : "s"} downloaded</div>
+    ${rows}${noSources}`;
+}
+
+/* ---------------------------------------------------- source carousel */
+
+function renderSourceCarousel(cal, perSource) {
+  const track = $("srcTrack");
+  if (!track) return;
+  const names = (cal && cal.names) || {};
+  const days = (cal && cal.days) || [];
+
+  const totals = {};
+  Object.entries(perSource || {}).forEach(([id, v]) => {
+    totals[id] = Number((v && v.chapters) || 0);
+  });
+  // Days data can name a source the totals do not (older stats files).
+  days.forEach((d) => Object.entries(d.sources || {}).forEach(([id, n]) => {
+    if (!(id in totals)) totals[id] = 0;
+    totals[id] = Math.max(totals[id], 0);
+    void n;
+  }));
+
+  const entries = Object.entries(totals)
+    .filter(([, n]) => n > 0)
+    .sort((a, b) => b[1] - a[1]);
+
+  const grand = entries.reduce((n, [, v]) => n + v, 0);
+  const summary = $("srcSummary");
+  if (summary) {
+    summary.textContent = entries.length
+      ? `${entries.length} source${entries.length === 1 ? "" : "s"} · ${grand} chapters`
+      : "";
+  }
+
+  if (!entries.length) {
+    track.innerHTML = '<div class="tool-note">No downloads recorded yet.</div>';
+    updateCarouselNav();
+    return;
+  }
+
+  const peak = entries[0][1] || 1;
+  track.innerHTML = entries.map(([id, count], i) => {
+    const share = grand ? Math.round((count / grand) * 100) : 0;
+    // A miniature 7-row contribution strip for this source alone.
+    const mini = days.slice(-98).map((d) => {
+      const n = (d.sources || {})[id] || 0;
+      const alpha = n <= 0 ? 0.07 : Math.min(1, 0.3 + (n / Math.max(1, peak)) * 3);
+      return `<i style="opacity:${alpha.toFixed(2)}"></i>`;
+    }).join("");
+    return `
+      <div class="src-card" style="--src-color:${sourceColor(id)};
+                                   animation-delay:${(i * 0.04).toFixed(2)}s"
+           data-source="${escapeHtml(id)}">
+        <div class="src-card-head">
+          <span class="src-swatch"></span>
+          <span class="src-card-name" title="${escapeHtml(names[id] || id)}">${escapeHtml(names[id] || id)}</span>
+        </div>
+        <div class="src-card-value">${count}</div>
+        <div class="src-card-sub">${share}% of all chapters</div>
+        <div class="src-card-bar"><i style="width:${Math.round((count / peak) * 100)}%"></i></div>
+        <div class="src-mini">${mini}</div>
+      </div>`;
+  }).join("");
+
+  // Hovering a card explains that source's share of the whole library.
+  track.querySelectorAll(".src-card").forEach((card) => {
+    card.addEventListener("mouseenter", () => {
+      const id = card.dataset.source;
+      const count = totals[id] || 0;
+      const r = card.getBoundingClientRect();
+      const activeDays = days.filter((d) => (d.sources || {})[id] > 0).length;
+      showTip(`
+        <div class="tip-row">
+          <span class="tip-dot" style="--tip-color:${sourceColor(id)}"></span>
+          <b>${escapeHtml(names[id] || id)}</b>
+        </div>
+        <div>${count}/${grand} chapters downloaded</div>
+        <div class="tip-muted">Active on ${activeDays} day${activeDays === 1 ? "" : "s"}</div>`,
+        r.left + r.width / 2, r.top);
+    });
+    card.addEventListener("mouseleave", hideTip);
+  });
+
+  updateCarouselNav();
+}
+
+function updateCarouselNav() {
+  const track = $("srcTrack");
+  const prev = $("srcPrev"), next = $("srcNext");
+  if (!track || !prev || !next) return;
+  const max = track.scrollWidth - track.clientWidth;
+  prev.disabled = track.scrollLeft <= 2;
+  next.disabled = track.scrollLeft >= max - 2;
+}
+
+(function wireCarousel() {
+  const track = $("srcTrack");
+  if (!track) return;
+  const step = () => Math.max(200, track.clientWidth * 0.8);
+  $("srcPrev") && $("srcPrev").addEventListener("click",
+    () => track.scrollBy({ left: -step(), behavior: "smooth" }));
+  $("srcNext") && $("srcNext").addEventListener("click",
+    () => track.scrollBy({ left: step(), behavior: "smooth" }));
+  track.addEventListener("scroll", updateCarouselNav, { passive: true });
+  window.addEventListener("resize", updateCarouselNav);
+})();
 
 /* ========================================================= tools view */
 

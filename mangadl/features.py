@@ -202,6 +202,14 @@ def record_stat(source, chapters=0, pages=0, bytes_=0, seconds=0.0, failed=0):
         per_day["pages"] += pages
         per_day["bytes"] += bytes_
 
+        # Which source each day's chapters came from. The contribution graph
+        # tints every square by mixing its sources' colours, and a tooltip
+        # names them as a fraction -- neither is possible from the totals
+        # above, which say how much but not from where.
+        day_sources = per_day.setdefault("sources", {})
+        key = source or "?"
+        day_sources[key] = day_sources.get(key, 0) + chapters
+
         stats["updated"] = _now()
         _save(STATS_PATH, stats)
         return stats
@@ -224,6 +232,97 @@ def get_stats():
                           default=("-", {}))[0],
     }
     return stats
+
+
+#: How many days the contribution calendar covers. 53 weeks is what GitHub
+#: shows and what fits a wide panel without horizontal scrolling.
+CALENDAR_WEEKS = 53
+
+
+def stat_calendar(weeks=CALENDAR_WEEKS, today=None):
+    """A GitHub-style contribution grid of download activity.
+
+    Returns one entry per day for the last ``weeks`` weeks, **including days
+    with nothing on them** -- a calendar with holes is not a calendar, and
+    the UI must not have to invent the gaps.
+
+    Each day carries:
+
+    ``date``      ISO date
+    ``chapters``  chapters downloaded that day
+    ``level``     0-4 intensity bucket, 0 meaning nothing at all
+    ``sources``   ``{source_id: chapters}`` for that day, for colour mixing
+    ``top``       the source that contributed most that day, or ``""``
+
+    Intensity is bucketed against the busiest day in the window rather than
+    a fixed threshold: someone who downloads 5 chapters a day and someone
+    who downloads 500 both get a readable spread instead of a flat block.
+
+    Days recorded before per-day source tracking existed simply have an
+    empty ``sources`` map. They still count toward ``chapters`` -- dropping
+    real history to keep the new field tidy would be a lie about the totals.
+    """
+    import datetime
+
+    stats = _load(STATS_PATH, {})
+    days = stats.get("days", {}) or {}
+
+    if today is None:
+        end = datetime.date.today()
+    elif isinstance(today, str):
+        end = datetime.date.fromisoformat(today)
+    else:
+        end = today
+
+    # End the grid on the Saturday of the current week so columns are whole
+    # weeks, exactly like GitHub's, then walk back a fixed number of days.
+    weeks = max(1, int(weeks or 1))
+    end += datetime.timedelta(days=(6 - (end.weekday() + 1) % 7))
+    total_days = weeks * 7
+    start = end - datetime.timedelta(days=total_days - 1)
+
+    peak = 0
+    for offset in range(total_days):
+        entry = days.get((start + datetime.timedelta(days=offset)).isoformat())
+        if entry:
+            peak = max(peak, int(entry.get("chapters", 0) or 0))
+
+    out = []
+    for offset in range(total_days):
+        date = start + datetime.timedelta(days=offset)
+        entry = days.get(date.isoformat()) or {}
+        chapters = int(entry.get("chapters", 0) or 0)
+        sources = {k: int(v or 0)
+                   for k, v in (entry.get("sources") or {}).items() if v}
+        if chapters <= 0:
+            level = 0
+        elif peak <= 0:
+            level = 1
+        else:
+            # Four filled buckets; ceil so a single chapter is never level 0.
+            level = min(4, max(1, -(-chapters * 4 // peak)))
+        out.append({
+            "date": date.isoformat(),
+            "chapters": chapters,
+            "pages": int(entry.get("pages", 0) or 0),
+            "bytes": int(entry.get("bytes", 0) or 0),
+            "level": level,
+            "sources": sources,
+            "top": max(sources.items(), key=lambda kv: kv[1])[0] if sources else "",
+        })
+
+    return {
+        "days": out,
+        "weeks": weeks,
+        "start": start.isoformat(),
+        "end": end.isoformat(),
+        "peak": peak,
+        "total": sum(d["chapters"] for d in out),
+        # Overall per-source totals, so the source carousel can show each
+        # site's share without recomputing it from the grid.
+        "sources": {k: int(v.get("chapters", 0) or 0)
+                    for k, v in (stats.get("sources", {}) or {}).items()},
+    }
 
 
 def reset_stats():
