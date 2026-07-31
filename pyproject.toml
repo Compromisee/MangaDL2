@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mangadl"
-version = "1.4.25"
+version = "1.4.26"
 description = "Download manga, manhwa and manhua from 28 sites as CBZ, PDF or EPUB - CLI, menu, TUI and GUI"
 readme = "README.md"
 license = { file = "LICENSE" }

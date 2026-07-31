@@ -109,13 +109,20 @@ def test_stated_counters_match_the_repository():
     """Every number the page shows has to be real."""
     html = read(SITE)
 
-    features = sum(1 for line in open(os.path.join(ROOT, "FEATURES.md"),
-                                      encoding="utf-8")
-                   if re.match(r"^\d+\.", line))
     sources = len(re.findall(r"^\s+\w+Source,",
                              read(os.path.join(ROOT, "mangadl", "sources",
                                                "__init__.py")), re.M))
-    assert f"{features} documented features" in html
+
+    # FEATURES.md is prose grouped by topic now, not a numbered list, so
+    # there is no honest "N documented features" figure to quote. If the
+    # page ever claims one again it has to match a real count.
+    claim = re.search(r"([\d,]+)\s+documented features", html)
+    if claim:
+        counted = sum(1 for line in open(os.path.join(ROOT, "FEATURES.md"),
+                                         encoding="utf-8")
+                      if re.match(r"^\d+\.", line))
+        assert int(claim.group(1).replace(",", "")) == counted, (
+            f"page claims {claim.group(1)} features, FEATURES.md has {counted}")
 
     # Read the stat tiles structurally rather than by class name, so a
     # redesign cannot make this check silently vacuous.

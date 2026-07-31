@@ -145,21 +145,68 @@ def test_quit_from_the_tray_lets_the_process_exit():
     assert "released" in result["out"]
 
 
-def test_an_idle_hidden_app_exits_instead_of_lingering():
-    """With no downloads left there is nothing to stay alive for."""
+def test_an_idle_app_stays_in_the_tray():
+    """An empty queue is not a reason to quit.
+
+    This test used to assert the opposite, and that assertion was wrong.
+    v1.4.24 ended the hold as soon as nothing was downloading, to stop a
+    tray that failed to draw an icon stranding an invisible process. But
+    "no downloads running" is not "nobody wants this app": closing to the
+    tray with an empty queue tore the process down 0.74s later, so clicking
+    *Open MangaDL* flashed the window up and it vanished again -- the
+    reported "opens for a quick second then disappears".
+
+    The icon-failed case is handled where it belongs: _install_tray only
+    returns a controller once the icon is actually running.
+    """
     result = run_child(textwrap.dedent("""
         from mangadl.tray import TrayController
         from mangadl.gui import _hold_for_tray
         class Api:
             _really_quitting = False
             def get_progress(self): return {"active": 0, "queued": 0}
-            def shutdown(self): pass
+            def shutdown(self): print("SHUTDOWN", flush=True)
         tray = TrayController(callbacks={"summary": lambda: {"active": 0}})
         tray.start()
         _hold_for_tray(Api(), tray)
         print("released", flush=True)
     """), timeout=6)
-    assert not result["alive"]
+    assert result["alive"], (
+        "an idle app in the tray quit on its own; reopening it would flash "
+        "the window and lose it")
+    assert "SHUTDOWN" not in result["out"]
+
+
+def test_reopening_from_the_tray_does_not_shut_the_app_down():
+    """The window must survive being reopened while the queue is idle."""
+    result = run_child(textwrap.dedent("""
+        import threading, time
+        from mangadl.tray import TrayController
+        from mangadl.gui import _hold_for_tray
+        class Api:
+            _really_quitting = False
+            def get_progress(self): return {"active": 0, "queued": 0}
+            def shutdown(self): print("SHUTDOWN", flush=True)
+        shown = []
+        tray = TrayController(callbacks={
+            "summary": lambda: {"active": 0},
+            "show_window": lambda: shown.append(time.time()),
+        })
+        tray.start()
+
+        def reopen():
+            time.sleep(1.0)
+            tray._on_open()
+            print("REOPENED", flush=True)
+        threading.Thread(target=reopen, daemon=True).start()
+
+        _hold_for_tray(Api(), tray)
+        print("released", flush=True)
+    """), timeout=6)
+    assert "REOPENED" in result["out"]
+    assert result["alive"], "the app quit after being reopened from the tray"
+    assert "SHUTDOWN" not in result["out"], (
+        "shutdown ran while the window was on screen")
 
 
 def test_no_tray_means_no_hold():

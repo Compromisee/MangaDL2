@@ -796,6 +796,17 @@
         <label class="switch"><input type="checkbox" id="setInterleave"><span></span></label>
       </div>
       <div class="setting-row">
+        <div><label>Already downloaded</label>
+          <p class="hint">What to do with search results you already have.
+            Darken keeps them visible but out of the way — hover one to see
+            how much of it you have.</p></div>
+        <select id="setDownloadedResults">
+          <option value="show">Show normally</option>
+          <option value="darken">Darken</option>
+          <option value="hide">Hide</option>
+        </select>
+      </div>
+      <div class="setting-row">
         <div><label>Reset ranking</label><p class="hint">Restore the default order and re-enable every source</p></div>
         <button class="btn" id="resetSourcesBtn">Reset</button>
       </div>

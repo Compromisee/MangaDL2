@@ -63,6 +63,11 @@ DEFAULT_SETTINGS = {
     "minimize_to_tray": False,      # closing the window keeps downloads going
     "tray_notifications": True,     # notify when a download finishes
     "queue_log_advanced": False,    # verbose per-page queue log
+    # What to do with search results you already have:
+    #   "show"   leave them exactly as they are
+    #   "darken" dim them, and reveal a fill + percent on hover
+    #   "hide"   drop them from the results entirely
+    "downloaded_results": "darken",
     "columns": 0,                   # result grid columns, 0 = fit the window
     "advanced_info": False,         # extra metadata on the manga page
     "confirm_delete": True,
@@ -1173,6 +1178,54 @@ class Api(metaclass=_SafeApiMeta):
         items.sort(key=lambda x: x.get("last_download") or "", reverse=True)
         return {"ok": True, "items": items, "path": library.LIBRARY_PATH}
 
+    def downloaded_status(self, items: list = None):
+        """Download status for a batch of search results.
+
+        Returns ``{url: {chapters, total, percent, complete, title}}`` for
+        the entries that are in the library at all -- callers only need the
+        hits, so a page of 40 unknown results costs one small reply.
+
+        ``total`` is the series' own chapter count as the *source* reported
+        it, which is frequently unknown: a site that never states one gives
+        ``total: 0``, and then ``percent`` is None rather than a fabricated
+        number. "Downloaded 12 chapters, out of we-don't-know" is honest;
+        inventing 100% because 12 of the 12 we know about are present is
+        not, and would mark an ongoing series as finished.
+
+        Batched deliberately. Doing this per card meant one bridge call per
+        result, and the library file was re-read and re-parsed every time.
+        """
+        rows = [i for i in (items or []) if isinstance(i, dict) and i.get("url")]
+        if not rows:
+            return {"ok": True, "status": {}}
+
+        # Read the library once for the whole batch.
+        lib = library.load_library()
+        out = {}
+        for item in rows:
+            url = item.get("url")
+            entry = library._find_entry(lib, url)
+            if not entry:
+                continue
+            done = len(entry.get("chapters", {}) or {})
+            if not done:
+                continue
+            total = features._chapter_count(item) or 0
+            total = int(total) if total and total > 0 else 0
+            percent = None
+            if total:
+                percent = max(0, min(100, round(done / total * 100)))
+            out[url] = {
+                "chapters": done,
+                "total": total,
+                "percent": percent,
+                "complete": bool(total and done >= total),
+                "title": entry.get("title") or item.get("title") or "",
+                "directory": entry.get("directory") or "",
+                "last_download": entry.get("last_download") or "",
+            }
+        return {"ok": True, "status": out}
+
     def get_library_entry(self, url: str):
         # Must go through the tolerant lookup: library keys are normalised,
         # so a raw URL (or one carrying ?query) can miss a real entry.
@@ -1939,22 +1992,31 @@ def _hold_for_tray(api, tray):
     if getattr(api, "_really_quitting", False) or tray.quit_requested():
         return
 
-    def still_working():
-        """Do not hold a *hidden* app open once there is nothing left to do.
+    def keep_holding():
+        """Whether to keep the process alive.
 
-        Without this a tray that silently failed to draw an icon would leave
-        an invisible process running with no way to reach it. With downloads
-        still going the app stays up, which is the whole point.
+        Only two things end the wait: **Quit**, or the tray icon dying. In
+        particular an idle queue does NOT, and that was a real bug.
+
+        v1.4.24 ended the wait as soon as nothing was downloading, reasoning
+        that a tray which failed to draw an icon must not strand an
+        invisible process. That conflated two different things -- "no
+        downloads running" is not "nobody wants this app". Reproduced:
+        closing to the tray with an empty queue tore the process down 0.74s
+        later, and clicking *Open MangaDL* showed the window for about a
+        second before the shutdown that was already in flight killed it.
+        That is the reported "opens for a quick second then disappears".
+
+        The original worry is handled properly instead: ``_install_tray``
+        only returns a controller when the icon actually started, so if we
+        are here there IS a way to reach the app. If the icon later dies,
+        ``wait_for_quit`` notices and returns on its own.
         """
-        try:
-            progress = api.get_progress() or {}
-        except Exception:
-            return False
-        return bool(progress.get("active") or progress.get("queued"))
+        return not getattr(api, "_really_quitting", False)
 
     logger.info("Window closed; MangaDL is still running in the system tray.")
     try:
-        tray.wait_for_quit(still_working=still_working)
+        tray.wait_for_quit(still_working=keep_holding)
     except KeyboardInterrupt:
         pass
     finally:

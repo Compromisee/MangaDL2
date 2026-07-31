@@ -492,6 +492,6 @@ mangadl info <url>
 ## See also
 
 - [`README.md`](README.md) — install, features, source table
-- [`FEATURES.md`](FEATURES.md) — the full numbered feature list
+- [`FEATURES.md`](FEATURES.md) — every feature, grouped by what it is for
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, and why
 - [`PACKAGING.md`](PACKAGING.md) — building a standalone executable

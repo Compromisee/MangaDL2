@@ -29,6 +29,8 @@
 - **Smart search for covers.** One button scans a whole folder, searches every source and picks each cover itself using your source ranking — exact title first, then your preferred site, then the largest image so it never grabs a thumbnail.
 - **Rebuild missing covers.** Point *Tools → Rebuild covers* at a folder of loose CBZs: it recovers the series from each filename, offers covers from every source, and saves `cover.jpg` beside the archive — splitting mixed folders so each cover belongs to the right book.
 - **Runs in the background.** Turn on *Minimise to system tray* and closing the window keeps downloads going. The tray menu shows live speed, ETA, chapters remaining and what is queued — and brings the window back.
+- **Skip what you already have.** Search results that are in your library can be shown normally, dimmed, or hidden. Dimmed is the default: hover one and the cover fills up to the fraction you have, with the percentage on the badge.
+- **A year of activity at a glance.** The Stats tab draws a contribution calendar — one square per day, brighter the more you downloaded, tinted by the sources it came from. Hovering a day names each source as a fraction.
 - **Survives a crash.** Every running job is journaled to its own file, atomically. After a power cut or a kill, MangaDL offers to resume each one and skips what is already on disk.
 - **Robust by design.** A circuit breaker skips sites that are down instead of waiting for timeouts, retries use exponential backoff, and discovery listings are cached. One dead site never breaks a search.
 - **One command, one CBZ.** By default the CLI downloads *every* chapter and packs them into a single `.cbz` — no flags needed.

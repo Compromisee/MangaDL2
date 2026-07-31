@@ -703,10 +703,111 @@ function renderCards(results, append = false) {
     const img = card.querySelector("img");
     attachCover(img, card, r);
 
+    card.dataset.url = r.url || "";
     card.addEventListener("click", () => openManga(r.url, r.source));
     grid.appendChild(card);
   });
+
+  // Mark what you already have. Fire-and-forget: the cards are already on
+  // screen, so a slow or failed lookup costs nothing but the badges.
+  markDownloadedResults(results);
   return offset + results.length;
+}
+
+/* ------------------------------------------------- already-downloaded
+
+   Three modes, from Settings:
+     show    leave results alone
+     darken  dim them; hovering fills the cover up to the percent you have
+     hide    remove them from the grid entirely
+
+   The percentage is only ever shown when the source told us how many
+   chapters the series has. Plenty do not, and "12 downloaded out of
+   unknown" must not be rounded up into a confident 100%. */
+
+function downloadedMode() {
+  const mode = (state.settings || {}).downloaded_results;
+  return ["show", "darken", "hide"].includes(mode) ? mode : "darken";
+}
+
+async function markDownloadedResults(results) {
+  const mode = downloadedMode();
+  if (mode === "show") return;
+
+  const rows = (results || [])
+    .filter((r) => r && r.url)
+    .map((r) => ({
+      url: r.url,
+      // Whatever this source happens to publish; the Python side picks
+      // whichever of these it recognises.
+      last_chapter: r.last_chapter,
+      chapter_count: r.chapter_count,
+      chapters: typeof r.chapters === "number" ? r.chapters : undefined,
+      total_chapters: r.total_chapters,
+    }));
+  if (!rows.length) return;
+
+  const res = await callApi("downloaded_status", rows);
+  const status = (res && res.ok && res.status) || {};
+  if (!Object.keys(status).length) return;
+
+  const grid = $("searchResults");
+  if (!grid) return;
+
+  Object.entries(status).forEach(([url, info]) => {
+    const card = grid.querySelector(
+      `.result-card[data-url="${CSS.escape(url)}"]`);
+    if (!card || card.classList.contains("dl-marked")) return;
+    card.classList.add("dl-marked");
+
+    if (mode === "hide") {
+      card.classList.add("dl-hidden");
+      return;
+    }
+    applyDownloadedOverlay(card, info);
+  });
+
+  if (mode === "hide") updateHiddenNotice();
+}
+
+function applyDownloadedOverlay(card, info) {
+  card.classList.add("dl-done");
+  if (info.complete) card.classList.add("dl-complete");
+
+  const known = typeof info.percent === "number";
+  // With no total to measure against, the fill has nothing honest to show,
+  // so the card gets the count only.
+  const pct = known ? info.percent : 0;
+  const label = known
+    ? `${info.percent}%`
+    : `${info.chapters} ch`;
+  const detail = known
+    ? `${info.chapters} of ${info.total} chapters downloaded`
+    : `${info.chapters} chapter${info.chapters === 1 ? "" : "s"} downloaded`
+      + " — this source does not report a total";
+
+  const wrap = document.createElement("div");
+  wrap.className = "dl-overlay" + (known ? "" : " dl-unknown");
+  wrap.title = detail;
+  wrap.innerHTML = `
+    <div class="dl-fill" style="--pct:${pct}%"></div>
+    <div class="dl-badge">
+      <span class="material-symbols-rounded">${info.complete ? "task_alt" : "download_done"}</span>
+      <span class="dl-pct">${escapeHtml(label)}</span>
+    </div>`;
+  card.appendChild(wrap);
+}
+
+/* Hiding results silently would look like a broken search, so say so. */
+function updateHiddenNotice() {
+  const grid = $("searchResults");
+  const state_ = $("searchState");
+  if (!grid || !state_) return;
+  const hidden = grid.querySelectorAll(".result-card.dl-hidden").length;
+  if (!hidden) return;
+  const note = `${hidden} already-downloaded result${hidden === 1 ? "" : "s"} hidden`;
+  state_.textContent = state_.textContent
+    ? `${state_.textContent} · ${note}` : note;
 }
 
 /* One entry point for both modes. An empty box means "show me something",
@@ -2828,6 +2929,10 @@ whenReady(async () => {
   if ($("setTrayNotify")) $("setTrayNotify").checked = state.settings.tray_notifications !== false;
   if ($("setLogAdvanced")) $("setLogAdvanced").checked = !!state.settings.queue_log_advanced;
   if ($("logAdvanced")) $("logAdvanced").checked = !!state.settings.queue_log_advanced;
+  if ($("setDownloadedResults")) {
+    $("setDownloadedResults").value =
+      state.settings.downloaded_results || "darken";
+  }
   bootStep("trayState", refreshTrayState);
   $("setInterleave").checked = !!state.settings.interleave_results;
 
@@ -3265,6 +3370,21 @@ $("setCorners") && $("setCorners").addEventListener("change", async (e) => {
         refreshTrayState();
       }
     });
+  });
+
+/* Changing how already-downloaded results are treated re-runs the current
+   search, so the choice is visible immediately rather than at the next
+   query. */
+$("setDownloadedResults") &&
+  $("setDownloadedResults").addEventListener("change", async (e) => {
+    const mode = e.target.value;
+    state.settings = Object.assign(state.settings || {},
+                                   { downloaded_results: mode });
+    await callApi("set_settings", { downloaded_results: mode });
+    toast(mode === "hide" ? "Hiding results you already have"
+        : mode === "show" ? "Showing all results"
+        : "Dimming results you already have");
+    doSearch(true);
   });
 
 /* The Queue tab's own Advanced checkbox is the same setting, mirrored so it

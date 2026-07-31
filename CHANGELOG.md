@@ -2,8 +2,98 @@
 
 All notable changes to **MangaDL**, newest first.
 
-This changelog starts fresh at v1.0.0 for the [Compromisee/MDL](https://github.com/Compromisee/MDL)
+This changelog starts fresh at v1.0.0 for the [Compromisee/MangaDL2](https://github.com/Compromisee/MangaDL2)
 fork. Earlier upstream history is not carried over.
+
+---
+
+## v1.4.26 — Tray reopen fixed, downloaded results, readable FEATURES.md
+
+### Fixed — opening from the tray flashed the window and lost it
+
+Reported: the GUI "opens for a quick second then disappears".
+
+This was my own regression from v1.4.24. `_hold_for_tray()` ended its wait
+as soon as nothing was downloading, on the reasoning that a tray which
+failed to draw an icon must not strand an invisible process. That conflated
+two different things — **"no downloads running" is not "nobody wants this
+app"**.
+
+Measured in a real subprocess: closing to the tray with an idle queue tore
+the process down **0.74s later**. Clicking *Open MangaDL* raced a shutdown
+that was already in flight, so the window appeared and then vanished under
+it.
+
+| | before | after |
+|---|---|---|
+| idle queue, hidden in tray | exits in 0.74s | stays up |
+| reopened from the tray | window vanishes | window stays |
+| Quit from the tray | exits | exits (1.2s) |
+| no tray installed | exits | exits (0.3s) |
+
+The original worry is handled where it belongs: `_install_tray()` only
+returns a controller once the icon is actually running, so if the hold is
+active there is a way to reach the app. If the icon later dies,
+`wait_for_quit()` notices and returns on its own.
+
+### Added — what to do with results you already have
+
+**Settings → Sources & ranking → Already downloaded**, with three modes:
+
+| Mode | Behaviour |
+|---|---|
+| Show normally | no change |
+| **Darken** (default) | dimmed cover; hovering fills it up to the fraction you have and shows the percentage |
+| Hide | removed from the grid, with a note saying how many were hidden |
+
+The fill animates from the bottom, so "how much of this do I have" reads as
+a level rather than a number to parse. Measured: a series with 100 of 200
+chapters fills to **50.0%** of the cover.
+
+**The percentage is only ever shown when the source reports a total.**
+Plenty do not. Rounding "12 downloaded, total unknown" up to a confident
+100% would mark an ongoing series as finished, so those cards show the
+chapter count instead and draw no fill at all.
+
+Status comes from one batched `downloaded_status` call per page of results —
+doing it per card meant one bridge call and one library re-read per result.
+Only matches are returned, so a page of 40 unknown results costs a tiny
+reply.
+
+### Changed — FEATURES.md is readable now
+
+It was **816 lines of numbered items ordered by release** — a changelog
+wearing a feature list's clothes, where "541. `mangadl search --urls`" sat
+between two unrelated things because they shipped together.
+
+Now **429 lines grouped by what you are trying to achieve**: Sources,
+Searching, Downloading, Output files, Reliability, The desktop app, The
+queue, Statistics, Library, Cover rebuilder, Background mode, Privacy, CLI,
+Configuration, Packaging, Python API. With a table of contents, a source
+table, and comparison tables instead of prose lists.
+
+The landing page's *"N documented features"* badge is gone with it. There is
+no honest count to quote from a prose document, and inventing one would be
+exactly the kind of fabricated statistic the test suite exists to prevent.
+The test still fires if that claim ever reappears without a real count
+behind it.
+
+### Also
+
+* `requirements.txt` now includes `pystray`, so a plain
+  `pip install -r requirements.txt` gets working tray mode. It was only in
+  the `[tray]` extra.
+* README gained the two features it was missing: downloaded-result handling
+  and the contribution calendar.
+
+### Tests
+
+23 new tests, 967 passing. Each fix was reverted to confirm its test fails:
+**14 of 14 deliberate regressions caught**, including inventing a
+percentage from an unknown total, letting the percentage exceed 100, hiding
+results with no explanation, and putting the numbered wall back in
+FEATURES.md. One test assumption of mine was wrong and was corrected — the
+fill's resting height is 2px, not 0, because of its top border.
 
 ---
 
