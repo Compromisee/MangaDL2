@@ -110,11 +110,56 @@ def detect_source(url: str) -> str:
     return None
 
 
+#: Aggregate sources publish namespaced member ids ("madara.toonily") that
+#: are NOT in ``SOURCES`` -- only the parent is. This maps the namespace
+#: prefix onto its registered parent.
+AGGREGATE_PREFIXES = {"madara": "madaranet"}
+
+
+def resolve_member(source_id: str, **kwargs):
+    """Instantiate an aggregate member such as ``madara.toonily``.
+
+    Returns ``None`` when ``source_id`` is not a member id, so callers can
+    fall through to the ordinary registry lookup.
+    """
+    if not source_id or "." not in source_id:
+        return None
+    prefix = source_id.split(".", 1)[0]
+    parent_id = AGGREGATE_PREFIXES.get(prefix, prefix)
+    parent_cls = SOURCES.get(parent_id)
+    # Detect the capability, not an attribute name: MEMBERS is a module
+    # constant in madaranet.py, not a class attribute, so hasattr(cls,
+    # "MEMBERS") is False and an earlier version of this silently fell
+    # through to "Unknown source" again.
+    if parent_cls is None or not callable(getattr(parent_cls, "member", None)):
+        return None
+    aggregate = parent_cls(**kwargs)
+    member = aggregate.member(source_id)
+    if member is None:
+        aggregate.close()
+        return None
+    return member
+
+
 def get_source(source_id: str = None, **kwargs) -> Source:
-    """Instantiate a source by id (defaults to MangaDex)."""
+    """Instantiate a source by id (defaults to MangaDex).
+
+    Aggregate members resolve here, not just in the GUI. They were handled
+    only in ``Api._source()``, so browsing a Madara site worked while
+    *downloading* from one died with::
+
+        ScrapeError: Unknown source 'madara.manhuatop'
+
+    because ``DownloadEngine`` builds its source straight from this
+    function. The CLI, the TUI and the cover tools took the same path, so
+    every one of them had the same hole.
+    """
     key = (source_id or DEFAULT_SOURCE).strip().lower()
     cls = SOURCES.get(key)
     if cls is None:
+        member = resolve_member(key, **kwargs)
+        if member is not None:
+            return member
         known = ", ".join(SOURCES)
         raise ScrapeError(f"Unknown source '{source_id}'. Available: {known}")
     return cls(**kwargs)

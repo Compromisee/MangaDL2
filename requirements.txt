@@ -26,3 +26,7 @@ textual>=0.60
 # window closes normally. Importing pystray needs a desktop session --
 # on a headless box it raises at import time, which MangaDL handles.
 pystray>=0.19
+
+# --- phone / LAN server (server.py) ---------------------------------
+# Optional: without it server.py explains how to install it and exits.
+flask>=3.0

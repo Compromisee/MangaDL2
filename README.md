@@ -28,6 +28,7 @@
 - **Browse by genre.** 200+ genres merged across sites, with quick-pick chips, genre-filtered search and per-genre trending.
 - **Smart search for covers.** One button scans a whole folder, searches every source and picks each cover itself using your source ranking — exact title first, then your preferred site, then the largest image so it never grabs a thumbnail.
 - **Rebuild missing covers.** Point *Tools → Rebuild covers* at a folder of loose CBZs: it recovers the series from each filename, offers covers from every source, and saves `cover.jpg` beside the archive — splitting mixed folders so each cover belongs to the right book.
+- **Use it from your phone.** `python server.py` serves the same desktop interface over your Wi-Fi. Every scrape, download and file write happens on the host PC — the phone is only a remote control, so walking out of range does not interrupt a 300-chapter job.
 - **One window, not five.** Starting MangaDL when it is already running brings the existing window forward rather than launching another copy.
 - **Runs in the background.** Turn on *Minimise to system tray* and closing the window keeps downloads going. The tray menu shows live speed, ETA, chapters remaining and what is queued — and brings the window back.
 - **Skip what you already have.** Search results that are in your library can be shown normally, dimmed, or hidden. Dimmed is the default: hover one and the cover fills up to the fraction you have, with the percentage on the badge.
@@ -68,7 +69,7 @@ Requires **Python 3.9+**.
 
 ```bash
 git clone https://github.com/Compromisee/MangaDL2.git
-cd MDL
+cd MangaDL2
 
 # install with the GUI and TUI
 pip install -e ".[all]"
@@ -77,6 +78,7 @@ pip install -e ".[all]"
 pip install -e .
 pip install -e ".[gui]"
 pip install -e ".[tui]"
+pip install -e ".[server]"   # phone/LAN server
 ```
 
 Or without installing the package, just grab the dependencies:

@@ -22,6 +22,7 @@ release, see **[CHANGELOG.md](CHANGELOG.md)**.
 - [Background mode](#background-mode)
 - [Privacy and safety](#privacy-and-safety)
 - [The command line](#the-command-line)
+- [Using it from your phone](#using-it-from-your-phone)
 - [The terminal menu and TUI](#the-terminal-menu-and-tui)
 - [Configuration](#configuration)
 - [Packaging](#packaging)
@@ -361,6 +362,43 @@ mangadl lock status|set|change|off
 - Colours respect `NO_COLOR` and `FORCE_COLOR`.
 
 Full reference in **[SYNTAX.md](SYNTAX.md)**.
+
+---
+
+## Using it from your phone
+
+`python server.py` serves the desktop interface over your local network, so
+you can browse and start downloads from a phone or tablet.
+
+```
+python server.py                  # http://<this-pc>:8577
+python server.py --port 9000
+python server.py --host 127.0.0.1 # this machine only
+python server.py --no-auth        # skip the access token
+```
+
+**Everything runs on the host computer.** The phone sends the request; this
+machine executes it. So:
+
+- the phone never contacts a manga site — every scrape leaves the host's IP;
+- files are written to the host's disk, in the host's output folder;
+- the library, settings and job journals stay in the host's `~/.mangadl/`;
+- closing the browser, or leaving Wi-Fi range, does not interrupt a download.
+
+It is the same UI, not a cut-down one: the page is served straight from
+`mangadl/gui/web`, with a small shim that makes `fetch` look like the
+pywebview bridge it normally talks to. Layout adapts below 820px — the side
+rail becomes a bottom bar and the cover grid reflows.
+
+Two things cannot work remotely and say so rather than failing silently: the
+**folder and file pickers** (a native dialog would open on the host's screen,
+where nobody is looking — type the path instead), and **Open folder / Open in
+reader**, which are allowed but act on the host.
+
+An access token is generated at startup and printed with the URL. It is a
+shared secret over plain HTTP for a home network — do not port-forward it.
+
+Requires the `server` extra (`pip install -e ".[server]"`).
 
 ---
 

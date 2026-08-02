@@ -3194,3 +3194,111 @@ body.dragging-bookmark .folder-tile { border-style: dashed; }
   .cal-day:hover { transform: none; }
   .src-track { scroll-behavior: auto; }
 }
+
+/* ============================================ small screens (server.py)
+
+   The desktop app is always ~1180px wide, so none of this ever applies
+   there. It exists for `python server.py`, which serves this same page to
+   a phone browser -- one UI, not two, so a fix here is a fix everywhere.
+
+   Measured on a 390px viewport before this block: the 60px rail plus its
+   border left 329px of content, the search field overflowed its rounded
+   container, and the result grid still asked for 150px columns. */
+
+@media (max-width: 820px) {
+  /* The rail becomes a bottom bar: reaching the top-left corner one-handed
+     on a phone is the worst possible place to put navigation. */
+  body { flex-direction: column; }
+
+  .rail {
+    order: 2;
+    width: 100%;
+    height: auto;
+    flex-direction: row;
+    justify-content: space-around;
+    align-items: center;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+    border-right: 0;
+    border-top: 1px solid var(--border);
+    /* Above the content, and pinned so it survives scrolling. */
+    position: sticky;
+    bottom: 0;
+    z-index: 30;
+  }
+  .rail-logo,
+  .rail .rail-spacer,
+  .rail-toggle { display: none; }
+
+  .rail-btn {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 56px;
+    padding: 6px 8px;
+    border-radius: var(--radius-sm);
+  }
+  .rail-btn span:not(.material-symbols-rounded) {
+    font-size: 10px;
+    opacity: .85;
+  }
+
+  .content { order: 1; flex: 1; min-height: 0; }
+
+  /* Give the content its width back. */
+  .wrap, .view { padding-left: 12px; padding-right: 12px; }
+
+  /* Two columns of covers reads far better than one tall stack. */
+  .result-grid, .results {
+    grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)) !important;
+    gap: 10px;
+  }
+
+  /* The hero eats a whole phone screen otherwise. */
+  .search-hero { min-height: auto; padding-top: 10px; }
+  .hero-title { display: none; }
+
+  /* The bar is a flex row of [icon] [input] [filters] [Search]. On a phone
+     the input's flex:1 pushed the Search button past the right edge --
+     min-width:0 lets it actually shrink, and the button stops shrinking so
+     its label never truncates. */
+  .searchbar {
+    width: 100%;
+    padding-left: 12px;
+    box-sizing: border-box;
+  }
+  .searchbar input { min-width: 0; }
+  .searchbar .btn { flex: 0 0 auto; }
+
+  /* Panels that assume two columns side by side. */
+  .panel-row { grid-template-columns: 1fr; }
+  .settings-card, .card { padding: 14px; }
+  .setting-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .setting-row > .inline-field,
+  .setting-row select,
+  .setting-row input[type="text"],
+  .setting-row input[type="number"] { width: 100%; }
+
+  /* Expanded queue tiles stack instead of squeezing the cover. */
+  .q-body-inner { flex-direction: column; }
+  .q-cover { width: 92px; height: 130px; }
+
+  /* Touch targets. 44px is the smallest reliably hittable size. */
+  .btn, .chip, .tab, .genre-chip { min-height: 40px; }
+
+  /* The contribution calendar is 53 weeks wide; let it scroll rather than
+     shrink into unreadable specks. */
+  .cal-scroll { -webkit-overflow-scrolling: touch; }
+}
+
+@media (max-width: 480px) {
+  .result-grid, .results {
+    grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)) !important;
+  }
+  .rail-btn span:not(.material-symbols-rounded) { display: none; }
+  .rail-btn { min-width: 44px; }
+}

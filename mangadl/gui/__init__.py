@@ -19,7 +19,7 @@ import traceback
 from ..downloader import DownloadEngine, DownloadOptions
 from ..sources import (DEFAULT_SOURCE, SOURCES, browse_all, browse_multi,
                        detect_source, genres_all, get_source, list_sources,
-                       search_all, split_genres,
+                       resolve_member, search_all, split_genres,
                        source_for_url)
 from .. import config as appconfig
 from .. import features
@@ -267,20 +267,15 @@ class Api(metaclass=_SafeApiMeta):
         source_id = source_id or settings.get("default_source") or DEFAULT_SOURCE
 
         # Aggregate members ("madara.toonily") are real sources but are not
-        # in the registry -- only their parent is. Without this, proxying a
-        # cover from one failed with "Unknown source" and the thumbnail
-        # rendered blank (measured: 3 of 15 in the cover picker).
-        if source_id not in SOURCES and "." in source_id:
-            parent = source_id.split(".", 1)[0]
-            if parent == "madara":
-                parent = "madaranet"
-            if parent in SOURCES:
-                aggregate = get_source(parent)
-                member = aggregate.member(source_id)
-                if member is not None:
-                    return member
-
+        # in the registry -- only their parent is. This used to be handled
+        # here and ONLY here, which is why browsing a Madara site worked but
+        # downloading from one died with "Unknown source": the engine builds
+        # its source through sources.get_source(), not through this method.
+        # The resolution now lives in the registry so every caller gets it.
         if source_id not in SOURCES:
+            member = resolve_member(source_id)
+            if member is not None:
+                return member
             raise ValueError(f"Unknown source: {source_id}")
 
         key = (source_id, settings.get("language", "en"),

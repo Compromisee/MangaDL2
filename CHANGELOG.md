@@ -7,6 +7,103 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.28 — Madara downloads fixed, and a phone server
+
+### Fixed — downloading from a Madara site failed
+
+```
+ScrapeError: Unknown source 'madara.manhuatop'
+```
+
+Aggregate members (`madara.toonily`, `madara.manhuatop`, …) are real sources
+that are **not in the registry** — only their parent, `madaranet`, is.
+v1.4.20 taught `Api._source()` to resolve them, which fixed cover proxying
+and browsing. But `DownloadEngine` builds its source through
+`sources.get_source()`, which never learned. So the series page loaded fine
+and the download button died — which is exactly how you hit it.
+
+The same hole existed in the CLI, the TUI and the cover tools, all of which
+call `get_source()` directly.
+
+Resolution now lives in the registry, so every caller gets it. The GUI's
+private copy is deleted rather than left to drift again.
+
+One thing worth recording: the first attempt used
+`hasattr(parent_cls, "MEMBERS")` to spot an aggregate. `MEMBERS` is a
+**module** constant in `madaranet.py`, not a class attribute, so that is
+always `False` and the fix silently did nothing. It now tests for the
+capability — a callable `member()` — and a test asserts the distinction so
+it cannot regress quietly.
+
+| | before | after |
+|---|---|---|
+| `get_source("madara.manhuatop")` | ScrapeError | Manhua Top |
+| all 10 Madara members | ScrapeError | resolve |
+| `DownloadEngine(source="madara.*")` | ScrapeError | builds |
+| unknown ids (`madara.nope`) | ScrapeError | ScrapeError |
+
+### Added — `server.py`, MangaDL from your phone
+
+```
+python server.py                  # http://<this-pc>:8577
+python server.py --port 9000
+python server.py --host 127.0.0.1 # this machine only
+python server.py --no-auth        # skip the access token
+```
+
+**Everything runs on the host computer.** The phone sends the request; this
+machine executes it, with the same `Api` object the desktop app uses. So the
+phone never contacts a manga site, files land on the host's disk, the
+library stays in the host's `~/.mangadl/`, and closing the browser — or
+walking out of Wi-Fi range — does not interrupt a download. That is the
+whole point of routing through the host rather than peer-to-peer.
+
+It serves the **existing UI**, not a cut-down mobile one.
+`mangadl/gui/web` already talks to Python through one narrow bridge
+(`window.pywebview.api.<method>()` returning a promise), so `/bridge.js`
+reimplements exactly that shape over `fetch`. One UI to maintain, and the
+two cannot drift apart. The shim uses a `Proxy`, so all 113 endpoints work
+and a new one needs no wiring.
+
+Engine events are the one thing that could not be reused: the desktop pushes
+them in with `evaluate_js`, which has no equivalent to a browser on another
+device. They are buffered and long-polled instead — an idle app costs one
+open connection rather than a request per second, and a phone that sleeps
+and reconnects resumes from its cursor.
+
+Two things genuinely cannot work remotely, and say so rather than failing
+silently: the **file and folder pickers** (a native dialog would open on the
+host's screen, where nobody is looking) and **Open folder / Open in reader**,
+which are allowed but act on the host.
+
+The layout adapts below 820px — the side rail becomes a bottom bar, the
+cover grid reflows to two columns, and settings rows stack. Measured on a
+390px viewport: zero horizontal overflow, where before the search button
+overflowed the page.
+
+An access token is generated at startup and printed with the URL. It is a
+shared secret over plain HTTP for a home network — **do not port-forward
+it.**
+
+Requires the `server` extra (`pip install -e ".[server]"`); `requirements.txt`
+covers it too.
+
+### Tests
+
+35 new tests, 1023 passing. Each fix was reverted to confirm its test fails:
+**14 of 15 caught**. The fifteenth is the static-file traversal guard — I
+removed it and re-ran the attacks, and Werkzeug's own URL normalisation
+refuses them anyway, so the guard is genuine defence-in-depth rather than
+the thing doing the work. The comment and the test now say so instead of
+claiming credit.
+
+One test of mine asserted the wrong contract: a wrong-arity API call returns
+`{"ok": false}` with a 200, because `_safe_endpoint` wraps every endpoint
+before the server sees it. That is the better shape — the UI already
+understands it — so the test was corrected rather than the code.
+
+---
+
 ## v1.4.27 — One app at a time, and the Windows crash
 
 Both fixes come from a crash log covering 116 sessions.
