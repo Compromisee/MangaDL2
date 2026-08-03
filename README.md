@@ -7,7 +7,7 @@
 [Project landing page](https://compromisee.github.io/WeebDL/) (GitHub Pages, served from `docs/`)
 
 **[Command syntax reference -> SYNTAX.md](SYNTAX.md)**
-
+[![discord members](https://discord-live-members-count-badge.vercel.app/api/discord-members?guildId=1501730804236025906)](https://discord.gg/[YOUR_NEVER_EXPIRY_INVITE_CODE_HERE](https://discord.gg/cHJA5gEfWD))
 [![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://python.org)
 [![pywebview](https://img.shields.io/badge/pywebview-GUI-2962FF?style=for-the-badge)](https://pywebview.flowrl.com)
 [![License](https://img.shields.io/badge/License-MIT-00875A?style=for-the-badge)](LICENSE)
