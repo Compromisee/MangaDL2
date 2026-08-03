@@ -30,10 +30,10 @@ if __package__ in (None, ""):
 # clone -- no `pip install -e .` -- could not run the CLI at all: `py cli.py`
 # died with ImportError before argparse even ran. `mangadl/console.py` uses
 # Rich when it is installed and falls back to ANSI otherwise.
-from .console import (ACCENT, DIM, ERR, HEAD, OK, RICH, WARN, Panel, Table,
-                      box, console, download_progress, strip_markup)
+from .console import (ACCENT, DIM, ERR, OK, Panel, Table,
+                      box, console, download_progress)
 from .downloader import DownloadEngine, DownloadOptions
-from .sources import (DEFAULT_SOURCE, SOURCES, browse_all, detect_source,
+from .sources import (SOURCES, browse_all, detect_source,
                       genres_all, get_source, list_sources, search_all,
                       source_for_url)
 
@@ -982,8 +982,8 @@ def cmd_info(url: str, source_id: str = "", language: str = "en"):
 
 def cmd_resume(args) -> int:
     """Resume the last interrupted job recorded in the journal."""
-    from .downloader import DownloadEngine, DownloadOptions
-    from .logs import clear_journal, read_journal
+    from .downloader import DownloadOptions
+    from .logs import clear_journal
 
     from .logs import read_journals
 

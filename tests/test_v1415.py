@@ -238,7 +238,6 @@ def test_madara_search_uses_paged_not_page_path():
     """/page/2/?s= returns page ONE on Toonily -- 18 results, all 18 identical
     to page one. &paged=2 returns a disjoint set. Using the path form would
     make "next page" loop forever there."""
-    from mangadl.sources.madara import MadaraSource
 
     body = code(read(os.path.join(SRC, "madara.py")))
     search = body[body.index("def search"):body.index("def browse")]
@@ -333,7 +332,6 @@ def test_madara_genre_labels_strip_seo_noise():
 
 def test_each_madara_site_declares_its_measured_genre_prefix():
     """The prefix differs per install and a wrong one is a hard 404."""
-    from mangadl.sources import SOURCES
 
     expected = {
         "madara.manhuaplus": "manga-genre",
@@ -350,15 +348,12 @@ def test_each_madara_site_declares_its_measured_genre_prefix():
 def test_manhuatop_browses_the_manga_path_not_manhua():
     """Series live under /manhua/ but /manhua/?m_orderby= returns ZERO cards
     -- reproduced four times, three seconds apart. /manga/ is the listing."""
-    from mangadl.sources import SOURCES
 
     assert member("madara.manhuatop").series_prefix == "/manhua/"
     assert member("madara.manhuatop").browse_path == "/manga/"
 
 
 def test_toonily_uses_the_singular_serie_path():
-    from mangadl.sources import SOURCES
-
     assert member("madara.toonily").series_prefix == "/serie/"
     assert member("madara.toonily").browse_path == "/search/"
 
@@ -669,7 +664,6 @@ def test_toonily_chapters_carry_a_referer():
 def test_toonily_covers_do_not_need_proxying():
     """static.tnlycdn.com serves covers with no Referer (200 both ways), so
     unlike Webtoons this does not need the Python-side proxy."""
-    from mangadl.sources import SOURCES
 
     assert member("madara.toonily").cover_needs_referer is False
 

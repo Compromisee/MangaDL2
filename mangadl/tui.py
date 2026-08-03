@@ -73,7 +73,7 @@ except ImportError:                    # pragma: no cover - install dependent
 
 from .downloader import DownloadEngine, DownloadOptions
 from .gui import load_settings, save_settings
-from .sources import (DEFAULT_SOURCE, SOURCES, browse_all, detect_source,
+from .sources import (SOURCES, browse_all, detect_source,
                       genres_all, get_source, list_sources, search_all,
                       source_for_url)
 from .utils import chapter_number

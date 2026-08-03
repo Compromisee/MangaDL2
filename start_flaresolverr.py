@@ -5,12 +5,10 @@ This script helps download and start FlareSolverr automatically.
 """
 
 import os
-import sys
-import subprocess
 import platform
+import subprocess
+import sys
 import urllib.request
-import zipfile
-import json
 from pathlib import Path
 
 FLARESOLVERR_VERSION = "v3.3.21"

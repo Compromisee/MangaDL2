@@ -203,7 +203,6 @@ def test_extract_id_from_various_urls():
 
 def test_page_list_ignores_the_decoy_array():
     """Chapter pages ship as two JS arrays; the short one is a decoy."""
-    import re
     from mangadl.sources.mangakatana import _JS_ARRAY, _JS_URL
 
     html = """

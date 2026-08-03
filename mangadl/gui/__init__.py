@@ -16,17 +16,17 @@ import threading
 import time
 import traceback
 
-from ..downloader import DownloadEngine, DownloadOptions
-from ..sources import (DEFAULT_SOURCE, SOURCES, browse_all, browse_multi,
-                       detect_source, genres_all, get_source, list_sources,
-                       resolve_member, search_all, split_genres,
-                       source_for_url)
 from .. import config as appconfig
 from .. import features
 from .. import library
 from .. import logs as wclogs
 from .. import passlock
 from .. import tracking
+from ..downloader import DownloadEngine, DownloadOptions
+from ..sources import (DEFAULT_SOURCE, SOURCES, browse_all, browse_multi,
+                       detect_source, genres_all, get_source, list_sources,
+                       resolve_member, search_all, split_genres,
+                       source_for_url)
 
 logger = logging.getLogger(__name__)
 

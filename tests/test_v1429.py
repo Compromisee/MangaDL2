@@ -6,13 +6,9 @@ link stopped working. It is now a saved setting with a 16-character minimum,
 validated in one place that all three UIs share.
 """
 
-import base64
-import json
 import os
 import socket
-import subprocess
 import sys
-import tempfile
 import time
 
 import pytest

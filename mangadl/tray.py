@@ -24,7 +24,6 @@ the ordinary close-quits behaviour.
 """
 
 import logging
-import os
 import threading
 import time
 

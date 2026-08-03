@@ -14,7 +14,6 @@ while fixing the bugs and is quoted in the relevant docstrings.
 import base64
 import json
 import os
-import re
 
 import pytest
 

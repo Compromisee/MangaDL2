@@ -219,7 +219,6 @@ def test_mangadass_avoids_the_decoy_search():
 def test_mangadass_orders_chapters_numerically():
     """"Read First"/"Read Last" shortcuts sit above the list, so document
     order put Chapter 1 last (measured: 2,3,4,5,6,7,8,1)."""
-    from bs4 import BeautifulSoup
 
     from mangadl.sources.mangadass import MangadassSource
 

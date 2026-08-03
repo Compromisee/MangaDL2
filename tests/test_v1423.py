@@ -7,9 +7,6 @@
 """
 
 import os
-import re
-
-import pytest
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 WEB = os.path.join(ROOT, "mangadl", "gui", "web")
@@ -179,7 +176,6 @@ def test_job_snapshot_carries_formatted_text_and_history():
 
 def test_history_is_bounded():
     """An hours-long download must not grow an unbounded list."""
-    import time
 
     from mangadl.progress import JobProgress
 

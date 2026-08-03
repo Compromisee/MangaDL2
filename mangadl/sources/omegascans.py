@@ -29,7 +29,7 @@ Images
 
 import logging
 import re
-from urllib.parse import quote, urljoin
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 

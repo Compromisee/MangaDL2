@@ -31,7 +31,6 @@ actually using" is the first question when something fails to start.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 import platform

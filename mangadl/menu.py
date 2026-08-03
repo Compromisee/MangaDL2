@@ -34,12 +34,12 @@ if __package__ in (None, ""):
 # Rich is optional -- see mangadl/console.py. menu.py had the same hard
 # import as cli.py, so a clone without dependencies installed could not run
 # `py menu.py` either: it failed at import, before printing anything.
-from .console import (ACCENT, DIM, ERR, HEAD, OK, RICH, WARN, Panel, Table,
-                      box, console, strip_markup)
+from .console import (ACCENT, DIM, Panel, Table,
+                      box, console)
 
 from . import config as appconfig
 from . import features, library, tracking
-from .sources import (SOURCES, browse_all, detect_source, genres_all,
+from .sources import (browse_all, detect_source, genres_all,
                       get_source, list_sources, search_all)
 
 # console, ACCENT and DIM come from .console so the Rich and no-Rich paths

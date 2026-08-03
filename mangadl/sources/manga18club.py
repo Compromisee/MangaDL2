@@ -38,7 +38,6 @@ Images
 """
 
 import base64
-import json
 import logging
 import re
 from urllib.parse import quote, urljoin
