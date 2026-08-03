@@ -2934,6 +2934,7 @@ whenReady(async () => {
       state.settings.downloaded_results || "darken";
   }
   bootStep("trayState", refreshTrayState);
+  bootStep("serverConfig", loadServerConfig);
   $("setInterleave").checked = !!state.settings.interleave_results;
 
   await bootStep("sourceConfig", loadSourceConfig);
@@ -3386,6 +3387,86 @@ $("setDownloadedResults") &&
         : "Dimming results you already have");
     doSearch(true);
   });
+
+/* ------------------------------------------------- phone server settings
+
+   The token is validated by the Python side (mangadl/servercfg.py), which
+   is the same code the server itself and its control window use -- three
+   copies of a length check is how one of them ends up accepting four
+   characters. */
+
+let serverCfg = null;
+
+async function loadServerConfig() {
+  const res = await callApi("get_server_config");
+  if (!res || !res.ok) return;
+  serverCfg = res;
+  if ($("setServerToken") && document.activeElement !== $("setServerToken")) {
+    $("setServerToken").value = res.token || "";
+  }
+  if ($("setServerPort") && document.activeElement !== $("setServerPort")) {
+    $("setServerPort").value = res.port || 8577;
+  }
+  if ($("setServerVerbose")) $("setServerVerbose").checked = !!res.verbose;
+  if ($("serverUrlHint")) $("serverUrlHint").textContent = res.url || "";
+}
+
+function serverHint(text, bad) {
+  const hint = $("serverTokenHint");
+  if (!hint) return;
+  hint.textContent = text;
+  hint.style.color = bad ? "var(--danger)" : "";
+}
+
+$("setServerToken") && $("setServerToken").addEventListener("input", (e) => {
+  const n = e.target.value.trim().length;
+  const min = (serverCfg && serverCfg.min_length) || 16;
+  if (n && n < min) serverHint(`${n} of ${min} characters minimum.`, true);
+  else serverHint("At least 16 characters. The phone needs this to connect.");
+});
+
+$("setServerToken") && $("setServerToken").addEventListener("change", async (e) => {
+  const res = await callApi("set_server_config", e.target.value.trim());
+  if (!res) return;
+  serverHint(res.message || "", !res.ok);
+  if (res.ok) { await loadServerConfig(); toast("Server token saved"); }
+});
+
+$("genServerToken") && $("genServerToken").addEventListener("click", async () => {
+  const res = await callApi("generate_server_token");
+  if (res && res.ok) {
+    await loadServerConfig();
+    serverHint("Generated and saved.");
+    toast("New server token generated");
+  }
+});
+
+$("setServerPort") && $("setServerPort").addEventListener("change", async (e) => {
+  const res = await callApi("set_server_config", null, e.target.value);
+  if (!res) return;
+  serverHint(res.message || "", !res.ok);
+  if (res.ok) { await loadServerConfig(); toast("Server port saved"); }
+});
+
+$("setServerVerbose") && $("setServerVerbose").addEventListener("change", async (e) => {
+  await callApi("set_server_config", null, null, e.target.checked);
+  toast(e.target.checked ? "Verbose server log on" : "Verbose server log off");
+});
+
+$("copyServerLink") && $("copyServerLink").addEventListener("click", async () => {
+  await loadServerConfig();
+  const url = (serverCfg && serverCfg.url) || "";
+  if (!url) { toast("Could not work out the address"); return; }
+  try {
+    await navigator.clipboard.writeText(url);
+    toast("Link copied");
+  } catch (e) {
+    // The packaged app is not a secure context, so the clipboard API can
+    // refuse. Showing the link is better than failing silently.
+    if ($("serverUrlHint")) $("serverUrlHint").textContent = url;
+    toast("Copy failed - the link is shown above");
+  }
+});
 
 /* The Queue tab's own Advanced checkbox is the same setting, mirrored so it
    can be flipped while watching a download without leaving the tab. */

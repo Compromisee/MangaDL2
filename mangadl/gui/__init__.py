@@ -63,6 +63,14 @@ DEFAULT_SETTINGS = {
     "minimize_to_tray": False,      # closing the window keeps downloads going
     "tray_notifications": True,     # notify when a download finishes
     "queue_log_advanced": False,    # verbose per-page queue log
+    # ---- LAN server (server.py) --------------------------------------
+    # The access token is a saved setting rather than a value regenerated
+    # at every launch: a token that changes each time means re-typing it
+    # on the phone each time, and a bookmarked link that silently stops
+    # working. Empty means "generate one on first run and save it".
+    "server_token": "",
+    "server_port": 8577,
+    "server_verbose": False,        # log every API call, not just startup
     # What to do with search results you already have:
     #   "show"   leave them exactly as they are
     #   "darken" dim them, and reveal a fill + percent on hover
@@ -1700,6 +1708,38 @@ class Api(metaclass=_SafeApiMeta):
         if not self._queue_paused:
             self._start_queued()
         return {"ok": True, "paused": self._queue_paused}
+
+    # ------------------------------------------------- phone server
+
+    def get_server_config(self):
+        """Token, port and the link, for the Settings panel."""
+        from ..servercfg import MIN_TOKEN_LENGTH, load_server_settings
+
+        cfg = load_server_settings()
+        try:
+            import server as server_module
+            host_ip = server_module.local_ip()
+        except Exception:
+            host_ip = "your-pc"
+        return {"ok": True, "min_length": MIN_TOKEN_LENGTH,
+                "url": f"http://{host_ip}:{cfg['port']}/?token={cfg['token']}",
+                "host_ip": host_ip, **cfg}
+
+    def set_server_config(self, token: str = None, port=None, verbose=None):
+        """Validated through the same helper the server window uses."""
+        from ..servercfg import save_server_settings
+
+        ok, message, cfg = save_server_settings(token=token, port=port,
+                                                verbose=verbose)
+        result = self.get_server_config() if ok else {}
+        return {"ok": ok, "message": message, **(result or {})}
+
+    def generate_server_token(self):
+        from ..servercfg import generate_token, save_server_settings
+
+        token = generate_token()
+        save_server_settings(token=token)
+        return {"ok": True, "token": token, **self.get_server_config()}
 
     def get_tray_state(self):
         from ..tray import tray_available

@@ -200,15 +200,55 @@ def local_ip():
         sock.close()
 
 
-def create_app(token=None, api=None, buffer=None):
+class ServerLog:
+    """A ring of human-readable lines for the server's own window.
+
+    Separate from ``mangadl.logs``: that writes a rotating file for
+    diagnosing a bug later, while this is a live view of what the phone is
+    doing right now. Bounded, because a long session is thousands of API
+    calls and nobody scrolls past the last hundred.
+    """
+
+    LIMIT = 800
+
+    def __init__(self, verbose=False):
+        self.verbose = verbose
+        self._lines = []
+        self._seq = 0
+        self._lock = threading.Lock()
+
+    def add(self, level, message, verbose_only=False):
+        """Record a line. ``verbose_only`` lines are dropped unless asked for."""
+        if verbose_only and not self.verbose:
+            return
+        stamp = time.strftime("%H:%M:%S")
+        with self._lock:
+            self._seq += 1
+            self._lines.append({"seq": self._seq, "time": stamp,
+                                "level": level, "text": str(message)})
+            if len(self._lines) > self.LIMIT:
+                del self._lines[:len(self._lines) - self.LIMIT]
+
+    def since(self, cursor=0):
+        with self._lock:
+            return self._seq, [l for l in self._lines if l["seq"] > cursor]
+
+    def clear(self):
+        with self._lock:
+            self._lines = []
+
+
+def create_app(token=None, api=None, buffer=None, log=None):
     """Build the Flask app. Exposed separately so tests can drive it."""
     buffer = buffer if buffer is not None else EventBuffer()
     api = api if api is not None else ServerApi(buffer)
+    log = log if log is not None else ServerLog()
 
     app = Flask(__name__, static_folder=None)
     app.config["MANGADL_TOKEN"] = token
     app.config["MANGADL_API"] = api
     app.config["MANGADL_BUFFER"] = buffer
+    app.config["MANGADL_LOG"] = log
 
     # ----------------------------------------------------------- auth
 
@@ -221,6 +261,10 @@ def create_app(token=None, api=None, buffer=None):
         # Constant-time: this is a shared secret in a query string, so the
         # comparison is the one part that costs nothing to get right.
         return bool(supplied) and secrets.compare_digest(str(supplied), token)
+
+    def client():
+        """Who is calling, for the log. Useful for spotting a stray device."""
+        return request.headers.get("X-Forwarded-For") or request.remote_addr
 
     # -------------------------------------------------------- the page
 
@@ -257,18 +301,25 @@ def create_app(token=None, api=None, buffer=None):
     @app.post("/api/<method>")
     def call(method):
         if not authorised():
+            # Always logged, never verbose-only: a rejected token is the one
+            # thing you actually want to see in the window.
+            log.add("warn", f"Rejected call to {method} from {client()} "
+                            "- bad or missing token")
             return jsonify({"ok": False, "error": "Bad or missing token"}), 401
 
         if method in FORBIDDEN:
+            log.add("warn", f"Blocked {method} (not available over the network)")
             return jsonify({"ok": False,
                             "error": "Not available over the network"}), 403
         if method in BLOCKED:
+            log.add("info", f"{method} is not possible remotely")
             return jsonify({"ok": False, "error": BLOCKED[method]})
 
         if method.startswith("_"):
             return jsonify({"ok": False, "error": "Unknown method"}), 404
         fn = getattr(api, method, None)
         if fn is None or not callable(fn):
+            log.add("warn", f"Unknown method '{method}' from {client()}")
             return jsonify({"ok": False,
                             "error": f"Unknown method '{method}'"}), 404
 
@@ -277,18 +328,31 @@ def create_app(token=None, api=None, buffer=None):
         if not isinstance(args, list):
             args = [args]
 
+        started = time.monotonic()
         try:
             result = fn(*args)
         except TypeError as exc:
             # A wrong-arity call is a client bug, not a server fault; say so
             # rather than returning a 500 the UI cannot interpret.
             logger.warning("bad call to %s: %s", method, exc)
+            log.add("error", f"{method}: {exc}")
             return jsonify({"ok": False, "error": f"{method}: {exc}"}), 400
         except Exception as exc:
             logger.exception("api.%s failed", method)
+            log.add("error", f"{method} failed: {exc}")
             return jsonify({"ok": False, "error": str(exc)}), 500
 
+        elapsed = (time.monotonic() - started) * 1000
+        # Routine calls are verbose-only -- the page makes dozens on boot and
+        # they would bury anything worth reading. Failures are not.
+        if isinstance(result, dict) and result.get("ok") is False:
+            log.add("error", f"{method} -> {result.get('error')}")
+        else:
+            log.add("call", f"{method} ({elapsed:.0f} ms) from {client()}",
+                    verbose_only=True)
+
         if method in HOST_SIDE and isinstance(result, dict) and result.get("ok"):
+            log.add("info", f"{method} ran on this computer, not the phone")
             result = dict(result, host_side=True)
         return jsonify({"result": _safe(result)})
 
@@ -312,6 +376,29 @@ def create_app(token=None, api=None, buffer=None):
         return jsonify({"ok": True, "app": "mangadl",
                         "auth": bool(token),
                         "authorised": authorised()})
+
+    @app.get("/api/_log")
+    def server_log():
+        """Read the server's own log. Used by its window, not by the phone."""
+        if not authorised():
+            return jsonify({"ok": False, "error": "Bad or missing token"}), 401
+        try:
+            cursor = int(request.args.get("since", 0))
+        except (TypeError, ValueError):
+            cursor = 0
+        seq, lines = log.since(cursor)
+        return jsonify({"ok": True, "cursor": seq, "lines": lines,
+                        "verbose": log.verbose})
+
+    _seen_clients = set()
+
+    @app.before_request
+    def note_new_client():
+        """One line the first time a device shows up, then silence."""
+        who = client()
+        if who and who not in _seen_clients:
+            _seen_clients.add(who)
+            log.add("info", f"Device connected: {who}")
 
     return app
 
@@ -447,6 +534,66 @@ _BRIDGE_JS = r"""
 """
 
 
+def build_url(host, port, token):
+    address = local_ip() if host in ("0.0.0.0", "") else host
+    suffix = f"/?token={token}" if token else "/"
+    return f"http://{address}:{port}{suffix}"
+
+
+def serve(host="0.0.0.0", port=None, token=None, no_auth=False,
+          verbose=None, log=None, on_ready=None, debug=False):
+    """Run the server. Shared by the console entry point and the window.
+
+    ``on_ready`` is called with the URL once the app is built but before the
+    blocking run, so a GUI can show the link without racing the bind.
+    """
+    from mangadl.servercfg import load_server_settings
+
+    stored = load_server_settings()
+    port = int(port or stored["port"])
+    if no_auth:
+        token = None
+    else:
+        token = (token or stored["token"]).strip()
+    if verbose is None:
+        verbose = stored["verbose"]
+
+    log = log if log is not None else ServerLog(verbose=bool(verbose))
+    log.verbose = bool(verbose)
+
+    app = create_app(token=token, log=log)
+    url = build_url(host, port, token)
+
+    log.add("info", f"Serving on port {port}")
+    log.add("info", f"Open on your phone: {url}")
+    if token:
+        log.add("info", f"Access token: {token}")
+    else:
+        log.add("warn", "Running with NO access token (--no-auth)")
+    log.add("info", "Downloads run on this computer and are saved here.")
+
+    if on_ready:
+        try:
+            on_ready(url, app, log)
+        except Exception:
+            logger.exception("on_ready callback failed")
+
+    try:
+        app.run(host=host, port=port, debug=debug,
+                threaded=True, use_reloader=False)
+    except OSError as exc:
+        # The most common real failure: the port is taken, usually by an
+        # older copy of this same server.
+        log.add("error", f"Could not bind port {port}: {exc}")
+        raise
+    finally:
+        try:
+            app.config["MANGADL_API"].shutdown()
+        except Exception:
+            pass
+    return app
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="server.py",
@@ -455,33 +602,45 @@ def main(argv=None):
     parser.add_argument("--host", default="0.0.0.0",
                         help="interface to bind (default: every interface, "
                              "so other devices can reach it)")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT,
-                        help=f"port (default: {DEFAULT_PORT})")
+    parser.add_argument("--port", type=int, default=None,
+                        help=f"port (default: from Settings, or {DEFAULT_PORT})")
     parser.add_argument("--no-auth", action="store_true",
                         help="do not require an access token (trusted "
                              "networks only)")
     parser.add_argument("--token", default=None,
-                        help="use a fixed token instead of a random one")
+                        help="override the saved token for this run only")
+    parser.add_argument("--verbose", action="store_true", default=None,
+                        help="log every API call, not just startup and errors")
+    parser.add_argument("--gui", action="store_true",
+                        help="open the small control window instead of "
+                             "running headless in this terminal")
     parser.add_argument("--debug", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     wclogs.setup_logging()
 
-    token = None if args.no_auth else (args.token or secrets.token_urlsafe(12))
-    app = create_app(token=token)
+    if args.gui:
+        from mangadl.serverui import run_server_window
+        return run_server_window(host=args.host, port=args.port,
+                                 token=args.token, no_auth=args.no_auth,
+                                 verbose=args.verbose)
 
-    address = local_ip() if args.host == "0.0.0.0" else args.host
-    suffix = f"/?token={token}" if token else "/"
-    url = f"http://{address}:{args.port}{suffix}"
+    from mangadl.servercfg import load_server_settings
+    stored = load_server_settings()
+    port = args.port or stored["port"]
+    token = None if args.no_auth else (args.token or stored["token"])
+    url = build_url(args.host, port, token)
 
-    line = "─" * 62
+    line = "\u2500" * 62
     print(f"\n{line}")
     print("  MangaDL server")
     print(f"{line}")
-    print(f"  On this PC     http://localhost:{args.port}{suffix}")
+    print(f"  On this PC     http://localhost:{port}"
+          + (f"/?token={token}" if token else "/"))
     print(f"  On your phone  {url}")
     if token:
         print(f"\n  Access token   {token}")
+        print("  Change it in the app: Settings -> Phone server")
     else:
         print("\n  Access token   DISABLED (--no-auth)")
     print("\n  Downloads run on this computer and are saved here.")
@@ -489,15 +648,14 @@ def main(argv=None):
     print(f"{line}\n")
 
     try:
-        app.run(host=args.host, port=args.port, debug=args.debug,
-                threaded=True, use_reloader=False)
+        serve(host=args.host, port=port, token=args.token,
+              no_auth=args.no_auth, verbose=args.verbose, debug=args.debug)
     except KeyboardInterrupt:
         pass
-    finally:
-        try:
-            app.config["MANGADL_API"].shutdown()
-        except Exception:
-            pass
+    except OSError as exc:
+        print(f"\n[MangaDL] Could not start the server: {exc}\n",
+              file=sys.stderr)
+        return 1
     return 0
 
 

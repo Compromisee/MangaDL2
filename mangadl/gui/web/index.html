@@ -833,6 +833,55 @@
       </div>
     </div>
 
+    <!-- ------------------------------------------- PHONE / LAN SERVER -->
+    <div class="card settings-card">
+      <div class="card-title">
+        <span class="material-symbols-rounded">smartphone</span> Phone server
+      </div>
+      <p class="hint" style="margin:-4px 0 12px">
+        <code>python server.py</code> serves this interface over your Wi-Fi so
+        you can browse and start downloads from a phone. Everything still runs
+        on this computer. Add <code>--gui</code> for a small control window.
+      </p>
+
+      <div class="setting-row">
+        <div><label>Access token</label>
+          <p class="hint" id="serverTokenHint">At least 16 characters. The
+            phone needs this to connect.</p></div>
+        <div class="inline-field">
+          <input type="text" id="setServerToken" spellcheck="false"
+                 autocomplete="off" style="width:230px;font-family:monospace">
+          <button class="btn btn-sm" id="genServerToken">Generate</button>
+        </div>
+      </div>
+
+      <div class="setting-row">
+        <div><label>Port</label>
+          <p class="hint">1024–65535. Change it if something else is using
+            8577.</p></div>
+        <input type="number" id="setServerPort" min="1024" max="65535"
+               style="width:110px">
+      </div>
+
+      <div class="setting-row">
+        <div><label>Verbose server log</label>
+          <p class="hint">List every call the phone makes, not just startup
+            and errors.</p></div>
+        <label class="switch"><input type="checkbox" id="setServerVerbose"><span></span></label>
+      </div>
+
+      <div class="setting-row">
+        <div><label>Link for your phone</label>
+          <p class="hint" id="serverUrlHint">Start the server to confirm the
+            address.</p></div>
+        <div class="inline-field">
+          <button class="btn btn-sm" id="copyServerLink">
+            <span class="material-symbols-rounded">content_copy</span> Copy link
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- ------------------------------------------------ SECURITY -->
     <div class="card settings-card">
       <div class="card-title"><span class="material-symbols-rounded">lock</span> Security</div>

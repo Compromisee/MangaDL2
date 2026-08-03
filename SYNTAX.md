@@ -492,6 +492,9 @@ mangadl info <url>
 ## See also
 
 - [`README.md`](README.md) — install, features, source table
+- `python landing.py` — a window to launch any interface
+- `python server.py` — serve the interface to your phone
+  (add the gui flag for a small control window)
 - [`FEATURES.md`](FEATURES.md) — every feature, grouped by what it is for
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed, and why
 - [`PACKAGING.md`](PACKAGING.md) — building a standalone executable

@@ -22,6 +22,7 @@ release, see **[CHANGELOG.md](CHANGELOG.md)**.
 - [Background mode](#background-mode)
 - [Privacy and safety](#privacy-and-safety)
 - [The command line](#the-command-line)
+- [Picking an interface](#picking-an-interface)
 - [Using it from your phone](#using-it-from-your-phone)
 - [The terminal menu and TUI](#the-terminal-menu-and-tui)
 - [Configuration](#configuration)
@@ -365,6 +366,36 @@ Full reference in **[SYNTAX.md](SYNTAX.md)**.
 
 ---
 
+## Picking an interface
+
+`python landing.py` opens a small window listing all five interfaces, and
+starts whichever you choose:
+
+| | |
+|---|---|
+| **Desktop app** | the full window interface |
+| **Terminal menu** | numbered prompts, no extra dependencies |
+| **Full-screen TUI** | keyboard-driven, works over SSH |
+| **Command line** | a shell with the CLI help, ready to type into |
+| **Phone server** | serve the interface over Wi-Fi |
+
+The terminal ones open in a real terminal window rather than a pipe, because
+a TUI written to a pipe is useless.
+
+It also solves the venv problem. Launching `tui.py` from a file manager does
+not inherit your virtual environment, so the child gets the *system* Python,
+which has none of MangaDL's dependencies and dies with `ImportError` — a
+failure that looks like a bug in the app. The launcher looks for a venv in
+the interpreter it is already running under, `$VIRTUAL_ENV`, and then
+`.venv`/`venv`/`env` in the project folder and up to two directories above
+it. Whichever it picks is shown in the window, because "which Python is this
+using" is the first question when something will not start.
+
+A log panel sits collapsed at the bottom and opens on first launch, showing
+the exact command that was run and anything the child said on the way out.
+
+---
+
 ## Using it from your phone
 
 `python server.py` serves the desktop interface over your local network, so
@@ -395,8 +426,28 @@ Two things cannot work remotely and say so rather than failing silently: the
 where nobody is looking — type the path instead), and **Open folder / Open in
 reader**, which are allowed but act on the host.
 
-An access token is generated at startup and printed with the URL. It is a
-shared secret over plain HTTP for a home network — do not port-forward it.
+### The access token
+
+The token is a **saved setting**, not a value regenerated at each launch —
+one that changed every restart meant re-pairing the phone every time and any
+bookmarked link quietly breaking.
+
+Set it in **Settings → Phone server** in the desktop app, in the server's own
+window, or leave it and one is generated and saved on first run. Minimum 16
+characters; only characters that survive a URL untouched are accepted, so the
+printed link never needs escaping. Generated tokens skip `l`, `I`, `1`, `0`
+and `O`, because this string gets copied off a screen by hand.
+
+It is a shared secret over plain HTTP for a home network — do not
+port-forward it.
+
+### The control window
+
+`python server.py --gui` opens a small window instead of running headless:
+the link to open on your phone with a Copy button, the token and port with
+validation as you type, a verbose toggle, and a live colour-coded log. The
+log always shows rejected tokens and errors; verbose mode adds every call the
+phone makes.
 
 Requires the `server` extra (`pip install -e ".[server]"`).
 

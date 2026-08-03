@@ -7,6 +7,83 @@ fork. Earlier upstream history is not carried over.
 
 ---
 
+## v1.4.29 — Your own server token, a server window, and one launcher
+
+### Changed — the access token is yours, and it persists
+
+It was `secrets.token_urlsafe(12)`, regenerated on **every launch**. That
+meant re-pairing the phone each restart, and any bookmarked link quietly
+breaking. It is now a saved setting:
+
+* set it in the app under **Settings → Phone server**, in the server's own
+  window, or on the command line — all three go through the same validator
+  in `mangadl/servercfg.py`, because three copies of a length check is how
+  one of them ends up accepting four characters;
+* **minimum 16 characters**, enforced with live feedback as you type;
+* only URL-safe characters, so the printed link never needs escaping;
+* generated tokens skip `l`, `I`, `1`, `0` and `O` — this string gets copied
+  off a screen by hand;
+* a rejected value never overwrites the working one, and a hand-corrupted
+  entry in `config.json` is replaced rather than locking you out.
+
+Port and verbose logging are settings too.
+
+### Added — `python server.py --gui`
+
+A small pywebview window instead of a bare terminal:
+
+* the phone link, with **Copy** (and a select-the-text fallback, because the
+  clipboard API refuses outside a secure context) and **Open here**;
+* token and port with validation as you type, plus **Generate**;
+* a verbose toggle;
+* a live colour-coded log. Rejected tokens and errors always show; verbose
+  adds every call the phone makes, with timings. It autoscrolls only when
+  you are already at the bottom, so reading back is not yanked away.
+
+`stop` is honest about its limitation: Werkzeug has no clean cross-thread
+shutdown once inside `serve_forever`, so the window says "close this window
+to stop the server" rather than pretending to have stopped it.
+
+### Added — `python landing.py`
+
+One window listing all five interfaces — desktop app, terminal menu, TUI,
+CLI, phone server — that starts whichever you pick. Terminal ones open in a
+real terminal window (a TUI written to a pipe is useless), trying
+`x-terminal-emulator`, `gnome-terminal`, `konsole`, `xfce4-terminal`,
+`alacritty`, `kitty` and `xterm` on Linux, `osascript` on macOS and
+`cmd /k` on Windows.
+
+**It solves the venv problem.** Launching `tui.py` from a file manager does
+not inherit your virtual environment, so the child gets the system Python,
+has none of the dependencies, and dies with `ImportError` — a failure that
+looks like a bug in the app. The launcher searches the interpreter it is
+already running under, `$VIRTUAL_ENV`, then `.venv`/`venv`/`env` in the
+project folder and **up to two directories above it**, since a checkout is
+often one folder inside a workspace that owns the venv. Verified at all
+three depths.
+
+Whichever Python it picked is shown in the window, with a warning when none
+was found — "which Python is this using" is the first question when
+something will not start. A log panel sits collapsed at the bottom, opens
+automatically on the first launch, and records the exact command run.
+
+### Fixed
+
+The Phone server settings card was nested **inside** the Background card —
+my edit ate a closing `</div>` and the panel rendered as a box within a box.
+Caught by screenshotting rather than trusting the markup. Two tests now
+assert that no settings card is nested inside another.
+
+### Tests
+
+45 new tests, 1068 passing. Each change was reverted to confirm its test
+fails: **17 of 17 caught**, including dropping the length minimum, allowing
+URL-unsafe characters, going back to a per-launch random token, letting a
+rejected token overwrite a good one, ignoring the verbose flag, and only
+searching the project folder for a venv.
+
+---
+
 ## v1.4.28 — Madara downloads fixed, and a phone server
 
 ### Fixed — downloading from a Madara site failed
