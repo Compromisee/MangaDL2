@@ -51,8 +51,8 @@
 - **Crash-proof resume.** Verified checkpoints, atomic image writes and a job journal: after a crash or outage, hit **Resume** in the GUI (or run `mangadl resume`) and it continues exactly where it left off — completed chapters skipped, partial chapters finish their missing pages only.
 - **File logging.** Rotating log at `~/.mangadl/logs/mangadl.log`, exportable from Settings.
 - **Cloudflare-ready.** Falls back to [FlareSolverr](https://github.com/FlareSolverr/FlareSolverr) automatically if a site puts up a challenge.
-- **Pluggable by design.** A new site is one file in `mangadl/sources/` plus one line in the registry; CLI, GUI and TUI pick it up automatically.
-- **Rank and exclude sources.** Drag sources into your preferred order, or switch one off to drop it from results entirely. Ranking decides which copy wins when a series exists on several sites.
+- **Pluggable by design.** A new site is one file in `mangadl//` plus one line in the registry; CLI, GUI and TUI pick it up automatically.
+- **Rank and exclude .** Drag  into your preferred order, or switch one off to drop it from results entirely. Ranking decides which copy wins when a series exists on several sites.
 - **Provider always visible.** Every manga page names the site it came from, right under the title, with a link back to the original.
 - **Passcode lock.** Optional PBKDF2-hashed app passcode with auto-lock, cover blurring and a one-time recovery key.
 - **Track what you read.** Per-chapter read state, progress percentages, next-unread jump, star ratings and notes.
@@ -138,7 +138,7 @@ mangadl <url> --per 25 --also pdf --keep-images
 ```bash
 mangadl search "one piece"                # search every source at once
 mangadl search "one piece" -s mangadex    # search a single source
-mangadl sources                           # list supported sites
+mangadl                            # list supported sites
 mangadl info <url>                        # title, author, status, tags, chapter count
 mangadl resume                 # resume an interrupted/crashed download
 mangadl menu                   # interactive numbered menu (no extra deps)
@@ -169,7 +169,7 @@ mangadl search "berserk" --download 1     # download result 1
 `--type` is derived rather than requested: only one source accepts a type
 parameter, so the type is classified from origin language and tags, with a
 per-source default for single-type catalogues. Results whose type cannot be
-determined are **kept** — dropping them would erase whole sources from a
+determined are **kept** — dropping them would erase whole  from a
 filtered search.
 
 ### Interactive menu
@@ -183,7 +183,7 @@ number. `b` goes back and `q` quits from any depth, so you cannot get stranded
 in a submenu, and a closed stdin exits cleanly instead of raising.
 
 It covers search, trending, pasting a URL, the library, bookmarks, settings
-(folders, formats, sources, filters) and tools. It needs nothing beyond the
+(folders, formats, , filters) and tools. It needs nothing beyond the
 base install; `mangadl tui` needs Textual, which is an optional extra
 (`pip install mangadl[tui]`).
 
@@ -206,7 +206,7 @@ base install; `mangadl tui` needs Textual, which is an optional extra
 -y, --yes              skip the confirmation prompt
     --plain            plain log output (for scripts / CI)
 
-sources:
+:
 -s, --source ID        force a source (see `mangadl sources` for all 23)
                        (default: detected from the URL)
 -l, --language LANG    translation language, MangaDex only (default: en)
@@ -433,17 +433,7 @@ mangadl disk orphans        # library entries whose files are gone
 | `omegascans` | [omegascans.org](https://omegascans.org) | JSON API | Coin-locked chapters are skipped |
 | `manhwaread` | [manhwaread.com](https://manhwaread.com) | HTML + base64 chapter payload | CDN needs a Referer |
 | `madaranet` | *10 sites* | Madara theme, fanned out | **One entry covering every Madara-theme site** — Toonily, Manhua Plus, Manhua Top, Manhwa Top, MangaRead, Coffee Manga, MangaSushi, MangaOwl, MangaGG, Setsu Scans |
-| `witchscans` | [witchscans.com](https://witchscans.com) | HTML + `ts_reader` JSON | Manhua. Genre slugs contain percent-encoded emoji |
-| `writerscans` | [writerscans.com](https://writerscans.com) | HTML, client-side catalogue | 27-title group. Pages rebuilt from `uid` attributes |
-| `webtoons` | [webtoons.com](https://www.webtoons.com) | HTML scraping | Official site; covers are proxied (hotlink-protected CDN) |
-| `mangadass` | [mangadass.com](https://mangadass.com) | HTML scraping | **18+** · use `/search?q=`, `/?s=` ignores the query |
-| `manhwa18` | [manhwa18.cc](https://manhwa18.cc) | HTML scraping | **18+** |
-| `manga18club` | [manga18.club](https://manga18.club) | HTML + base64 page list | **18+** · pages decoded from `slides_p_path` |
-| `hentaiakane` | [hentaiakane.com](https://hentaiakane.com) | HTML + `ts_reader` JSON | **18+** |
-| `nhentai` | [nhentai.to](https://nhentai.to) | HTML scraping | **18+** · one gallery = one chapter |
-
-Adult sources are stamped `content_rating: pornographic` and tagged `Adult`, so
-**Safe mode** in Settings removes them, and each can be disabled individually.
+| `witchscans` | [witchscans.com](https://witchscans.com) | HTML + `ts_reader` JSON | Manhua. Genre slugs contain percent-encoded emoji 
 
 **A note on the name "Madara".** Three things share it:
 
