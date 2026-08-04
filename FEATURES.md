@@ -61,17 +61,7 @@ a change in the app is visible to the CLI immediately.
 | Flame Comics | flamecomics.xyz | Whole catalogue in one Next.js payload |
 | Demonic Scans | demonicscans.org | HTML-fragment search backend |
 | Madara Scans | madarascans.org | Themesia theme, not the Madara theme |
-| Omega Scans | omegascans.org | |
-| ManhwaRead | manhwaread.com | |
 | **Madara Sites** | 10 sites | One source fanning out across ten Madara-theme installs |
-| Witch Scans | witchscans.com | |
-| Writers' Scans | writerscans.com | Page URLs rebuilt from `uid` attributes |
-| Webtoons | webtoons.com | |
-| Mangadass | mangadass.com | 18+ |
-| Manhwa18 | manhwa18.net | 18+ |
-| Manga18.club | manga18.club | 18+ |
-| HentaiAkane | hentaiakane.com | 18+ |
-| nhentai | nhentai.net | 18+ |
 
 **Madara Sites** is a single entry that covers Toonily, Manhua Plus, Manhua
 Top, Manhwa Top, MangaRead, Coffee Manga, Manga Sushi, MangaOwl, MangaGG and
